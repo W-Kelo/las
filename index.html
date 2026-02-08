@@ -211,7 +211,7 @@ const tiles = {
 tiles.dark.addTo(map);
 
 /* ================= STAN APLIKACJI ================= */
-let routePoints = []; // Obiekty {id, latlng, marker, elevation, distFromPrev}
+let routePoints = []; 
 let routeGeometry = []; 
 let pois = [];
 let poiMode = false;
@@ -226,11 +226,12 @@ const osmTranslations = {
     'picnic_site': 'Piknik', 'information': 'Info', 'parking': 'Parking'
 };
 
-/* ================= SILNIK TRASOWANIA (DOKŁADNY) ================= */
+/* ================= SILNIK TRASOWANIA (OSRM) ================= */
 async function getRouteSegment(start, end) {
     try {
         const url = `https://router.project-osrm.org/route/v1/foot/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson&continue_straight=true`;
         const resp = await fetch(url);
+        if (!resp.ok) throw new Error("OSRM error");
         const data = await resp.json();
         
         if (data.code === 'Ok' && data.routes.length > 0) {
@@ -248,13 +249,11 @@ async function getRouteSegment(start, end) {
 /* ================= OBSŁUGA PUNKTÓW ================= */
 map.on('click', async e => {
     if (poiMode) { addPOI(e.latlng); poiMode = false; return; }
-    
     await addRoutePoint(e.latlng);
 });
 
 async function addRoutePoint(latlng) {
     const pointId = Date.now();
-    
     const m = L.circleMarker(latlng, { 
         radius: 8, color: '#fff', weight: 3, fillColor: '#22c55e', fillOpacity: 1, zIndexOffset: 1000 
     }).addTo(map);
@@ -292,7 +291,6 @@ async function recalculateRoute() {
     for (let i = 1; i < routePoints.length; i++) {
         const res = await getRouteSegment(routePoints[i-1].latlng, routePoints[i].latlng);
         routePoints[i].distFromPrev = res.distance;
-        // Doklejamy geometrię bez powtarzania punktu styku
         routeGeometry = routeGeometry.concat(res.coords.slice(1));
     }
 
@@ -333,8 +331,6 @@ async function getElevation(lat, lng) {
 
 async function fetchFullElevationProfile() {
     if (routeGeometry.length < 2) { clearElevation(); return; }
-    
-    // Próbkowanie dla profilu (max 50 punktów dla wydajności API)
     const step = Math.max(1, Math.floor(routeGeometry.length / 40));
     const sampled = routeGeometry.filter((_, i) => i % step === 0);
     const locs = sampled.map(p => ({ latitude: p[0], longitude: p[1] }));
@@ -348,17 +344,15 @@ async function fetchFullElevationProfile() {
         const data = await res.json();
         const elevations = data.results.map(r => r.elevation);
         
-        // Liczymy sumę podejść
         let ascent = 0;
         for(let i=1; i<elevations.length; i++) {
             if(elevations[i] > elevations[i-1]) ascent += (elevations[i] - elevations[i-1]);
         }
         totalAscent = Math.round(ascent);
-        
         const dist = calculateTotalDist();
         updateStats(dist);
         drawElevation(elevations);
-    } catch (e) { console.error("Elevation profile error"); }
+    } catch (e) { console.error("Elevation error"); }
 }
 
 function calculateTotalDist() {
@@ -372,8 +366,8 @@ function calculateTotalDist() {
 function updateStats(distMeters) {
     const km = distMeters / 1000;
     document.getElementById('stats').innerText = `${km.toFixed(2)} km`;
-    const speed = 4.2; // km/h (średnie tempo marszu po lesie)
-    const minutes = (km / speed) * 60 + (totalAscent / 100 * 10); // +10min na każde 100m podejść
+    const speed = 4.2;
+    const minutes = (km / speed) * 60 + (totalAscent / 100 * 10);
     document.getElementById('time').innerText = `Czas: ok. ${Math.round(minutes)} min | ⛰️ Podejścia: ${totalAscent}m`;
 }
 
@@ -389,7 +383,6 @@ function drawElevation(data) {
     c.width = c.offsetWidth * dpr;
     c.height = c.offsetHeight * dpr;
     ctx.scale(dpr, dpr);
-
     const w = c.offsetWidth;
     const h = c.offsetHeight;
     const min = Math.min(...data) - 5;
@@ -421,11 +414,6 @@ function drawElevation(data) {
     ctx.strokeStyle = '#22c55e';
     ctx.lineWidth = 3;
     ctx.stroke();
-    
-    ctx.fillStyle = dark ? '#fff' : '#333';
-    ctx.font = 'bold 10px Arial';
-    ctx.fillText(`${Math.round(max)}m`, 5, 15);
-    ctx.fillText(`${Math.round(min)}m`, 5, h - 5);
 }
 
 /* ================= MODAL I LISTA ================= */
@@ -443,12 +431,10 @@ function closePointsModal() {
 function renderPointsList() {
     const list = document.getElementById('pointsList');
     list.innerHTML = routePoints.length === 0 ? "<p>Brak punktów na trasie.</p>" : "";
-    
     routePoints.forEach((p, i) => {
         const item = document.createElement('div');
         item.className = 'point-item';
         const distText = i === 0 ? "START" : `+${(p.distFromPrev/1000).toFixed(2)} km`;
-        
         item.innerHTML = `
             <div class="point-info">
                 <strong>Punkt ${i + 1}</strong> <small>(${p.elevation} m n.p.m.)</small><br>
@@ -464,53 +450,75 @@ function renderPointsList() {
     });
 }
 
-/* ================= DANE OSM ================= */
-function loadOSMData() {
-    const query = `[out:json];
+/* ================= DANE OSM (SZLAKI I POI) ================= */
+async function loadOSMData() {
+    // Rozmiar ograniczony dla stabilności zapytania
+    const query = `[out:json][timeout:25];
     (
-      way["route"="hiking"](53.4,14.3,53.6,14.8);
-      node["amenity"~"shelter|drinking_water|parking"](53.4,14.3,53.6,14.8);
-      node["tourism"~"viewpoint|picnic_site|information"](53.4,14.3,53.6,14.8);
+      relation["route"="hiking"](53.4,14.3,53.6,14.7);
+      node["amenity"~"shelter|drinking_water|parking"](53.4,14.3,53.6,14.7);
+      node["tourism"~"viewpoint|picnic_site|information"](53.4,14.3,53.6,14.7);
     );
-    out geom;`;
+    out body;
+    >;
+    out skel qt;`;
 
-    fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`)
-    .then(r => r.json())
-    .then(data => {
-        data.elements.forEach(e => {
-            if (e.type === "way") {
-                let color = '#888';
-                const tag = e.tags.osmc_symbol || "";
-                if (tag.includes('red')) color = '#ef4444';
-                else if (tag.includes('blue')) color = '#3b82f6';
-                else if (tag.includes('green')) color = '#22c55e';
-                else if (tag.includes('yellow')) color = '#eab308';
+    try {
+        const resp = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+        if (!resp.ok) throw new Error("Overpass timeout");
+        const data = await resp.json();
 
-                L.polyline(e.geometry.map(g => [g.lat, g.lon]), {
-                    color: color, weight: 3, dashArray: '5, 10', opacity: 0.6
-                }).bindTooltip(e.tags.name || "Szlak lokalny").addTo(hikingLayer);
-            } else {
-                let icon = '📍';
-                if(e.tags.amenity === 'shelter') icon = '🛖';
-                else if(e.tags.tourism === 'viewpoint') icon = '🔭';
-                
-                const typeName = osmTranslations[e.tags.amenity] || osmTranslations[e.tags.tourism] || "Punkt";
-                L.marker([e.lat, e.lon], {
-                    icon: L.divIcon({ html: `<div style="font-size:18px">${icon}</div>`, className: 'poi-icon' })
-                }).bindPopup(`<b>${e.tags.name || typeName}</b>`).addTo(poiLayer);
-            }
+        // Przetwarzanie relacji (szlaki)
+        const nodes = {};
+        data.elements.filter(e => e.type === "node").forEach(n => nodes[n.id] = [n.lat, n.lon]);
+
+        const ways = {};
+        data.elements.filter(e => e.type === "way").forEach(w => ways[w.id] = w.nodes.map(nid => nodes[nid]));
+
+        data.elements.filter(e => e.type === "relation").forEach(rel => {
+            const colorTag = (rel.tags.osmc_symbol || rel.tags.color || "").toLowerCase();
+            let color = '#888'; // domyślny
+            
+            if (colorTag.includes('red')) color = '#ef4444';
+            else if (colorTag.includes('blue')) color = '#3b82f6';
+            else if (colorTag.includes('green')) color = '#22c55e';
+            else if (colorTag.includes('yellow')) color = '#eab308';
+            else if (colorTag.includes('black')) color = '#000000';
+
+            rel.members.forEach(m => {
+                if (m.type === "way" && ways[m.ref]) {
+                    L.polyline(ways[m.ref], {
+                        color: color, weight: 4, opacity: 0.7, dashArray: '8, 8'
+                    }).bindTooltip(rel.tags.name || "Szlak").addTo(hikingLayer);
+                }
+            });
         });
-    });
+
+        // Przetwarzanie POI
+        data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
+            let icon = '📍';
+            if(e.tags.amenity === 'shelter') icon = '🛖';
+            else if(e.tags.tourism === 'viewpoint') icon = '🔭';
+            else if(e.tags.amenity === 'parking') icon = '🅿️';
+
+            const typeName = osmTranslations[e.tags.amenity] || osmTranslations[e.tags.tourism] || "Punkt";
+            L.marker([e.lat, e.lon], {
+                icon: L.divIcon({ html: `<div style="font-size:18px">${icon}</div>`, className: 'poi-icon' })
+            }).bindPopup(`<b>${e.tags.name || typeName}</b>`).addTo(poiLayer);
+        });
+
+    } catch (e) {
+        console.warn("Błąd ładowania danych OSM. Serwer może być przeciążony.");
+    }
 }
 loadOSMData();
 
-/* ================= FUNKCJE POMOCNICZE ================= */
+/* ================= POMOCNICZE ================= */
 function toggleTheme() {
     dark = !dark;
     document.body.className = dark ? "dark" : "light";
     map.removeLayer(dark ? tiles.light : tiles.dark);
     (dark ? tiles.dark : tiles.light).addTo(map);
-    if(routePoints.length > 0) fetchFullElevationProfile();
 }
 
 function takeScreenshot() {
@@ -525,10 +533,10 @@ function takeScreenshot() {
 }
 
 function exportGPX() {
-    if (routeGeometry.length < 2) return alert("Brak trasy do eksportu!");
-    let gpx = `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="GPX Hiker"><trk><name>Trasa Puszcza</name><trkseg>`;
-    routeGeometry.forEach(p => gpx += `\n<trkpt lat="${p[0]}" lon="${p[1]}"></trkpt>`);
-    gpx += `\n</trkseg></trk></gpx>`;
+    if (routeGeometry.length < 2) return;
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="GPX Hiker"><trk><trkseg>`;
+    routeGeometry.forEach(p => gpx += `<trkpt lat="${p[0]}" lon="${p[1]}"></trkpt>`);
+    gpx += `</trkseg></trk></gpx>`;
     const blob = new Blob([gpx], {type: "application/gpx+xml"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -539,15 +547,13 @@ function exportGPX() {
 function clearAll() {
     routePoints.forEach(p => map.removeLayer(p.marker));
     pois.forEach(p => map.removeLayer(p.marker));
-    routePoints = [];
-    routeGeometry = [];
-    pois = [];
+    routePoints = []; routeGeometry = []; pois = [];
     recalculateRoute();
 }
 
 function enablePOI() {
     poiMode = true;
-    alert("Kliknij na mapę, by dodać punkt z własnym opisem.");
+    alert("Kliknij na mapę, by dodać własny opis.");
 }
 
 function addPOI(latlng) {
@@ -569,7 +575,7 @@ function importGPX(e) {
         const xml = new DOMParser().parseFromString(ev.target.result, "text/xml");
         const pts = xml.querySelectorAll("trkpt");
         clearAll();
-        for(let p of Array.from(pts).slice(0, 20)) { // Limit do 20 punktów przy imporcie dla stabilności
+        for(let p of Array.from(pts).slice(0, 30)) {
             const lat = parseFloat(p.getAttribute("lat"));
             const lon = parseFloat(p.getAttribute("lon"));
             await addRoutePoint(L.latLng(lat, lon));
