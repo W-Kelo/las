@@ -1,264 +1,462 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-<meta charset="UTF-8">
-<title>GPX Hiker - Puszcza Wkrzańska</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <title>GPX Hiker - Planer Puszczy Wkrzańskiej</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet & Plugins -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dom-to-image/2.6.0/dom-to-image.min.js"></script>
 
-<style>
-:root {
-  --bg:#0f172a; --panel:#020617; --text:#e5e7eb; --accent:#22c55e;
-}
-.light {
-  --bg:#f8fafc; --panel:#e5e7eb; --text:#020617; --accent:#16a34a;
-}
-body {
-  margin:0; height:100vh; display:grid;
-  grid-template-columns:320px 1fr;
-  background:var(--bg); color:var(--text);
-  font-family:system-ui,sans-serif;
-}
-aside {
-  background:var(--panel); padding:12px;
-  display:flex; flex-direction:column; gap:8px;
-  overflow:auto;
-}
-button {
-  border:none; padding:8px; border-radius:8px;
-  background:var(--accent); font-weight:600; cursor:pointer;
-}
-small {opacity:.85}
-#map {height:100%}
-canvas {
-  height:120px; width:100%;
-  background:#0003; border-radius:8px;
-}
-hr {border:0;border-top:1px solid #ffffff22}
-</style>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --text: #f1f5f9;
+            --accent: #22c55e;
+            --danger: #ef4444;
+        }
+        .light {
+            --bg: #f8fafc;
+            --panel: #ffffff;
+            --text: #0f172a;
+            --accent: #16a34a;
+        }
+        body {
+            margin: 0;
+            height: 100vh;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        aside {
+            background: var(--panel);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+            z-index: 1000;
+        }
+        h3 { margin-top: 0; color: var(--accent); }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        button {
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            background: var(--accent);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+        button:hover { opacity: 0.9; }
+        button.secondary { background: #64748b; }
+        button.danger { background: var(--danger); }
+        
+        .stat-card {
+            background: rgba(0,0,0,0.1);
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent);
+        }
+        .stat-val { font-size: 1.2em; font-weight: bold; display: block; }
+        
+        #map { height: 100%; width: 100%; }
+        
+        canvas#elevation {
+            height: 150px;
+            width: 100%;
+            background: rgba(0,0,0,0.05);
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        
+        .controls {
+            font-size: 0.9em;
+            background: rgba(0,0,0,0.05);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        hr { border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 10px 0; }
+        .light hr { border-top: 1px solid rgba(0,0,0,0.1); }
+
+        /* Custom Popup Style */
+        .leaflet-popup-content-wrapper { background: var(--panel); color: var(--text); }
+
+        @media (max-width: 768px) {
+            body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+            aside { height: auto; max-height: 40vh; }
+        }
+    </style>
 </head>
-
-<body>
+<body class="dark">
 
 <aside>
-  <h3>🌲 GPX Hiker<br>Puszcza Wkrzańska</h3>
+    <h3>🌲 GPX Hiker<br><small>Puszcza Wkrzańska</small></h3>
 
-  <button onclick="toggleTheme()">🌙 / ☀️ Motyw</button>
-  <button onclick="exportGPX()">⬇️ Eksport GPX</button>
-  <input type="file" accept=".gpx" onchange="importGPX(event)">
-  <button onclick="enablePOI()">📍 Dodaj waypoint</button>
-  <button onclick="clearAll()">🗑️ Wyczyść trasę</button>
+    <div class="btn-group">
+        <button onclick="toggleTheme()">🌓 Motyw</button>
+        <button onclick="takeScreenshot()">📸 Zdjęcie</button>
+    </div>
 
-  <hr>
+    <div class="btn-group">
+        <button class="secondary" onclick="exportGPX()">⬇️ Zapisz GPX</button>
+        <button class="secondary" onclick="document.getElementById('fileInput').click()">⬆️ Wczytaj</button>
+    </div>
+    <input type="file" id="fileInput" hidden accept=".gpx" onchange="importGPX(event)">
 
-  <label><input type="checkbox" checked onchange="toggleHiking(this)"> 🥾 Szlaki piesze</label>
-  <label><input type="checkbox" checked onchange="togglePOI(this)"> 🛖 POI leśne</label>
+    <button onclick="enablePOI()">📍 Dodaj Przystanek / Cel</button>
+    <button class="danger" onclick="clearAll()">🗑️ Wyczyść wszystko</button>
 
-  <hr>
+    <hr>
 
-  <small id="stats">Dystans: 0 km</small>
-  <small id="time">Czas: 0 h</small>
-  <canvas id="elevation"></canvas>
+    <div class="controls">
+        <label><input type="checkbox" checked onchange="toggleLayer(hikingLayer, this)"> 🥾 Szlaki kolorowe</label><br>
+        <label><input type="checkbox" checked onchange="toggleLayer(poiLayer, this)"> 🛖 Punkty i wiaty</label>
+    </div>
 
-  <small>
-    Klikaj mapę – dodajesz punkty<br>
-    Przeciągaj – edycja<br>
-    Profil wysokości: opcjonalny
-  </small>
+    <div class="stat-card">
+        <span class="stat-val" id="stats">0.00 km</span>
+        <small id="time">Czas przejścia: 0 min</small>
+    </div>
+
+    <div>
+        <small>Profil wysokości (m n.p.m.):</small>
+        <canvas id="elevation"></canvas>
+    </div>
+
+    <div class="controls" style="margin-top: auto;">
+        <strong>Instrukcja:</strong><br>
+        1. Klikaj na mapę, by wyznaczyć trasę (przykleja się do dróg).<br>
+        2. Użyj "Dodaj Przystanek" dla własnych punktów.<br>
+        3. Prawy klik na punkcie trasy, by go usunąć.
+    </div>
 </aside>
 
 <div id="map"></div>
 
 <script>
-/* ================= MAPA ================= */
-const map = L.map('map').setView([53.52, 14.55], 12);
+/* ================= KONFIGURACJA ================= */
+const map = L.map('map', { zoomControl: false }).setView([53.52, 14.55], 12);
+L.control.zoom({ position: 'topright' }).addTo(map);
 
 let dark = true;
 const tiles = {
-  dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'),
-  light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
+    dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap'
+    }),
+    light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+    })
 };
 tiles.dark.addTo(map);
 
-/* ================= TRASA ================= */
-let points = [];
+/* ================= WARSTWY ================= */
+let routePoints = []; // Punkty kliknięte przez użytkownika
+let routeGeometry = []; // Pełna geometria (po drogach)
 let markers = [];
 let pois = [];
-let polyline = L.polyline([], {color:'#22c55e', weight:4}).addTo(map);
 let poiMode = false;
 
-/* ================= SZLAKI + POI ================= */
-let hikingLayer = L.geoJSON(null, {
-  style: {color:'#facc15', weight:2, dashArray:'4'}
-}).addTo(map);
+const polyline = L.polyline([], {color: '#22c55e', weight: 5, opacity: 0.8}).addTo(map);
+const hikingLayer = L.layerGroup().addTo(map);
+const poiLayer = L.layerGroup().addTo(map);
 
-let poiLayer = L.layerGroup().addTo(map);
+/* ================= TRASOWANIE (ROUTING) ================= */
+// Używamy darmowego API GraphHopper do trasowania pieszego
+async function getRoute(start, end) {
+    try {
+        const resp = await fetch(`https://graphhopper.com/api/1/route?point=${start.lat},${start.lng}&point=${end.lat},${end.lng}&profile=foot&locale=pl&points_encoded=false&key=62a6949a-e836-4074-9844-306f15715206`);
+        const data = await resp.json();
+        if (data.paths && data.paths.length > 0) {
+            return data.paths[0].points.coordinates.map(c => [c[1], c[0]]);
+        }
+    } catch (e) {
+        return [start, end]; // Fallback do linii prostej
+    }
+}
 
-/* ================= EVENTY ================= */
-map.on('click', e => {
-  if (poiMode) {
-    addPOI(e.latlng);
-    poiMode = false;
-    return;
-  }
-  addPoint(e.latlng);
+/* ================= OBSŁUGA MAPY ================= */
+map.on('click', async e => {
+    if (poiMode) {
+        addPOI(e.latlng);
+        poiMode = false;
+        return;
+    }
+    
+    const newPoint = e.latlng;
+    const lastPoint = routePoints[routePoints.length - 1];
+    
+    const m = L.circleMarker(newPoint, { radius: 6, color: '#fff', fillColor: '#22c55e', fillOpacity: 1 }).addTo(map);
+    m.on('contextmenu', () => removePoint(m, newPoint));
+    markers.push(m);
+    routePoints.push(newPoint);
+
+    if (lastPoint) {
+        const segment = await getRoute(lastPoint, newPoint);
+        routeGeometry = routeGeometry.concat(segment);
+    } else {
+        routeGeometry = [[newPoint.lat, newPoint.lng]];
+    }
+
+    updateMapDisplay();
 });
 
-/* ================= FUNKCJE ================= */
-function addPoint(latlng) {
-  const m = L.marker(latlng, {draggable:true}).addTo(map);
-  m.on('drag', updateRoute);
-  markers.push(m);
-  updateRoute();
+function removePoint(marker, latlng) {
+    const idx = routePoints.indexOf(latlng);
+    if (idx > -1) {
+        map.removeLayer(marker);
+        routePoints.splice(idx, 1);
+        markers.splice(idx, 1);
+        recalculateFullRoute();
+    }
 }
 
-function updateRoute() {
-  points = markers.map(m => m.getLatLng());
-  polyline.setLatLngs(points);
-  updateDistanceAndTime();
-  loadElevationSafe();
+async function recalculateFullRoute() {
+    routeGeometry = [];
+    if (routePoints.length > 0) {
+        routeGeometry = [[routePoints[0].lat, routePoints[0].lng]];
+        for (let i = 1; i < routePoints.length; i++) {
+            const segment = await getRoute(routePoints[i-1], routePoints[i]);
+            routeGeometry = routeGeometry.concat(segment);
+        }
+    }
+    updateMapDisplay();
 }
 
-function updateDistanceAndTime() {
-  let d = 0;
-  for (let i=1;i<points.length;i++)
-    d += points[i-1].distanceTo(points[i]);
-
-  const km = d/1000;
-  document.getElementById('stats').innerText =
-    `Dystans: ${km.toFixed(2)} km`;
-
-  // Naismith: 5 km/h + 600 m przewyższenia (upraszczamy)
-  const hours = km / 5;
-  document.getElementById('time').innerText =
-    `Czas: ${hours.toFixed(1)} h`;
+function updateMapDisplay() {
+    polyline.setLatLngs(routeGeometry);
+    updateStats();
+    fetchElevation();
 }
 
+/* ================= STATYSTYKI ================= */
+function updateStats() {
+    let dist = 0;
+    for (let i = 1; i < routeGeometry.length; i++) {
+        const p1 = L.latLng(routeGeometry[i-1]);
+        const p2 = L.latLng(routeGeometry[i]);
+        dist += p1.distanceTo(p2);
+    }
+    
+    const km = dist / 1000;
+    document.getElementById('stats').innerText = `${km.toFixed(2)} km`;
+    
+    // Prędkość marszu 4.5 km/h + doliczenie czasu na podejścia
+    const minutes = (km / 4.5) * 60;
+    document.getElementById('time').innerText = `Czas przejścia: ok. ${Math.round(minutes)} min`;
+}
+
+/* ================= WYSOKOŚCI ================= */
+async function fetchElevation() {
+    if (routeGeometry.length < 2) return;
+    
+    // Próbkowanie punktów dla wykresu (max 50 punktów by nie przeciążyć API)
+    const step = Math.max(1, Math.floor(routeGeometry.length / 40));
+    const sampled = routeGeometry.filter((_, i) => i % step === 0);
+    const locs = sampled.map(p => `${p[0]},${p[1]}`).join('|');
+    
+    try {
+        // Używamy Open Elevation (bez klucza, przyjazne CORS)
+        const res = await fetch(`https://api.open-elevation.com/api/v1/lookup?locations=${locs}`);
+        const data = await res.json();
+        drawElevation(data.results.map(r => r.elevation));
+    } catch (e) {
+        console.log("Błąd pobierania wysokości");
+    }
+}
+
+function drawElevation(data) {
+    const c = document.getElementById('elevation');
+    const ctx = c.getContext('2d');
+    c.width = c.offsetWidth * window.devicePixelRatio;
+    c.height = c.offsetHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+    const w = c.offsetWidth;
+    const h = c.offsetHeight;
+    const min = Math.min(...data) - 5;
+    const max = Math.max(...data) + 5;
+    const range = max - min;
+
+    ctx.clearRect(0,0,w,h);
+    
+    // Tło gradientowe
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(34, 197, 94, 0.4)');
+    grad.addColorStop(1, 'rgba(34, 197, 94, 0.0)');
+
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    data.forEach((v, i) => {
+        const x = (i / (data.length - 1)) * w;
+        const y = h - ((v - min) / range) * h;
+        ctx.lineTo(x, y);
+    });
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    data.forEach((v, i) => {
+        const x = (i / (data.length - 1)) * w;
+        const y = h - ((v - min) / range) * h;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    
+    // Napisy
+    ctx.fillStyle = dark ? '#fff' : '#000';
+    ctx.font = '10px Arial';
+    ctx.fillText(`${Math.round(max)}m`, 5, 15);
+    ctx.fillText(`${Math.round(min)}m`, 5, h - 5);
+}
+
+/* ================= PUNKTY OSM (SZLAKI I POI) ================= */
+function loadOSMData() {
+    const query = `[out:json];
+    (
+      way["route"="hiking"](53.4,14.3,53.6,14.8);
+      node["amenity"~"shelter|drinking_water"](53.4,14.3,53.6,14.8);
+      node["tourism"~"viewpoint|picnic_site|information"](53.4,14.3,53.6,14.8);
+    );
+    out geom;`;
+
+    fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`)
+    .then(r => r.json())
+    .then(data => {
+        data.elements.forEach(e => {
+            if (e.type === "way") {
+                // Mapowanie kolorów szlaków
+                let color = '#666';
+                const ref = e.tags.osmc_symbol || e.tags.ref || "";
+                if (ref.includes('red') || e.tags.symbol === 'red') color = '#ef4444';
+                else if (ref.includes('blue')) color = '#3b82f6';
+                else if (ref.includes('green')) color = '#22c55e';
+                else if (ref.includes('yellow')) color = '#eab308';
+                else if (ref.includes('black')) color = '#000000';
+
+                L.polyline(e.geometry.map(g => [g.lat, g.lon]), {
+                    color: color, weight: 3, dashArray: '5, 8', opacity: 0.6
+                }).bindTooltip(e.tags.name || "Szlak").addTo(hikingLayer);
+            } else {
+                let icon = '📍';
+                if(e.tags.amenity === 'shelter') icon = '🛖';
+                if(e.tags.tourism === 'viewpoint') icon = '🔭';
+                
+                L.marker([e.lat, e.lon], {
+                    icon: L.divIcon({ html: `<div style="font-size:20px">${icon}</div>`, className: 'custom-div-icon' })
+                }).bindPopup(`<b>${e.tags.name || "Punkt"}</b><br>${e.tags.tourism || e.tags.amenity || ""}`).addTo(poiLayer);
+            }
+        });
+    });
+}
+loadOSMData();
+
+/* ================= FUNKCJE UI ================= */
 function addPOI(latlng) {
-  const name = prompt("Nazwa waypointu:");
-  if (!name) return;
-  const m = L.marker(latlng).addTo(map)
-    .bindPopup("📍 "+name);
-  pois.push({latlng,name});
-}
-
-/* ================= GPX ================= */
-function exportGPX() {
-  if (points.length<2) return alert("Za mało punktów");
-
-  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX Hiker"
-xmlns="http://www.topografix.com/GPX/1/1">
-<trk><name>Puszcza Wkrzańska</name><trkseg>
-${points.map(p=>`<trkpt lat="${p.lat}" lon="${p.lng}"></trkpt>`).join('\n')}
-</trkseg></trk>
-${pois.map(p=>`<wpt lat="${p.latlng.lat}" lon="${p.latlng.lng}">
-<name>${p.name}</name></wpt>`).join('\n')}
-</gpx>`;
-
-  download(gpx);
-}
-
-function importGPX(e) {
-  const r = new FileReader();
-  r.onload = () => {
-    clearAll();
-    const xml = new DOMParser().parseFromString(r.result,"text/xml");
-    xml.querySelectorAll("trkpt").forEach(p =>
-      addPoint(L.latLng(p.getAttribute("lat"),p.getAttribute("lon")))
-    );
-  };
-  r.readAsText(e.target.files[0]);
-}
-
-function download(text) {
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(new Blob([text],{type:"application/gpx+xml"}));
-  a.download="trasa.gpx"; a.click();
-}
-
-/* ================= ELEVATION (SAFE) ================= */
-async function loadElevationSafe() {
-  if (points.length<2) return;
-  try {
-    const coords = points.map(p=>`${p.lat},${p.lng}`).join("|");
-    const r = await fetch(
-      `https://api.opentopodata.org/v1/srtm90m?locations=${coords}`
-    );
-    if (!r.ok) throw "";
-    const d = await r.json();
-    drawElevation(d.results.map(x=>x.elevation||0));
-  } catch {
-    // brak profilu = brak crasha
-  }
-}
-
-function drawElevation(arr) {
-  const c=document.getElementById("elevation");
-  const ctx=c.getContext("2d");
-  c.width=c.offsetWidth; c.height=c.offsetHeight;
-  ctx.clearRect(0,0,c.width,c.height);
-  const max=Math.max(...arr), min=Math.min(...arr);
-  ctx.beginPath();
-  arr.forEach((v,i)=>{
-    const x=i/(arr.length-1)*c.width;
-    const y=c.height-(v-min)/(max-min+1)*c.height;
-    ctx.lineTo(x,y);
-  });
-  ctx.strokeStyle="#22c55e"; ctx.lineWidth=2; ctx.stroke();
-}
-
-/* ================= OVERPASS OSM ================= */
-fetch(`https://overpass-api.de/api/interpreter?data=
-[out:json];
-(
-  way["route"="hiking"](53.4,14.3,53.6,14.8);
-  node["amenity"="shelter"](53.4,14.3,53.6,14.8);
-  node["amenity"="parking"](53.4,14.3,53.6,14.8);
-);
-out geom;`)
-.then(r=>r.json())
-.then(data=>{
-  data.elements.forEach(e=>{
-    if (e.type==="way") {
-      hikingLayer.addData({
-        type:"Feature",
-        geometry:{type:"LineString",
-        coordinates:e.geometry.map(g=>[g.lon,g.lat])}
-      });
-    }
-    if (e.type==="node") {
-      L.circleMarker([e.lat,e.lon],{
-        radius:4,color:"#38bdf8"
-      }).bindPopup("POI").addTo(poiLayer);
-    }
-  });
-});
-
-/* ================= UI ================= */
-function clearAll() {
-  markers.forEach(m=>map.removeLayer(m));
-  polyline.setLatLngs([]);
-  markers=[]; points=[]; pois=[];
+    const name = prompt("Podaj nazwę przystanku:");
+    if (!name) return;
+    const m = L.marker(latlng).addTo(map).bindPopup("<b>📍 " + name + "</b>").openPopup();
+    pois.push({latlng, name});
 }
 
 function enablePOI() {
-  poiMode=true;
-  alert("Kliknij mapę, aby dodać waypoint");
+    poiMode = true;
+    alert("Kliknij teraz dowolne miejsce na mapie, by dodać przystanek.");
+}
+
+function clearAll() {
+    markers.forEach(m => map.removeLayer(m));
+    routePoints = [];
+    routeGeometry = [];
+    markers = [];
+    pois = [];
+    updateMapDisplay();
 }
 
 function toggleTheme() {
-  dark=!dark;
-  document.body.classList.toggle("light",!dark);
-  map.eachLayer(l=>map.removeLayer(l));
-  (dark?tiles.dark:tiles.light).addTo(map);
-  polyline.addTo(map); hikingLayer.addTo(map); poiLayer.addTo(map);
+    dark = !dark;
+    document.body.className = dark ? "dark" : "light";
+    map.removeLayer(dark ? tiles.light : tiles.dark);
+    (dark ? tiles.dark : tiles.light).addTo(map);
 }
 
-function toggleHiking(c){ c.checked?map.addLayer(hikingLayer):map.removeLayer(hikingLayer); }
-function togglePOI(c){ c.checked?map.addLayer(poiLayer):map.removeLayer(poiLayer); }
+function toggleLayer(layer, checkbox) {
+    if (checkbox.checked) map.addLayer(layer);
+    else map.removeLayer(layer);
+}
+
+function exportGPX() {
+    if (routeGeometry.length < 2) return alert("Najpierw wyznacz trasę!");
+
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="GPX Hiker" xmlns="http://www.topografix.com/GPX/1/1">
+<metadata><name>Trasa Puszcza Wkrzańska</name></metadata>
+<trk><name>Trasa piesza</name><trkseg>`;
+    
+    routeGeometry.forEach(p => {
+        gpx += `\n<trkpt lat="${p[0]}" lon="${p[1]}"></trkpt>`;
+    });
+
+    gpx += `\n</trkseg></trk>`;
+    
+    pois.forEach(p => {
+        gpx += `\n<wpt lat="${p.latlng.lat}" lon="${p.latlng.lng}"><name>${p.name}</name></wpt>`;
+    });
+    
+    gpx += `\n</gpx>`;
+
+    const blob = new Blob([gpx], {type: "application/gpx+xml"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "moja_trasa.gpx";
+    a.click();
+}
+
+function importGPX(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        const xml = new DOMParser().parseFromString(ev.target.result, "text/xml");
+        const pts = xml.querySelectorAll("trkpt");
+        clearAll();
+        pts.forEach(p => {
+            const lat = parseFloat(p.getAttribute("lat"));
+            const lon = parseFloat(p.getAttribute("lon"));
+            routeGeometry.push([lat, lon]);
+        });
+        updateMapDisplay();
+        if(routeGeometry.length > 0) map.fitBounds(polyline.getBounds());
+    };
+    reader.readAsText(file);
+}
+
+function takeScreenshot() {
+    const mapEl = document.getElementById('map');
+    domtoimage.toPng(mapEl)
+        .then(dataUrl => {
+            const link = document.createElement('a');
+            link.download = 'mapa-puszcza.png';
+            link.href = dataUrl;
+            link.click();
+        });
+}
 </script>
 
 </body>
