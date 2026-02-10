@@ -175,6 +175,42 @@
             .leaflet-control-zoom { display: none; }
             .floating-modal { width: 95%; left: 2.5% !important; top: 10% !important; height: auto; max-height: 60vh;}
         }
+        .map-export-modal {
+    width: 80vw;
+    height: 80vh;
+    max-width: 1100px;
+    max-height: 800px;
+}
+
+.map-export-header {
+    background: linear-gradient(90deg, #16a34a, #22c55e);
+    color: white;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: 12px 12px 0 0;
+}
+
+.map-export-actions button {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: white;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.map-export-actions button:hover {
+    background: rgba(255,255,255,0.3);
+}
+
+#mapExport {
+    width: 100%;
+    height: 100%;
+    background: #000;
+}
+
     </style>
 </head>
 <body class="dark">
@@ -195,7 +231,7 @@
     <div class="btn-group">
         <button class="secondary" onclick="exportGPX()">⬇️ Eksport</button>
         <button class="secondary" onclick="document.getElementById('fileInput').click()">⬆️ Import</button>
-        <button onclick="openMapImageModal()" style="background:#0ea5e9;">🗺️ Obraz mapy</button>
+        <button onclick="openMapExportModal()" style="background:#0ea5e9;">🗺️ Eksport mapy</button>
         <button onclick="openPdfModal()" style="background: #a855f7;">📄 Pobierz PDF</button>
     </div>
     <input type="file" id="fileInput" hidden accept=".gpx" onchange="importGPX(event)">
@@ -282,20 +318,22 @@
         <button onclick="generatePDF()" id="pdfGenBtn" style="width:100%; background: #22c55e;">Generuj i Pobierz</button>
     </div>
 </div>
-<div id="mapImageModal" class="floating-modal" style="width: 70vw; height: 70vh;">
-    <div class="modal-header">
-        <span>🗺️ Mapa trasy</span>
-        <div>
-            <button class="secondary" onclick="copyMapImage()">📋 Kopiuj</button>
-            <button class="secondary" onclick="downloadMapImage()">⬇️ Pobierz</button>
-            <button class="secondary" onclick="printMapImage()">🖨️ Drukuj</button>
-            <button class="danger" onclick="closeModal('mapImageModal')">X</button>
+<div id="mapExportModal" class="floating-modal map-export-modal">
+    <div class="map-export-header modal-header">
+        <strong>🗺️ Eksport mapy trasy</strong>
+        <div class="map-export-actions">
+            <button onclick="toggleScale()">📏 Skala</button>
+            <button onclick="exportMapPNG()">⬇ PNG</button>
+            <button onclick="exportMapSVG()">🧩 SVG</button>
+            <button onclick="printExportMap()">🖨️</button>
+            <button onclick="closeModal('mapExportModal')">✖</button>
         </div>
     </div>
     <div class="modal-body" style="padding:0">
-        <div id="mapImage" style="width:100%; height:100%;"></div>
+        <div id="mapExport"></div>
     </div>
 </div>
+
 
 <script>
 /* ================= KONFIGURACJA MAPY ================= */
@@ -927,76 +965,79 @@ async function generatePDF() {
         btn.innerText = "Generuj i Pobierz";
     }
 }
-    let imageMap = null;
-let imagePolyline = null;
+   let exportMap, exportPolyline, scaleControl;
 
-function openMapImageModal() {
-    const modal = document.getElementById('mapImageModal');
+function openMapExportModal() {
+    const modal = document.getElementById('mapExportModal');
     modal.style.display = 'flex';
     makeDraggable(modal);
 
-    if (imageMap) {
-        imageMap.invalidateSize();
+    if (exportMap) {
+        exportMap.invalidateSize();
         return;
     }
 
-    imageMap = L.map('mapImage', {
+    exportMap = L.map('mapExport', {
         zoomControl: false,
         attributionControl: false,
-        preferCanvas: true
+        renderer: L.svg()   // ⬅️ WYMUSZENIE SVG
     });
 
-    (dark ? tiles.dark : tiles.light).addTo(imageMap);
+    (dark ? tiles.dark : tiles.light).addTo(exportMap);
 
-    imagePolyline = L.polyline(routeGeometry, {
+    exportPolyline = L.polyline(routeGeometry, {
         color: '#22c55e',
         weight: 6,
-        opacity: 0.95,
-        lineJoin: 'round'
-    }).addTo(imageMap);
+        opacity: 1
+    }).addTo(exportMap);
 
-    if (routeGeometry.length > 1) {
-        imageMap.fitBounds(imagePolyline.getBounds(), { padding: [40, 40] });
-    }
-}
-function getMapImage() {
-    const el = document.getElementById('mapImage');
-    return domtoimage.toPng(el, {
-        width: el.clientWidth,
-        height: el.clientHeight
+    scaleControl = L.control.scale({ imperial: false });
+
+    exportMap.fitBounds(exportPolyline.getBounds(), {
+        padding: [40, 40]
     });
 }
+let scaleVisible = false;
 
-async function copyMapImage() {
-    const dataUrl = await getMapImage();
-    const blob = await (await fetch(dataUrl)).blob();
-    await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': blob })
-    ]);
-    alert("Mapa skopiowana do schowka");
+function toggleScale() {
+    if (!exportMap) return;
+    scaleVisible = !scaleVisible;
+    if (scaleVisible) {
+        scaleControl.addTo(exportMap);
+    } else {
+        exportMap.removeControl(scaleControl);
+    }
 }
-
-async function downloadMapImage() {
-    const dataUrl = await getMapImage();
+async function exportMapPNG() {
+    const el = document.getElementById('mapExport');
+    const dataUrl = await domtoimage.toPng(el, { useCORS: true });
     const a = document.createElement('a');
     a.href = dataUrl;
     a.download = 'mapa_trasy.png';
     a.click();
 }
 
-async function printMapImage() {
-    const dataUrl = await getMapImage();
-    const win = window.open('', '_blank');
-    win.document.write(`
-        <html>
-        <body style="margin:0">
-            <img src="${dataUrl}" style="width:100%">
-            <script>window.onload = () => window.print();<\/script>
-        </body>
-        </html>
-    `);
-}
+    function exportMapSVG() {
+    const svg = exportMap.getPanes().overlayPane.querySelector('svg');
+    if (!svg) {
+        alert("Brak danych SVG");
+        return;
+    }
 
+    const serializer = new XMLSerializer();
+    let source = serializer.serializeToString(svg);
+
+    const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'trasa.svg';
+    a.click();
+}
+function printExportMap() {
+    exportMapPNG().then(() => window.print());
+}
 </script>
 
 </body>
