@@ -368,6 +368,18 @@
 
 
 <script>
+    const OSM_BLACKLIST = {
+    amenity: [
+        'parking_entrance',
+        'waste_transfer_station',
+        'loading_dock'
+    ],
+    man_made: [
+        'survey_point',
+        'utility_pole'
+    ]
+};
+
 /* ================= KONFIGURACJA MAPY ================= */
 const map = L.map('map', { 
     zoomControl: false,
@@ -871,6 +883,11 @@ async function loadOSMData() {
             let icon = '📍'; if(e.tags.amenity === 'shelter') icon = '🛖'; else if(e.tags.tourism === 'viewpoint') icon = '🔭'; else if(e.tags.amenity === 'parking') icon = '🅿️';
             L.marker([e.lat, e.lon], {icon: L.divIcon({ html: `<div style="font-size:18px">${icon}</div>`, className: 'poi-icon' })}).bindPopup(buildOSMPopup(e)).addTo(poiLayer);
         });
+        const poiElements = data.elements.filter(e => e.type === "node" && e.tags);
+        poiElements.forEach(e => {
+            if (isBlacklistedOSM(e)) return; // Sprawdza czarną listę
+            addOSMMarker(e);                 // Dodaje marker
+        });
     } catch (e) {}
 }
 loadOSMData();
@@ -924,6 +941,15 @@ function translateOSM(val) {
     return dict[val] || val;
 }
 
+function isBlacklistedOSM(e) {
+    const t = e.tags || {};
+    for (const key in OSM_BLACKLIST) {
+        if (t[key] && OSM_BLACKLIST[key].includes(t[key])) {
+            return true;
+        }
+    }
+    return false;
+}
 
 async function generatePDF() {
     const btn = document.getElementById('pdfGenBtn');
