@@ -17,14 +17,14 @@
             --text: #f1f5f9;
             --accent: #22c55e;
             --danger: #ef4444;
-            --modal-bg: rgba(15, 23, 42, 0.95);
+            --modal-bg-color: 30, 41, 59; /* RGB dla panelu dark */
         }
         .light {
             --bg: #f8fafc;
             --panel: #ffffff;
             --text: #0f172a;
             --accent: #16a34a;
-            --modal-bg: rgba(255, 255, 255, 0.95);
+            --modal-bg-color: 255, 255, 255; /* RGB dla panelu light */
         }
         body {
             margin: 0;
@@ -80,7 +80,6 @@
             border-radius: 8px;
             border-left: 4px solid var(--accent);
         }
-        .stat-val { font-size: 1.2em; font-weight: bold; display: block; }
         
         #map { height: 100%; width: 100%; background: #ddd; position: relative; }
         
@@ -92,41 +91,61 @@
             margin-top: 5px;
         }
 
-        /* Opis trasy */
-        #route-desc {
-            font-size: 0.85em;
-            background: rgba(0,0,0,0.05);
-            padding: 10px;
-            border-radius: 8px;
-            max-height: 150px;
-            overflow-y: auto;
-            line-height: 1.4;
-            white-space: pre-wrap;
+        /* Pływające Modale */
+        .floating-modal {
+            position: fixed;
+            top: 50%; left: 50%;
+            width: 400px;
+            min-width: 300px;
+            min-height: 200px;
+            max-width: 90vw;
+            max-height: 80vh;
+            background: rgba(var(--modal-bg-color), 0.95);
+            color: var(--text);
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+            border: 1px solid rgba(255,255,255,0.1);
+            resize: both; /* Możliwość zmiany rozmiaru */
+            overflow: hidden;
+        }
+
+        .modal-header { 
+            padding: 10px 15px;
+            background: rgba(0,0,0,0.2);
+            cursor: move; /* Kursor przesuwania */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
         }
         
-        /* Modal Styles */
-        #pointsModal {
-            position: fixed; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 90%; max-width: 600px; max-height: 80vh;
-            background: var(--panel); color: var(--text);
-            border-radius: 12px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-            z-index: 2000;
-            display: none; flex-direction: column; padding: 20px;
+        .modal-body { 
+            padding: 15px;
+            overflow-y: auto; 
+            flex-grow: 1;
+            font-size: 0.9em;
+            line-height: 1.5;
         }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .modal-body { overflow-y: auto; flex-grow: 1; }
+
+        .opacity-control {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-right: 10px;
+        }
+        .opacity-control input { width: 60px; accent-color: var(--accent); cursor: pointer; }
+
         .point-item {
             display: flex; align-items: center; gap: 10px; padding: 10px;
-            background: rgba(0,0,0,0.1); border-radius: 8px; margin-bottom: 8px; font-size: 0.9em;
+            background: rgba(0,0,0,0.1); border-radius: 8px; margin-bottom: 8px;
         }
         .point-info { flex-grow: 1; }
         
-        .overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7); z-index: 1999; display: none;
-        }
+        /* Ukrywamy overlay dla floating modals, żeby można było klikać w mapę */
+        .overlay { display: none; }
 
         .controls { font-size: 0.85em; background: rgba(0,0,0,0.05); padding: 10px; border-radius: 8px; }
         hr { border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 10px 0; }
@@ -151,6 +170,7 @@
             aside.open { transform: translateX(0); }
             #mobile-toggle { display: flex; }
             .leaflet-control-zoom { display: none; }
+            .floating-modal { width: 95%; left: 2.5% !important; top: 10% !important; height: auto; max-height: 60vh;}
         }
     </style>
 </head>
@@ -175,9 +195,13 @@
     </div>
     <input type="file" id="fileInput" hidden accept=".gpx" onchange="importGPX(event)">
 
-    <button onclick="openPointsModal()">📑 Edycja Punktów Trasy</button>
-    <button onclick="enablePOI()">📍 Dodaj Własny Punkt</button>
-    <button class="danger" onclick="clearAll()">🗑️ Nowa Trasa</button>
+    <button onclick="openPointsModal()">📑 Edytuj Punkty</button>
+    <button onclick="openDescModal()">📜 Opis Trasy</button>
+    
+    <div style="display:grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px;">
+        <button class="secondary" onclick="enablePOI()">📍 Dodaj Własny Punkt</button>
+        <button class="danger" onclick="clearAll()">🗑️ Nowa Trasa</button>
+    </div>
 
     <hr>
 
@@ -195,10 +219,6 @@
         <small>Profil terenu:</small>
         <canvas id="elevation"></canvas>
     </div>
-
-    <div id="route-desc">
-        <em>Tutaj pojawi się opis trasy...</em>
-    </div>
 </aside>
 
 <div id="map">
@@ -206,13 +226,34 @@
 </div>
 <button id="gps-btn" onclick="locateUser()" title="Zlokalizuj mnie">🎯</button>
 
-<div class="overlay" id="overlay" onclick="closePointsModal()"></div>
-<div id="pointsModal">
+<!-- MODAL EDYCJI PUNKTÓW -->
+<div id="pointsModal" class="floating-modal">
     <div class="modal-header">
-        <h3>📍 Punkty Trasy</h3>
-        <button class="danger" onclick="closePointsModal()">X</button>
+        <span>📍 Edycja Punktów</span>
+        <div style="display:flex; align-items:center">
+            <div class="opacity-control" title="Przezroczystość">
+                👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
+            </div>
+            <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('pointsModal')">X</button>
+        </div>
     </div>
     <div class="modal-body" id="pointsList"></div>
+</div>
+
+<!-- MODAL OPISU TRASY -->
+<div id="descModal" class="floating-modal" style="width: 350px;">
+    <div class="modal-header">
+        <span>📜 Opis Trasy</span>
+        <div style="display:flex; align-items:center">
+            <div class="opacity-control" title="Przezroczystość">
+                👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
+            </div>
+            <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('descModal')">X</button>
+        </div>
+    </div>
+    <div class="modal-body" id="routeDescText">
+        <em>Zaznacz punkty na mapie, aby wygenerować opis...</em>
+    </div>
 </div>
 
 <script>
@@ -238,17 +279,70 @@ let pois = [];
 let poiMode = false;
 let totalAscent = 0;
 let userMarker = null;
-let isRouting = false; // FLAGA BLOKUJĄCA (Fix Pajęczyny)
+let isRouting = false; 
 
 const polyline = L.polyline([], {color: '#22c55e', weight: 6, opacity: 0.9, lineJoin: 'round'}).addTo(map);
 const hikingLayer = L.layerGroup().addTo(map);
 const poiLayer = L.layerGroup().addTo(map);
 
+/* ================= OBSŁUGA MODALI (Floating) ================= */
+function makeDraggable(el) {
+    const header = el.querySelector('.modal-header');
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+
+    header.onmousedown = function(e) {
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        initialLeft = el.offsetLeft;
+        initialTop = el.offsetTop;
+        document.onmousemove = onMouseMove;
+        document.onmouseup = stopDrag;
+    };
+
+    function onMouseMove(e) {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        el.style.left = (initialLeft + dx) + "px";
+        el.style.top = (initialTop + dy) + "px";
+        // Reset transformacji centrującej, bo używamy left/top
+        el.style.transform = "none"; 
+    }
+
+    function stopDrag() {
+        isDragging = false;
+        document.onmousemove = null;
+        document.onmouseup = null;
+    }
+}
+
+// Inicjalizacja drag
+makeDraggable(document.getElementById('pointsModal'));
+makeDraggable(document.getElementById('descModal'));
+
+function openPointsModal() {
+    document.getElementById('pointsModal').style.display = 'flex';
+    renderPointsList();
+}
+function openDescModal() {
+    document.getElementById('descModal').style.display = 'flex';
+    generateRouteDescription();
+}
+function closeModal(id) {
+    document.getElementById(id).style.display = 'none';
+}
+function setOpacity(input) {
+    const val = input.value / 100;
+    const modal = input.closest('.floating-modal');
+    modal.style.backgroundColor = `rgba(var(--modal-bg-color), ${val})`;
+}
+
 /* ================= LOKALIZACJA GPS ================= */
 function locateUser() {
     map.locate({setView: true, maxZoom: 15});
 }
-
 map.on('locationfound', function(e) {
     if (userMarker) map.removeLayer(userMarker);
     userMarker = L.circleMarker(e.latlng, {
@@ -256,14 +350,9 @@ map.on('locationfound', function(e) {
     }).addTo(map).bindPopup("Twoja pozycja").openPopup();
 });
 
-map.on('locationerror', function(e) {
-    alert("Nie udało się ustalić lokalizacji: " + e.message);
-});
-
-/* ================= IMPORT GPX (NAPRAWIONY) ================= */
+/* ================= IMPORT GPX ================= */
 function importGPX(e) {
     if (isRouting) return alert("Poczekaj na zakończenie obecnego przeliczania.");
-    
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
@@ -271,27 +360,21 @@ function importGPX(e) {
         try {
             const xml = new DOMParser().parseFromString(ev.target.result, "text/xml");
             const pts = Array.from(xml.querySelectorAll("trkpt"));
-            
             if (pts.length === 0) throw new Error("Pusty plik GPX");
 
             clearAll();
-            
-            // Inteligentne upraszczanie dla importu
             const step = pts.length > 50 ? Math.floor(pts.length / 20) : 1; 
             
-            // Start
             const startLat = parseFloat(pts[0].getAttribute("lat"));
             const startLon = parseFloat(pts[0].getAttribute("lon"));
             await addRoutePoint(L.latLng(startLat, startLon), false);
 
-            // Pośrednie (bez przeliczania trasy, tylko dodanie punktów)
             for(let i = step; i < pts.length; i += step) {
                 const lat = parseFloat(pts[i].getAttribute("lat"));
                 const lon = parseFloat(pts[i].getAttribute("lon"));
                 await addRoutePoint(L.latLng(lat, lon), false);
             }
             
-            // Koniec (z finalnym przeliczeniem)
             const endLat = parseFloat(pts[pts.length-1].getAttribute("lat"));
             const endLon = parseFloat(pts[pts.length-1].getAttribute("lon"));
             await addRoutePoint(L.latLng(endLat, endLon), true);
@@ -300,13 +383,13 @@ function importGPX(e) {
             
         } catch(err) {
             console.error(err);
-            alert("Błąd importu GPX: " + err.message);
+            alert("Błąd importu GPX");
         }
     };
     reader.readAsText(file);
 }
 
-/* ================= TRASOWANIE I PUNKTY ================= */
+/* ================= TRASOWANIE ================= */
 async function getRouteSegment(start, end) {
     try {
         const url = `https://brouter.de/brouter?lonlats=${start.lng},${start.lat}|${end.lng},${end.lat}&profile=hiking-mountain&alternativeidx=0&format=geojson`;
@@ -327,7 +410,7 @@ async function getRouteSegment(start, end) {
 
 map.on('click', async e => {
     if (poiMode) { addPOI(e.latlng); poiMode = false; return; }
-    if (isRouting) return; // Blokada klikania podczas liczenia
+    if (isRouting) return; 
     await addRoutePoint(e.latlng, true);
 });
 
@@ -349,20 +432,12 @@ async function addRoutePoint(latlng, recalc = true) {
          if(d.elevation) elev = d.elevation[0];
     } catch(e) {}
     
-    routePoints.push({
-        id: pointId,
-        latlng: latlng,
-        marker: m,
-        elevation: elev,
-        distFromPrev: 0
-    });
-
+    routePoints.push({ id: pointId, latlng: latlng, marker: m, elevation: elev, distFromPrev: 0 });
     if (recalc) await recalculateRoute();
 }
 
-// GŁÓWNA FUNKCJA PRZELICZAJĄCA Z BLOKADĄ (FIX PAJĘCZYNY)
 async function recalculateRoute() {
-    if (isRouting) return; // Zapobiegaj wyścigom funkcji
+    if (isRouting) return; 
     isRouting = true;
     document.getElementById('loader').style.display = 'block';
     document.body.style.cursor = 'wait';
@@ -374,7 +449,6 @@ async function recalculateRoute() {
         if (routePoints.length === 0) {
             polyline.setLatLngs([]);
             updateStats(0);
-            document.getElementById('route-desc').innerHTML = "<em>Dodaj punkty na mapie...</em>";
             return;
         }
 
@@ -387,10 +461,9 @@ async function recalculateRoute() {
         }
 
         polyline.setLatLngs(routeGeometry);
-        const totalDist = calculateTotalDist();
         
         await fetchFullElevationProfile();
-        generateRouteDescription();
+        generateRouteDescription(); // Generuj opis od razu
         
     } catch(e) {
         console.error("Critical routing error", e);
@@ -401,56 +474,99 @@ async function recalculateRoute() {
     }
 }
 
-/* ================= OPIS TRASY (ULEPSZONY - AGREGACJA) ================= */
+/* ================= OPIS TRASY - AUTOWYKRYWANIE ZAKRĘTÓW ================= */
+function getBearing(lat1, lon1, lat2, lon2) {
+    const toRad = x => x * Math.PI / 180;
+    const toDeg = x => x * 180 / Math.PI;
+    const dLon = toRad(lon2 - lon1);
+    const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+    let brng = toDeg(Math.atan2(y, x));
+    return (brng + 360) % 360;
+}
+
+function getCompassDirection(brng) {
+    if (brng >= 337.5 || brng < 22.5) return "na północ";
+    if (brng >= 22.5 && brng < 67.5) return "na płn-wschód";
+    if (brng >= 67.5 && brng < 112.5) return "na wschód";
+    if (brng >= 112.5 && brng < 157.5) return "na płd-wschód";
+    if (brng >= 157.5 && brng < 202.5) return "na południe";
+    if (brng >= 202.5 && brng < 247.5) return "na płd-zachód";
+    if (brng >= 247.5 && brng < 292.5) return "na zachód";
+    if (brng >= 292.5 && brng < 337.5) return "na płn-zachód";
+    return "";
+}
+
 function generateRouteDescription() {
-    const container = document.getElementById('route-desc');
-    if (routePoints.length < 2) {
-        container.innerHTML = "<em>Zaznacz min. 2 punkty by wygenerować opis.</em>";
+    const container = document.getElementById('routeDescText');
+    if (routeGeometry.length < 2) {
+        container.innerHTML = "<em>Brak trasy do analizy.</em>";
         return;
     }
 
-    let text = `<strong>📖 Opis trasy:</strong>\n`;
-    text += `Start: ${routePoints[0].elevation.toFixed(0)} m n.p.m.\n\n`;
-
-    // Tablica do agregacji kroków
+    let text = `<strong>Start:</strong> ${routePoints[0].elevation.toFixed(0)} m n.p.m.<br><br>`;
+    
+    // Algorytm spacerujący po GEOMETRII trasy (nie tylko po punktach kontrolnych)
+    // Grupujemy odcinki o podobnym azymucie.
+    
     let steps = [];
+    let currentStep = { direction: "", dist: 0 };
+    
+    // Próbkowanie co ~15 punktów geometrii (ok. 20-50m w terenie), żeby uniknąć szumów
+    // Jeśli trasa jest krótka, próbkujemy częściej.
+    let sampleRate = Math.max(1, Math.floor(routeGeometry.length / 200)); 
+    if (routeGeometry.length < 50) sampleRate = 1;
 
-    for (let i = 1; i < routePoints.length; i++) {
-        const p1 = routePoints[i-1].latlng;
-        const p2 = routePoints[i].latlng;
-        const dist = routePoints[i].distFromPrev;
+    for (let i = 0; i < routeGeometry.length - sampleRate; i += sampleRate) {
+        const p1 = routeGeometry[i];
+        // Patrzymy trochę w przód, żeby ustalić ogólny kierunek
+        const targetIdx = Math.min(i + sampleRate, routeGeometry.length - 1);
+        const p2 = routeGeometry[targetIdx];
         
-        const y = Math.sin(p2.lng - p1.lng) * Math.cos(p2.lat);
-        const x = Math.cos(p1.lat) * Math.sin(p2.lat) - Math.sin(p1.lat) * Math.cos(p2.lat) * Math.cos(p2.lng - p1.lng);
-        const brng = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-        
-        let direction = "na północ";
-        if (brng >= 22.5 && brng < 67.5) direction = "na północny-wschód";
-        else if (brng >= 67.5 && brng < 112.5) direction = "na wschód";
-        else if (brng >= 112.5 && brng < 157.5) direction = "na południowy-wschód";
-        else if (brng >= 157.5 && brng < 202.5) direction = "na południe";
-        else if (brng >= 202.5 && brng < 247.5) direction = "na południowy-zachód";
-        else if (brng >= 247.5 && brng < 292.5) direction = "na zachód";
-        else if (brng >= 292.5 && brng < 337.5) direction = "na północny-zachód";
+        const dist = L.latLng(p1).distanceTo(L.latLng(p2));
+        if (dist < 5) continue; // Ignoruj mikroruchy
 
-        // Logika łączenia tych samych kierunków
-        if (steps.length > 0 && steps[steps.length - 1].direction === direction) {
-            steps[steps.length - 1].dist += dist;
+        const brng = getBearing(p1[0], p1[1], p2[0], p2[1]);
+        const direction = getCompassDirection(brng);
+
+        if (currentStep.direction === "") {
+            currentStep.direction = direction;
+            currentStep.dist = dist;
+        } else if (currentStep.direction === direction) {
+            currentStep.dist += dist;
         } else {
-            steps.push({ direction: direction, dist: dist });
+            // Zmiana kierunku - zapisz stary krok, zacznij nowy
+            if (currentStep.dist > 20) { // Zapisz tylko jeśli odcinek miał sensowną długość
+                steps.push({...currentStep});
+            }
+            currentStep = { direction: direction, dist: dist };
         }
     }
+    // Dodaj ostatni krok
+    if (currentStep.dist > 0) steps.push(currentStep);
 
-    // Generowanie tekstu z zagregowanej tablicy
+    // Renderowanie tekstu
+    // Scalamy bardzo krótkie odcinki (zakręty), jeśli są szumem, 
+    // ale tutaj prosta logika jest często najlepsza dla pieszego.
     steps.forEach((step, index) => {
-        text += `• Odcinek ${index + 1}: Kieruj się <strong>${step.direction}</strong> przez ${(step.dist).toFixed(0)}m.\n`;
+        // Ignoruj bardzo małe korekty (<30m) chyba że to początek/koniec
+        if (step.dist < 30 && index > 0 && index < steps.length - 1) return;
+        
+        let icon = "⬆️";
+        if (step.direction.includes("wschód")) icon = "➡️";
+        if (step.direction.includes("zachód")) icon = "⬅️";
+        if (step.direction.includes("południe")) icon = "⬇️";
+        
+        text += `<strong>${icon}</strong> Idź <strong>${step.direction}</strong> przez ${(step.dist).toFixed(0)}m.<br>`;
+        // Dodaj separator co kilka kroków dla czytelności
+        if ((index + 1) % 5 === 0) text += "<hr style='margin:5px 0; opacity:0.3'>";
     });
-    
-    text += `\n🏁 Meta: ${routePoints[routePoints.length-1].elevation.toFixed(0)} m n.p.m.`;
-    container.innerHTML = text.replace(/\n/g, '<br>');
+
+    text += `<br>🏁 <strong>Meta:</strong> ${routePoints[routePoints.length-1].elevation.toFixed(0)} m n.p.m.`;
+    container.innerHTML = text;
 }
 
-/* ================= NOWA WYSOKOŚĆ (OPEN-METEO) ================= */
+/* ================= WYSOKOŚĆ ================= */
 async function fetchFullElevationProfile() {
     if (routeGeometry.length < 2) { clearElevation(); return; }
     
@@ -477,9 +593,7 @@ async function fetchFullElevationProfile() {
         
         drawElevation(elevations);
         updateStats(calculateTotalDist());
-    } catch (e) { 
-        clearElevation();
-    }
+    } catch (e) { clearElevation(); }
 }
 
 function updateStats(distMeters) {
@@ -490,58 +604,41 @@ function updateStats(distMeters) {
     document.getElementById('time').innerText = `Czas: ~${Math.floor(minutes/60)}h ${Math.round(minutes%60)}m | ⬆️ ${totalAscent}m`;
 }
 
-/* ================= EKSPORT GPX ================= */
-function exportGPX() {
-    if (routeGeometry.length < 2) return alert("Brak trasy");
-    
-    const startTime = new Date();
-    const speedMs = 1.2; 
-    let currentTime = new Date(startTime);
-
-    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX Hiker Puszcza" xmlns="http://www.topografix.com/GPX/1/1">
-<metadata>
-    <name>Wycieczka Puszcza Wkrzańska</name>
-    <desc>Dystans: ${(calculateTotalDist()/1000).toFixed(2)}km.</desc>
-    <time>${startTime.toISOString()}</time>
-</metadata>
-<trk><name>Trasa Puszcza</name><trkseg>`;
-    
-    let prevPt = null;
-
-    routeGeometry.forEach((p, index) => {
-        if (index > 0 && prevPt) {
-            const d = L.latLng(prevPt).distanceTo(L.latLng(p));
-            const seconds = d / speedMs;
-            currentTime.setSeconds(currentTime.getSeconds() + seconds);
-        }
-        prevPt = p;
-
-        gpx += `\n<trkpt lat="${p[0]}" lon="${p[1]}"><time>${currentTime.toISOString()}</time></trkpt>`;
-    });
-
-    gpx += `\n</trkseg></trk>`;
-    
-    pois.forEach(p => {
-        gpx += `\n<wpt lat="${p.latlng.lat}" lon="${p.latlng.lng}"><name>${p.name}</name></wpt>`;
-    });
-    
-    gpx += `\n</gpx>`;
-
-    const blob = new Blob([gpx], {type: "application/gpx+xml"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `trasa_puszcza_${new Date().toLocaleDateString()}.gpx`;
-    a.click();
-}
-
-/* ================= POMOCNICZE UI ================= */
 function calculateTotalDist() {
     let d = 0;
     for (let i = 1; i < routeGeometry.length; i++) {
         d += L.latLng(routeGeometry[i-1]).distanceTo(L.latLng(routeGeometry[i]));
     }
     return d;
+}
+
+/* ================= INNE ================= */
+function exportGPX() {
+    if (routeGeometry.length < 2) return alert("Brak trasy");
+    const startTime = new Date();
+    const speedMs = 1.2; 
+    let currentTime = new Date(startTime);
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="GPX Hiker Puszcza" xmlns="http://www.topografix.com/GPX/1/1">
+<metadata><name>Wycieczka Puszcza</name><time>${startTime.toISOString()}</time></metadata>
+<trk><name>Trasa Puszcza</name><trkseg>`;
+    let prevPt = null;
+    routeGeometry.forEach((p, index) => {
+        if (index > 0 && prevPt) {
+            const d = L.latLng(prevPt).distanceTo(L.latLng(p));
+            currentTime.setSeconds(currentTime.getSeconds() + (d / speedMs));
+        }
+        prevPt = p;
+        gpx += `\n<trkpt lat="${p[0]}" lon="${p[1]}"><time>${currentTime.toISOString()}</time></trkpt>`;
+    });
+    gpx += `\n</trkseg></trk>`;
+    pois.forEach(p => { gpx += `\n<wpt lat="${p.latlng.lat}" lon="${p.latlng.lng}"><name>${p.name}</name></wpt>`; });
+    gpx += `\n</gpx>`;
+    const blob = new Blob([gpx], {type: "application/gpx+xml"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `trasa_puszcza_${new Date().toLocaleDateString()}.gpx`;
+    a.click();
 }
 
 function clearElevation() {
@@ -562,32 +659,24 @@ function drawElevation(data) {
     const min = Math.min(...data);
     const max = Math.max(...data);
     const range = (max - min) < 10 ? 10 : (max - min);
-
     ctx.clearRect(0,0,w,h);
     const grad = ctx.createLinearGradient(0, 0, 0, h);
     grad.addColorStop(0, 'rgba(34, 197, 94, 0.4)');
     grad.addColorStop(1, 'transparent');
-
-    ctx.beginPath();
-    ctx.moveTo(0, h);
+    ctx.beginPath(); ctx.moveTo(0, h);
     data.forEach((v, i) => {
         const x = (i / (data.length - 1)) * w;
         const y = h - ((v - min) / range) * (h - 20) - 10;
         ctx.lineTo(x, y);
     });
-    ctx.lineTo(w, h);
-    ctx.fillStyle = grad;
-    ctx.fill();
-
+    ctx.lineTo(w, h); ctx.fillStyle = grad; ctx.fill();
     ctx.beginPath();
     data.forEach((v, i) => {
         const x = (i / (data.length - 1)) * w;
         const y = h - ((v - min) / range) * (h - 20) - 10;
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
-    ctx.strokeStyle = '#22c55e';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2; ctx.stroke();
 }
 
 function removePointById(id) {
@@ -600,29 +689,12 @@ function removePointById(id) {
         renderPointsList();
     }
 }
-
 function movePoint(idx, direction) {
     if (isRouting) return;
-    if (direction === 'up' && idx > 0) {
-        [routePoints[idx], routePoints[idx-1]] = [routePoints[idx-1], routePoints[idx]];
-    } else if (direction === 'down' && idx < routePoints.length - 1) {
-        [routePoints[idx], routePoints[idx+1]] = [routePoints[idx+1], routePoints[idx]];
-    }
-    recalculateRoute();
-    renderPointsList();
+    if (direction === 'up' && idx > 0) { [routePoints[idx], routePoints[idx-1]] = [routePoints[idx-1], routePoints[idx]]; }
+    else if (direction === 'down' && idx < routePoints.length - 1) { [routePoints[idx], routePoints[idx+1]] = [routePoints[idx+1], routePoints[idx]]; }
+    recalculateRoute(); renderPointsList();
 }
-
-function openPointsModal() {
-    document.getElementById('overlay').style.display = 'block';
-    document.getElementById('pointsModal').style.display = 'flex';
-    renderPointsList();
-}
-
-function closePointsModal() {
-    document.getElementById('overlay').style.display = 'none';
-    document.getElementById('pointsModal').style.display = 'none';
-}
-
 function renderPointsList() {
     const list = document.getElementById('pointsList');
     list.innerHTML = routePoints.length === 0 ? "<p>Brak punktów na trasie.</p>" : "";
@@ -632,88 +704,16 @@ function renderPointsList() {
         const distText = i === 0 ? "START" : `+${(p.distFromPrev).toFixed(0)} m`;
         item.innerHTML = `
             <div class="point-info">
-                <strong>Punkt ${i + 1}</strong> <small>(${p.elevation ? p.elevation.toFixed(0) : '?'} m n.p.m.)</small><br>
-                <span>${distText}</span>
+                <strong>Punkt ${i + 1}</strong> <small>(${p.elevation ? p.elevation.toFixed(0) : '?'} m n.p.m.)</small><br><span>${distText}</span>
             </div>
             <div class="point-actions">
                 <button class="secondary" onclick="movePoint(${i}, 'up')" ${i===0?'disabled':''}>↑</button>
                 <button class="secondary" onclick="movePoint(${i}, 'down')" ${i===routePoints.length-1?'disabled':''}>↓</button>
                 <button class="danger" onclick="removePointById(${p.id})">🗑️</button>
-            </div>
-        `;
+            </div>`;
         list.appendChild(item);
     });
 }
-
-async function loadOSMData() {
-    const query = `[out:json][timeout:25];
-    (
-      relation["route"="hiking"](53.4,14.3,53.6,14.7);
-      node["amenity"~"shelter|drinking_water|parking"](53.4,14.3,53.6,14.7);
-      node["tourism"~"viewpoint|picnic_site|information"](53.4,14.3,53.6,14.7);
-    );
-    out body; >; out skel qt;`;
-
-    try {
-        const resp = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
-        if (!resp.ok) return;
-        const data = await resp.json();
-
-        const nodes = {};
-        data.elements.filter(e => e.type === "node").forEach(n => nodes[n.id] = [n.lat, n.lon]);
-        const ways = {};
-        data.elements.filter(e => e.type === "way").forEach(w => ways[w.id] = w.nodes.map(nid => nodes[nid]));
-
-        data.elements.filter(e => e.type === "relation").forEach(rel => {
-            const sym = (rel.tags.osmc_symbol || rel.tags.color || "").toLowerCase();
-            let color = '#888';
-            if (sym.includes('red')) color = '#ef4444';
-            else if (sym.includes('blue')) color = '#3b82f6';
-            else if (sym.includes('green')) color = '#22c55e';
-            else if (sym.includes('yellow')) color = '#eab308';
-            else if (sym.includes('black')) color = '#000';
-
-            rel.members.forEach(m => {
-                if (m.type === "way" && ways[m.ref]) {
-                    L.polyline(ways[m.ref], {
-                        color: color, weight: 4, opacity: 0.7, dashArray: '8, 8'
-                    }).bindTooltip(rel.tags.name || "Szlak").addTo(hikingLayer);
-                }
-            });
-        });
-
-        data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
-            let icon = '📍';
-            if(e.tags.amenity === 'shelter') icon = '🛖';
-            else if(e.tags.tourism === 'viewpoint') icon = '🔭';
-            else if(e.tags.amenity === 'parking') icon = '🅿️';
-
-            L.marker([e.lat, e.lon], {
-                icon: L.divIcon({ html: `<div style="font-size:18px">${icon}</div>`, className: 'poi-icon' })
-            }).bindPopup(`<b>${e.tags.name || "Punkt"}</b>`).addTo(poiLayer);
-        });
-    } catch (e) {}
-}
-loadOSMData();
-
-function toggleTheme() {
-    dark = !dark;
-    document.body.className = dark ? "dark" : "light";
-    map.removeLayer(dark ? tiles.light : tiles.dark);
-    (dark ? tiles.dark : tiles.light).addTo(map);
-}
-
-function takeScreenshot() {
-    const mapEl = document.getElementById('map');
-    domtoimage.toPng(mapEl, { width: mapEl.clientWidth, height: mapEl.clientHeight })
-    .then(dataUrl => {
-        const link = document.createElement('a');
-        link.download = 'mapa_puszcza.png';
-        link.href = dataUrl;
-        link.click();
-    });
-}
-
 function clearAll() {
     if (isRouting) return;
     routePoints.forEach(p => map.removeLayer(p.marker));
@@ -722,27 +722,46 @@ function clearAll() {
     if(userMarker) map.removeLayer(userMarker);
     recalculateRoute();
 }
-
-function enablePOI() {
-    poiMode = true;
-    alert("Kliknij na mapę, by dodać własny opis.");
-}
-
+function enablePOI() { poiMode = true; alert("Kliknij na mapę, by dodać własny opis."); }
 function addPOI(latlng) {
     const name = prompt("Nazwa punktu:");
     if (!name) return;
     const m = L.marker(latlng).addTo(map).bindPopup(`<b>📍 ${name}</b>`).openPopup();
     pois.push({latlng, name, marker: m});
 }
-
-function toggleLayer(layer, cb) {
-    if (cb.checked) map.addLayer(layer); else map.removeLayer(layer);
+function toggleLayer(layer, cb) { if (cb.checked) map.addLayer(layer); else map.removeLayer(layer); }
+function toggleTheme() {
+    dark = !dark; document.body.className = dark ? "dark" : "light";
+    map.removeLayer(dark ? tiles.light : tiles.dark); (dark ? tiles.dark : tiles.light).addTo(map);
 }
-
-/* UI Mobile */
-function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('open');
+function takeScreenshot() {
+    const mapEl = document.getElementById('map');
+    domtoimage.toPng(mapEl, { width: mapEl.clientWidth, height: mapEl.clientHeight })
+    .then(dataUrl => { const link = document.createElement('a'); link.download = 'mapa_puszcza.png'; link.href = dataUrl; link.click(); });
 }
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+async function loadOSMData() {
+    const query = `[out:json][timeout:25];(relation["route"="hiking"](53.4,14.3,53.6,14.7);node["amenity"~"shelter|drinking_water|parking"](53.4,14.3,53.6,14.7);node["tourism"~"viewpoint|picnic_site|information"](53.4,14.3,53.6,14.7););out body;>;out skel qt;`;
+    try {
+        const resp = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const nodes = {}, ways = {};
+        data.elements.filter(e => e.type === "node").forEach(n => nodes[n.id] = [n.lat, n.lon]);
+        data.elements.filter(e => e.type === "way").forEach(w => ways[w.id] = w.nodes.map(nid => nodes[nid]));
+        data.elements.filter(e => e.type === "relation").forEach(rel => {
+            const sym = (rel.tags.osmc_symbol || rel.tags.color || "").toLowerCase();
+            let color = '#888';
+            if (sym.includes('red')) color = '#ef4444'; else if (sym.includes('blue')) color = '#3b82f6'; else if (sym.includes('green')) color = '#22c55e'; else if (sym.includes('yellow')) color = '#eab308'; else if (sym.includes('black')) color = '#000';
+            rel.members.forEach(m => { if (m.type === "way" && ways[m.ref]) L.polyline(ways[m.ref], {color: color, weight: 4, opacity: 0.7, dashArray: '8, 8'}).bindTooltip(rel.tags.name || "Szlak").addTo(hikingLayer); });
+        });
+        data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
+            let icon = '📍'; if(e.tags.amenity === 'shelter') icon = '🛖'; else if(e.tags.tourism === 'viewpoint') icon = '🔭'; else if(e.tags.amenity === 'parking') icon = '🅿️';
+            L.marker([e.lat, e.lon], {icon: L.divIcon({ html: `<div style="font-size:18px">${icon}</div>`, className: 'poi-icon' })}).bindPopup(`<b>${e.tags.name || "Punkt"}</b>`).addTo(poiLayer);
+        });
+    } catch (e) {}
+}
+loadOSMData();
 </script>
 
 </body>
