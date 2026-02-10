@@ -433,6 +433,7 @@ async function addRoutePoint(latlng, recalc = true) {
     } catch(e) {}
     
     routePoints.push({ id: pointId, latlng: latlng, marker: m, elevation: elev, distFromPrev: 0 });
+    renderPointsList();
     if (recalc) await recalculateRoute();
 }
 
@@ -463,8 +464,8 @@ async function recalculateRoute() {
         polyline.setLatLngs(routeGeometry);
         
         await fetchFullElevationProfile();
-        generateRouteDescription(); // Generuj opis od razu
-        
+        generateRouteDescription(); 
+        renderPointsList();
     } catch(e) {
         console.error("Critical routing error", e);
     } finally {
