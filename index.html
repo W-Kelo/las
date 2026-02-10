@@ -9,6 +9,8 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dom-to-image/2.6.0/dom-to-image.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <style>
         :root {
@@ -191,6 +193,7 @@
 
     <div class="btn-group">
         <button class="secondary" onclick="exportGPX()">⬇️ Eksport</button>
+        <button onclick="openPdfModal()" style="background: #a855f7;">📄 Pobierz PDF</button>
         <button class="secondary" onclick="document.getElementById('fileInput').click()">⬆️ Import</button>
     </div>
     <input type="file" id="fileInput" hidden accept=".gpx" onchange="importGPX(event)">
@@ -253,6 +256,28 @@
     </div>
     <div class="modal-body" id="routeDescText">
         <em>Zaznacz punkty na mapie, aby wygenerować opis...</em>
+    </div>
+</div>
+    <div id="pdfModal" class="floating-modal" style="width: 380px;">
+    <div class="modal-header">
+        <span>📄 Ustawienia pliku PDF</span>
+        <button class="danger" onclick="closeModal('pdfModal')">X</button>
+    </div>
+    <div class="modal-body">
+        <label>Tytuł wycieczki:</label>
+        <input type="text" id="pdfTitle" value="Moja Wycieczka - Puszcza" style="width:100%; padding:8px; margin: 8px 0; border-radius:5px; border:1px solid #ccc;">
+        
+        <hr>
+        <label>Zawartość PDF:</label><br><br>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+            <label><input type="checkbox" id="pdfIncludeStats" checked> Statystyki (Dystans, Czas)</label>
+            <label><input type="checkbox" id="pdfIncludeMap" checked> Mapa trasy (Zrzut)</label>
+            <label><input type="checkbox" id="pdfIncludeElev" checked> Wykres wysokości</label>
+            <label><input type="checkbox" id="pdfIncludeDesc" checked> Opis trasy</label>
+            <label><input type="checkbox" id="pdfIncludePoints" checked> Lista punktów</label>
+        </div>
+        <br>
+        <button onclick="generatePDF()" id="pdfGenBtn" style="width:100%; background: #22c55e;">Generuj i Pobierz</button>
     </div>
 </div>
 
@@ -763,6 +788,102 @@ async function loadOSMData() {
     } catch (e) {}
 }
 loadOSMData();
+    function openPdfModal() {
+    document.getElementById('pdfModal').style.display = 'flex';
+    makeDraggable(document.getElementById('pdfModal'));
+}
+
+async function generatePDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const btn = document.getElementById('pdfGenBtn');
+    btn.disabled = true;
+    btn.innerText = "⏳ Generowanie...";
+
+    const title = document.getElementById('pdfTitle').value || "Plan trasy";
+    let y = 20;
+
+    // --- Stylizacja i Nagłówek ---
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(34, 197, 94); // Zielony akcent
+    doc.text(title, 20, y);
+    y += 10;
+
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Wygenerowano: ${new Date().toLocaleString()}`, 20, y);
+    y += 10;
+
+    // 1. Statystyki
+    if (document.getElementById('pdfIncludeStats').checked) {
+        doc.setFontSize(12);
+        doc.setTextColor(0);
+        const stats = document.getElementById('stats').innerText;
+        const time = document.getElementById('time').innerText;
+        doc.text(`Dystans: ${stats} | ${time}`, 20, y);
+        y += 10;
+    }
+
+    // 2. Mapa
+    if (document.getElementById('pdfIncludeMap').checked) {
+        try {
+            const mapEl = document.getElementById('map');
+            const mapImg = await domtoimage.toPng(mapEl, {width: 800, height: 600});
+            doc.addImage(mapImg, 'PNG', 20, y, 170, 100);
+            y += 110;
+        } catch(e) { console.error("PDF Map Error", e); }
+    }
+
+    // 3. Wykres wysokości
+    if (document.getElementById('pdfIncludeElev').checked) {
+        const canvas = document.getElementById('elevation');
+        const elevImg = canvas.toDataURL("image/png");
+        doc.setFontSize(14);
+        doc.text("Profil wysokości:", 20, y - 5);
+        doc.addImage(elevImg, 'PNG', 20, y, 170, 40);
+        y += 50;
+    }
+
+    // Dodanie nowej strony jeśli mało miejsca
+    if (y > 200) { doc.addPage(); y = 20; }
+
+    // 4. Lista punktów
+    if (document.getElementById('pdfIncludePoints').checked && routePoints.length > 0) {
+        doc.setFontSize(16);
+        doc.setTextColor(34, 197, 94);
+        doc.text("Punkty kontrolne:", 20, y);
+        y += 10;
+        doc.setFontSize(10);
+        doc.setTextColor(0);
+        routePoints.forEach((p, i) => {
+            if (y > 270) { doc.addPage(); y = 20; }
+            doc.text(`${i + 1}. Punkt (${p.elevation.toFixed(0)}m n.p.m.) - +${p.distFromPrev.toFixed(0)}m`, 25, y);
+            y += 7;
+        });
+        y += 10;
+    }
+
+    // 5. Opis trasy
+    if (document.getElementById('pdfIncludeDesc').checked) {
+        if (y > 240) { doc.addPage(); y = 20; }
+        doc.setFontSize(16);
+        doc.setTextColor(34, 197, 94);
+        doc.text("Szczegółowy opis:", 20, y);
+        y += 10;
+        doc.setFontSize(9);
+        doc.setTextColor(50);
+        
+        // Wyciągamy czysty tekst z modala opisu
+        const descText = document.getElementById('routeDescText').innerText;
+        const splitText = doc.splitTextToSize(descText, 170);
+        doc.text(splitText, 20, y);
+    }
+
+    doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
+    btn.disabled = false;
+    btn.innerText = "Generuj i Pobierz";
+}
 </script>
 
 </body>
