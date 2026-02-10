@@ -176,23 +176,12 @@
             .floating-modal { width: 95%; left: 2.5% !important; top: 10% !important; height: auto; max-height: 60vh;}
         }
 .map-export-modal {
-    width: 85vw;
-    height: 85vh;
-    max-width: 1200px;
-    max-height: 850px;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
+    width: 88vw;
+    height: 88vh;
+    max-width: 1300px;
+    max-height: 900px;
     resize: none;
 }
-
-#mapExport {
-    width: 100%;
-    height: 100%;
-    background: #111;
-    border-radius: 0 0 12px 12px;
-}
-
 
 .map-export-header {
     background: linear-gradient(90deg, #16a34a, #22c55e);
@@ -201,23 +190,32 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-radius: 12px 12px 0 0;
+}
+
+.map-export-actions {
+    display: flex;
+    gap: 6px;
 }
 
 .map-export-actions button {
-    background: rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.18);
     border: none;
     color: white;
     padding: 6px 10px;
     border-radius: 6px;
     cursor: pointer;
+    font-weight: 600;
 }
 
 .map-export-actions button:hover {
-    background: rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.35);
 }
 
-
+#mapExport {
+    width: 100%;
+    height: 100%;
+    background: #e5e7eb;
+}
 
     </style>
 </head>
@@ -331,8 +329,8 @@
         <strong>🗺️ Eksport mapy trasy</strong>
         <div class="map-export-actions">
             <button onclick="toggleScale()">📏 Skala</button>
+            <button onclick="copyMapPNG()">📋 Kopiuj</button>
             <button onclick="exportMapPNG()">⬇ PNG</button>
-            <button onclick="exportMapSVG()">🧩 SVG</button>
             <button onclick="printExportMap()">🖨️</button>
             <button onclick="closeModal('mapExportModal')">✖</button>
         </div>
@@ -341,6 +339,7 @@
         <div id="mapExport"></div>
     </div>
 </div>
+
 
 
 <script>
@@ -973,7 +972,7 @@ async function generatePDF() {
         btn.innerText = "Generuj i Pobierz";
     }
 }
-   let exportMap, exportPolyline, scaleControl, scaleVisible = false;
+ let exportMap, exportPolyline, scaleControl, scaleVisible = false;
 
 function openMapExportModal() {
     const modal = document.getElementById('mapExportModal');
@@ -988,12 +987,11 @@ function openMapExportModal() {
     exportMap = L.map('mapExport', {
         zoomControl: false,
         attributionControl: false,
-        preferCanvas: true   // ⬅️ TO JEST WAŻNE
+        preferCanvas: true
     });
 
-    // KAFELKI – MUSZĄ BYĆ Z CORS
-    const tile = (dark ? tiles.dark : tiles.light);
-    tile.addTo(exportMap);
+    // 🔥 TEN SAM TILESET CO MAPA GŁÓWNA
+    (dark ? tiles.dark : tiles.light).addTo(exportMap);
 
     exportPolyline = L.polyline(routeGeometry, {
         color: '#22c55e',
@@ -1003,32 +1001,30 @@ function openMapExportModal() {
     }).addTo(exportMap);
 
     scaleControl = L.control.scale({
-        position: 'bottomleft',
-        imperial: false
+        imperial: false,
+        position: 'bottomleft'
     });
 
     exportMap.fitBounds(exportPolyline.getBounds(), {
-        padding: [50, 50]
+        padding: [60, 60]
     });
 }
 
 function toggleScale() {
     if (!exportMap) return;
     scaleVisible = !scaleVisible;
-    if (scaleVisible) {
-        scaleControl.addTo(exportMap);
-    } else {
-        exportMap.removeControl(scaleControl);
-    }
+    scaleVisible ? scaleControl.addTo(exportMap)
+                 : exportMap.removeControl(scaleControl);
 }
+
 
 async function exportMapPNG() {
     const el = document.getElementById('mapExport');
 
     const canvas = await html2canvas(el, {
         useCORS: true,
-        backgroundColor: null,
-        scale: 2
+        scale: 2,
+        backgroundColor: null
     });
 
     const a = document.createElement('a');
@@ -1038,65 +1034,30 @@ async function exportMapPNG() {
 }
 
 
-   function exportMapSVG() {
-    if (!routeGeometry.length) {
-        alert("Brak trasy");
-        return;
-    }
 
-    const bounds = exportPolyline.getBounds();
-    const size = exportMap.getSize();
+   async function copyMapPNG() {
+    const el = document.getElementById('mapExport');
+    const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
 
-    let path = '';
-    routeGeometry.forEach((p, i) => {
-        const point = exportMap.latLngToLayerPoint(p);
-        path += (i === 0 ? 'M' : 'L') + point.x + ' ' + point.y + ' ';
+    canvas.toBlob(blob => {
+        navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+        ]);
+        alert("Mapa skopiowana do schowka 👍");
     });
-
-    const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="${size.x}" height="${size.y}">
-    <rect width="100%" height="100%" fill="white"/>
-    <path d="${path}"
-          fill="none"
-          stroke="#22c55e"
-          stroke-width="6"
-          stroke-linecap="round"
-          stroke-linejoin="round"/>
-</svg>`;
-
-    const blob = new Blob([svg], { type: 'image/svg+xml' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'trasa.svg';
-    a.click();
 }
 
 async function printExportMap() {
     const el = document.getElementById('mapExport');
-    const canvas = await html2canvas(el, {
-        useCORS: true,
-        scale: 2
-    });
+    const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
 
-    const win = window.open('', '_blank');
+    const win = window.open('');
     win.document.write(`
-        <html>
-        <head>
-            <title>Mapa trasy</title>
-            <style>
-                body { margin:0; display:flex; justify-content:center; align-items:center; }
-                img { max-width:100%; }
-            </style>
-        </head>
-        <body>
-            <img src="${canvas.toDataURL('image/png')}">
-            <script>
-                window.onload = () => window.print();
-            <\/script>
-        </body>
-        </html>
+        <img src="${canvas.toDataURL('image/png')}" style="width:100%">
+        <script>window.onload = () => window.print()<\/script>
     `);
 }
+
 
 </script>
 
