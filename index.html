@@ -972,32 +972,56 @@ async function generatePDF() {
         btn.innerText = "Generuj i Pobierz";
     }
 }
- let exportMap, exportPolyline, scaleControl, scaleVisible = false;
+ let exportMap = null;
+let exportPolyline = null;
+let scaleControl = null;
+let scaleVisible = false;
 
 function openMapExportModal() {
     const modal = document.getElementById('mapExportModal');
     modal.style.display = 'flex';
-    makeDraggable(modal);
+
+    // ⏳ Dajemy przeglądarce czas na layout
+    requestAnimationFrame(() => {
+        console.log('[EXPORT] Modal visible');
+
+        initExportMap();
+    });
+}
+function initExportMap() {
+    const container = document.getElementById('mapExport');
+    console.log('[EXPORT] Container size:',
+        container.clientWidth,
+        container.clientHeight
+    );
 
     if (exportMap) {
-        exportMap.invalidateSize();
+        console.log('[EXPORT] Map exists → invalidateSize');
+        exportMap.invalidateSize(true);
         return;
     }
 
-    exportMap = L.map('mapExport', {
+    exportMap = L.map(container, {
         zoomControl: false,
         attributionControl: false,
         preferCanvas: true
     });
 
-    // 🔥 TEN SAM TILESET CO MAPA GŁÓWNA
-    (dark ? tiles.dark : tiles.light).addTo(exportMap);
+    const tiles = getExportTileLayer();
+    tiles.addTo(exportMap);
+
+    tiles.on('tileload', e => {
+        console.log('[EXPORT] Tile loaded:', e.tile.src);
+    });
+
+    tiles.on('tileerror', e => {
+        console.error('[EXPORT] TILE ERROR:', e);
+    });
 
     exportPolyline = L.polyline(routeGeometry, {
         color: '#22c55e',
         weight: 6,
-        opacity: 1,
-        lineJoin: 'round'
+        opacity: 1
     }).addTo(exportMap);
 
     scaleControl = L.control.scale({
@@ -1005,10 +1029,22 @@ function openMapExportModal() {
         position: 'bottomleft'
     });
 
-    exportMap.fitBounds(exportPolyline.getBounds(), {
-        padding: [60, 60]
-    });
+    if (routeGeometry.length > 1) {
+        exportMap.fitBounds(exportPolyline.getBounds(), {
+            padding: [60, 60]
+        });
+        console.log('[EXPORT] fitBounds OK');
+    } else {
+        console.warn('[EXPORT] routeGeometry empty');
+    }
+
+    // 🔥 NAJWAŻNIEJSZA LINIA
+    setTimeout(() => {
+        console.log('[EXPORT] invalidateSize (delayed)');
+        exportMap.invalidateSize(true);
+    }, 200);
 }
+
 
 function toggleScale() {
     if (!exportMap) return;
@@ -1057,6 +1093,20 @@ async function printExportMap() {
         <script>window.onload = () => window.print()<\/script>
     `);
 }
+    function getExportTileLayer() {
+    console.log('[EXPORT] Creating tile layer, dark =', dark);
+
+    const url = dark
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+    return L.tileLayer(url, {
+        maxZoom: 19,
+        crossOrigin: true,   // ⬅️ MUSI BYĆ
+        attribution: ''
+    });
+}
+
 
 
 </script>
