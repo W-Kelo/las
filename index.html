@@ -880,15 +880,27 @@ async function loadOSMData() {
             if (sym.includes('red')) color = '#ef4444'; else if (sym.includes('blue')) color = '#3b82f6'; else if (sym.includes('green')) color = '#22c55e'; else if (sym.includes('yellow')) color = '#eab308'; else if (sym.includes('black')) color = '#000';
             rel.members.forEach(m => { if (m.type === "way" && ways[m.ref]) L.polyline(ways[m.ref], {color: color, weight: 4, opacity: 0.7, dashArray: '8, 8'}).bindTooltip(rel.tags.name || "Szlak").addTo(hikingLayer); });
         });
-        data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
-            let icon = '📍'; if(e.tags.amenity === 'shelter') icon = '🛖'; else if(e.tags.tourism === 'viewpoint') icon = '🔭'; else if(e.tags.amenity === 'parking') icon = '🅿️';
-            L.marker([e.lat, e.lon], {icon: L.divIcon({ html: `<div style="font-size:18px">${icon}</div>`, className: 'poi-icon' })}).bindPopup(buildOSMPopup(e)).addTo(poiLayer);
-        });
-        const poiElements = data.elements.filter(e => e.type === "node" && e.tags);
-        poiElements.forEach(e => {
-            if (isBlacklistedOSM(e)) return; // Sprawdza czarną listę
-            addOSMMarker(e);                 // Dodaje marker
-        });
+        data.elements
+    .filter(e => e.type === "node" && e.tags)
+    .forEach(e => {
+        if (isBlacklistedOSM(e)) return;
+
+        let icon = '📍';
+        if (e.tags.amenity === 'shelter') icon = '🛖';
+        else if (e.tags.tourism === 'viewpoint') icon = '🔭';
+        else if (e.tags.amenity === 'parking') icon = '🅿️';
+        else if (e.tags.tourism === 'information') icon = 'ℹ️';
+
+        L.marker([e.lat, e.lon], {
+            icon: L.divIcon({
+                html: `<div style="font-size:18px">${icon}</div>`,
+                className: 'poi-icon'
+            })
+        })
+        .bindPopup(buildOSMPopup(e))
+        .addTo(poiLayer);
+    });
+
     } catch (e) {}
 }
 loadOSMData();
