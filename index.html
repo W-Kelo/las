@@ -11,6 +11,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dom-to-image/2.6.0/dom-to-image.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <style>
         :root {
@@ -796,126 +797,90 @@ loadOSMData();
 }
 
 async function generatePDF() {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('p', 'mm', 'a4');
     const btn = document.getElementById('pdfGenBtn');
+    const title = document.getElementById('pdfTitle').value || "Plan trasy";
     
     btn.disabled = true;
-    btn.innerText = "⏳ Przygotowywanie składu...";
+    btn.innerText = "⏳ Składanie dokumentu...";
 
-    const title = document.getElementById('pdfTitle').value || "Plan trasy";
-    const margin = 20;
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const contentWidth = pageWidth - (2 * margin);
-    let y = 25;
+    // 1. Przygotowanie mapy (widok na całość)
+    const oldBounds = map.getBounds();
+    map.fitBounds(polyline.getBounds(), { padding: [30, 30], animate: false });
+    await new Promise(r => setTimeout(r, 1000)); // Czekamy na kafelki
 
-    // --- POMOCNIK: STYLIŚCI ---
-    const setHeaderStyle = () => { doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(34, 197, 94); };
-    const setSubHeaderStyle = () => { doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(0, 0, 0); };
-    const setNormalStyle = () => { doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor(60, 60, 60); };
+    // 2. Pobranie danych z UI
+    const stats = document.getElementById('stats').innerText;
+    const time = document.getElementById('time').innerText;
+    const elevCanvas = document.getElementById('elevation');
+    const pointsList = document.getElementById('pointsList').innerHTML;
+    const routeDesc = document.getElementById('routeDescText').innerHTML;
+    const mapImg = await domtoimage.toPng(document.getElementById('map'));
 
-    // 1. TYTUŁ I NAGŁÓWEK
-    setHeaderStyle();
-    doc.text(title, margin, y);
-    y += 10;
-    
-    setNormalStyle();
-    doc.text(`Data wygenerowania: ${new Date().toLocaleDateString('pl-PL')} ${new Date().toLocaleTimeString('pl-PL')}`, margin, y);
-    y += 15;
-
-    // 2. STATYSTYKI
-    if (document.getElementById('pdfIncludeStats').checked) {
-        setSubHeaderStyle();
-        const stats = document.getElementById('stats').innerText;
-        const time = document.getElementById('time').innerText;
-        doc.text(`Podsumowanie: ${stats} | ${time}`, margin, y);
-        y += 12;
-    }
-
-    // 3. MAPA (Poprawiona: widok na całą trasę)
-    if (document.getElementById('pdfIncludeMap').checked && routeGeometry.length > 0) {
-        try {
-            btn.innerText = "📸 Przechwytywanie mapy...";
-            // Zapamiętaj obecny widok
-            const oldBounds = map.getBounds();
-            // Dopasuj do trasy bez animacji
-            map.fitBounds(polyline.getBounds(), { padding: [20, 20], animate: false });
+    // 3. Budowanie struktury HTML dla PDF (nowoczesny styl)
+    const element = document.createElement('div');
+    element.innerHTML = `
+        <div style="padding: 40px; font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; line-height: 1.6;">
+            <h1 style="color: #16a34a; font-size: 28px; margin-bottom: 5px; border-bottom: 2px solid #16a34a;">${title}</h1>
+            <p style="font-size: 12px; color: #64748b; margin-bottom: 20px;">Wygenerowano: ${new Date().toLocaleString('pl-PL')}</p>
             
-            // Czekamy 800ms na dociągnięcie kafelków mapy
-            await new Promise(r => setTimeout(r, 800));
+            <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                <strong style="font-size: 16px;">Podsumowanie: ${stats}</strong><br>
+                <span style="color: #475569;">${time}</span>
+            </div>
 
-            const mapEl = document.getElementById('map');
-            const mapImg = await domtoimage.toPng(mapEl, { 
-                width: 1200, 
-                height: 800,
-                style: { transform: 'scale(1)', left: 0, top: 0 } 
-            });
-            
-            doc.addImage(mapImg, 'PNG', margin, y, contentWidth, 90);
-            y += 100;
+            ${document.getElementById('pdfIncludeMap').checked ? `
+                <div style="margin-bottom: 25px;">
+                    <h2 style="font-size: 18px; color: #334155;">Mapa trasy</h2>
+                    <img src="${mapImg}" style="width: 100%; border-radius: 8px; border: 1px solid #cbd5e1;">
+                </div>
+            ` : ''}
 
-            // Przywróć widok użytkownika
-            map.fitBounds(oldBounds, { animate: false });
-        } catch(e) { console.error("Błąd mapy:", e); }
+            ${document.getElementById('pdfIncludeElev').checked ? `
+                <div style="margin-bottom: 25px;">
+                    <h2 style="font-size: 18px; color: #334155;">Profil wysokości</h2>
+                    <img src="${elevCanvas.toDataURL()}" style="width: 100%; height: 120px; background: #f8fafc; border-radius: 8px;">
+                </div>
+            ` : ''}
+
+            <div style="display: grid; grid-template-columns: 1fr; gap: 20px;">
+                ${document.getElementById('pdfIncludePoints').checked ? `
+                    <div>
+                        <h2 style="font-size: 18px; color: #334155;">Punkty kontrolne</h2>
+                        <div style="font-size: 13px;">${pointsList}</div>
+                    </div>
+                ` : ''}
+
+                ${document.getElementById('pdfIncludeDesc').checked ? `
+                    <div style="page-break-before: auto;">
+                        <h2 style="font-size: 18px; color: #334155;">Instrukcja przejścia</h2>
+                        <div style="font-size: 13px; text-align: justify; white-space: pre-wrap;">${routeDesc}</div>
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+
+    // 4. Konfiguracja i eksport
+    const opt = {
+        margin: [10, 10],
+        filename: title.replace(/\s+/g, '_') + '.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    };
+
+    try {
+        await html2pdf().set(opt).from(element).save();
+    } catch (err) {
+        console.error("PDF Error:", err);
+        alert("Błąd podczas generowania PDF. Spróbuj ponownie.");
+    } finally {
+        // Przywrócenie widoku mapy
+        map.fitBounds(oldBounds, { animate: false });
+        btn.disabled = false;
+        btn.innerText = "Generuj i Pobierz";
     }
-
-    // 4. WYKRES WYSOKOŚCI (Poprawiona ostrość)
-    if (document.getElementById('pdfIncludeElev').checked) {
-        if (y > 230) { doc.addPage(); y = 25; }
-        setSubHeaderStyle();
-        doc.text("Profil terenu:", margin, y);
-        y += 5;
-        
-        const canvas = document.getElementById('elevation');
-        // Pobieramy obraz w najwyższej dostępnej jakości z canvasu
-        const elevImg = canvas.toDataURL("image/png", 1.0);
-        doc.addImage(elevImg, 'PNG', margin, y, contentWidth, 40);
-        y += 50;
-    }
-
-    // 5. PUNKTY KONTROLNE
-    if (document.getElementById('pdfIncludePoints').checked && routePoints.length > 0) {
-        if (y > 250) { doc.addPage(); y = 25; }
-        setSubHeaderStyle();
-        doc.text("Lista punktów na trasie:", margin, y);
-        y += 8;
-        
-        setNormalStyle();
-        routePoints.forEach((p, i) => {
-            const txt = `${i + 1}. Punkt: ${p.elevation.toFixed(0)}m n.p.m. (odcinek: +${p.distFromPrev.toFixed(0)}m)`;
-            doc.text(txt, margin + 5, y);
-            y += 7;
-            if (y > 280) { doc.addPage(); y = 25; }
-        });
-        y += 10;
-    }
-
-    // 6. SZCZEGÓŁOWY OPIS (Poprawione zawijanie tekstu)
-    if (document.getElementById('pdfIncludeDesc').checked) {
-        if (y > 260) { doc.addPage(); y = 25; }
-        setSubHeaderStyle();
-        doc.text("Instrukcja przejścia:", margin, y);
-        y += 8;
-        
-        setNormalStyle();
-        const descText = document.getElementById('routeDescText').innerText;
-        
-        // Automatyczne dzielenie tekstu na linie, które mieszczą się w szerokości strony
-        const lines = doc.splitTextToSize(descText, contentWidth);
-        
-        lines.forEach(line => {
-            if (y > 285) { doc.addPage(); y = 25; }
-            doc.text(line, margin, y);
-            y += 6; // interliniia
-        });
-    }
-
-    // FINALIZACJA
-    const fileName = title.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-    doc.save(`${fileName}.pdf`);
-    
-    btn.disabled = false;
-    btn.innerText = "Generuj i Pobierz";
 }
 </script>
 
