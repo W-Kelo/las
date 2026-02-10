@@ -415,16 +415,21 @@ const OVERPASS_SERVERS = [
     'https://overpass.kumi.systems/api/interpreter',
     'https://overpass.nchc.org.tw/api/interpreter'
 ];
+   async function initOSM() {
     const CACHE_KEY = `osm_${bbox.join('_')}`;
 
-const cached = localStorage.getItem(CACHE_KEY);
-if (cached) {
-    loadOSMData(JSON.parse(cached));
-} else {
-    const data = await fetchFromAnyOverpass(query);
-    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-    loadOSMData(data);
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+        loadOSMData(JSON.parse(cached));
+    } else {
+        const data = await fetchFromAnyOverpass(query);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        loadOSMData(data);
+    }
 }
+
+initOSM();
+
 
 
 
@@ -913,47 +918,75 @@ async function fetchFromAnyOverpass(query) {
     throw new Error("All Overpass servers failed");
 }
 
-async function loadOSMData() {
+// Dodajemy parametr 'externalData', żeby funkcja mogła przyjąć dane z .then()
+async function loadOSMData(externalData = null) {
     const query = `[out:json][timeout:25];(relation["route"="hiking"](53.4,14.3,53.6,14.7);node["amenity"~"shelter|drinking_water|parking"](53.4,14.3,53.6,14.7);node["tourism"~"viewpoint|picnic_site|information"](53.4,14.3,53.6,14.7););out body;>;out skel qt;`;
+    
     try {
-        const resp = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
-        if (!resp.ok) return;
-        const data = await resp.json();
+        let data;
+        
+        // Sprawdzamy, czy dane już mamy, czy musimy je pobrać
+        if (externalData) {
+            data = externalData;
+        } else {
+            const resp = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+            if (!resp.ok) return;
+            data = await resp.json();
+        }
+
         const nodes = {}, ways = {};
-        data.elements.filter(e => e.type === "node").forEach(n => nodes[n.id] = [n.lat, n.lon]);
-        data.elements.filter(e => e.type === "way").forEach(w => ways[w.id] = w.nodes.map(nid => nodes[nid]));
+        // Ważne: najpierw zbieramy wszystkie nody, potem budujemy drogi
+        data.elements.forEach(e => { if (e.type === "node") nodes[e.id] = [e.lat, e.lon]; });
+        data.elements.forEach(e => { if (e.type === "way") ways[e.id] = e.nodes.map(nid => nodes[nid]).filter(n => n); });
+
+        // Rysowanie relacji (szlaków)
         data.elements.filter(e => e.type === "relation").forEach(rel => {
             const sym = (rel.tags.osmc_symbol || rel.tags.color || "").toLowerCase();
             let color = '#888';
-            if (sym.includes('red')) color = '#ef4444'; else if (sym.includes('blue')) color = '#3b82f6'; else if (sym.includes('green')) color = '#22c55e'; else if (sym.includes('yellow')) color = '#eab308'; else if (sym.includes('black')) color = '#000';
-            rel.members.forEach(m => { if (m.type === "way" && ways[m.ref]) L.polyline(ways[m.ref], {color: color, weight: 4, opacity: 0.7, dashArray: '8, 8'}).bindTooltip(rel.tags.name || "Szlak").addTo(hikingLayer); });
+            if (sym.includes('red')) color = '#ef4444'; 
+            else if (sym.includes('blue')) color = '#3b82f6'; 
+            else if (sym.includes('green')) color = '#22c55e'; 
+            else if (sym.includes('yellow')) color = '#eab308'; 
+            else if (sym.includes('black')) color = '#000';
+            
+            rel.members.forEach(m => { 
+                if (m.type === "way" && ways[m.ref]) {
+                    L.polyline(ways[m.ref], {color: color, weight: 4, opacity: 0.7, dashArray: '8, 8'})
+                     .bindTooltip(rel.tags.name || "Szlak")
+                     .addTo(hikingLayer); 
+                } 
+            });
         });
-        data.elements
-    .filter(e => e.type === "node" && e.tags)
-    .forEach(e => {
-        if (isBlacklistedOSM(e)) return;
 
-        let icon = '📍';
-        if (e.tags.amenity === 'shelter') icon = '🛖';
-        else if (e.tags.tourism === 'viewpoint') icon = '🔭';
-        else if (e.tags.amenity === 'parking') icon = '🅿️';
-        else if (e.tags.tourism === 'information') icon = 'ℹ️';
-        else if (e.tags.tourism === 'drinking_water') icon = '💧';
+        // Rysowanie ikon (POI)
+        data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
+            if (typeof isBlacklistedOSM === 'function' && isBlacklistedOSM(e)) return;
 
-        L.marker([e.lat, e.lon], {
-            icon: L.divIcon({
-                html: `<div style="font-size:18px">${icon}</div>`,
-                className: 'poi-icon'
+            let icon = '📍';
+            if (e.tags.amenity === 'shelter') icon = '🛖';
+            else if (e.tags.tourism === 'viewpoint') icon = '🔭';
+            else if (e.tags.amenity === 'parking') icon = '🅿️';
+            else if (e.tags.tourism === 'information') icon = 'ℹ️';
+            else if (e.tags.amenity === 'drinking_water' || e.tags.tourism === 'drinking_water') icon = '💧';
+
+            L.marker([e.lat, e.lon], {
+                icon: L.divIcon({
+                    html: `<div style="font-size:18px">${icon}</div>`,
+                    className: 'poi-icon'
+                })
             })
-        })
-        .bindPopup(buildOSMPopup(e))
-        .addTo(poiLayer);
-    });
+            .bindPopup(typeof buildOSMPopup === 'function' ? buildOSMPopup(e) : "Miejsce")
+            .addTo(poiLayer);
+        });
 
-    } catch (e) {}
+    } catch (err) {
+        console.error("Błąd ładowania OSM:", err);
+    }
 }
+
+// Teraz to wywołanie będzie działać poprawnie:
 fetchOverpassWithRetry(overpassUrl)
-    .then(data => loadOSMData(data))
+    .then(data => loadOSMData(data)) // Przekazuje dane do funkcji
     .catch(() => showOverpassError());
 
     function openPdfModal() {
