@@ -72,7 +72,7 @@
         button:hover { opacity: 0.9; }
         button.secondary { background: #64748b; }
         button.danger { background: var(--danger); }
-        button.icon-only { padding: 10px; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
 
         .stat-card {
             background: rgba(0,0,0,0.1);
@@ -135,6 +135,13 @@
         #mobile-toggle { display: none; position: absolute; top: 10px; left: 10px; z-index: 1100; padding: 10px; border-radius: 50%; width: 45px; height: 45px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
         #gps-btn { position: absolute; bottom: 20px; right: 20px; z-index: 900; width: 50px; height: 50px; border-radius: 50%; background: var(--panel); color: var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; border: 2px solid var(--accent); }
 
+        /* Loader */
+        .loading-overlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.7); color: white; padding: 15px 25px; border-radius: 8px;
+            z-index: 2000; font-weight: bold; display: none; pointer-events: none;
+        }
+
         @media (max-width: 768px) {
             body { grid-template-columns: 1fr; }
             aside {
@@ -143,7 +150,7 @@
             }
             aside.open { transform: translateX(0); }
             #mobile-toggle { display: flex; }
-            .leaflet-control-zoom { display: none; } /* Oszczędzamy miejsce na mobile */
+            .leaflet-control-zoom { display: none; }
         }
     </style>
 </head>
@@ -194,7 +201,9 @@
     </div>
 </aside>
 
-<div id="map"></div>
+<div id="map">
+    <div id="loader" class="loading-overlay">⏳ Przeliczanie trasy...</div>
+</div>
 <button id="gps-btn" onclick="locateUser()" title="Zlokalizuj mnie">🎯</button>
 
 <div class="overlay" id="overlay" onclick="closePointsModal()"></div>
@@ -211,7 +220,7 @@
 const map = L.map('map', { 
     zoomControl: false,
     preferCanvas: true 
-}).setView([53.54, 14.55], 13); // Start w Policach/Puszczy
+}).setView([53.54, 14.55], 13);
 
 L.control.zoom({ position: 'topright' }).addTo(map);
 
@@ -222,12 +231,14 @@ const tiles = {
 };
 tiles.dark.addTo(map);
 
+/* ================= STAN APLIKACJI ================= */
 let routePoints = []; 
 let routeGeometry = []; 
 let pois = [];
 let poiMode = false;
 let totalAscent = 0;
 let userMarker = null;
+let isRouting = false; // FLAGA BLOKUJĄCA (Fix Pajęczyny)
 
 const polyline = L.polyline([], {color: '#22c55e', weight: 6, opacity: 0.9, lineJoin: 'round'}).addTo(map);
 const hikingLayer = L.layerGroup().addTo(map);
@@ -241,12 +252,7 @@ function locateUser() {
 map.on('locationfound', function(e) {
     if (userMarker) map.removeLayer(userMarker);
     userMarker = L.circleMarker(e.latlng, {
-        radius: 8,
-        fillColor: "#3b82f6",
-        color: "#fff",
-        weight: 3,
-        opacity: 1,
-        fillOpacity: 1
+        radius: 8, fillColor: "#3b82f6", color: "#fff", weight: 3, opacity: 1, fillOpacity: 1
     }).addTo(map).bindPopup("Twoja pozycja").openPopup();
 });
 
@@ -255,8 +261,9 @@ map.on('locationerror', function(e) {
 });
 
 /* ================= IMPORT GPX (NAPRAWIONY) ================= */
-// Funkcja importu, która unika "pajęczyny" poprzez sekwencyjne dodawanie punktów
 function importGPX(e) {
+    if (isRouting) return alert("Poczekaj na zakończenie obecnego przeliczania.");
+    
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
@@ -269,31 +276,25 @@ function importGPX(e) {
 
             clearAll();
             
-            // INTELIGENTNE UPRASZCZANIE:
-            // Zamiast brać wszystko, bierzemy punkty co ~200-500 metrów,
-            // aby silnik BRouter mógł "przykleić" trasę do ścieżek, ale nie dławił się liczbą zapytań.
-            // Dla bardzo małych tras bierzemy częściej.
-            
+            // Inteligentne upraszczanie dla importu
             const step = pts.length > 50 ? Math.floor(pts.length / 20) : 1; 
             
-            // Dodajemy Start
+            // Start
             const startLat = parseFloat(pts[0].getAttribute("lat"));
             const startLon = parseFloat(pts[0].getAttribute("lon"));
-            await addRoutePoint(L.latLng(startLat, startLon));
+            await addRoutePoint(L.latLng(startLat, startLon), false);
 
-            // Dodajemy punkty pośrednie (sekwencyjnie!)
+            // Pośrednie (bez przeliczania trasy, tylko dodanie punktów)
             for(let i = step; i < pts.length; i += step) {
                 const lat = parseFloat(pts[i].getAttribute("lat"));
                 const lon = parseFloat(pts[i].getAttribute("lon"));
-                // WAŻNE: czekamy aż poprzedni punkt się doda i przeliczy, zanim dodamy kolejny
-                // Dzięki temu zachowujemy kolejność!
-                await addRoutePoint(L.latLng(lat, lon), false); // false = nie przeliczaj całej trasy jeszcze
+                await addRoutePoint(L.latLng(lat, lon), false);
             }
             
-            // Dodajemy Koniec
+            // Koniec (z finalnym przeliczeniem)
             const endLat = parseFloat(pts[pts.length-1].getAttribute("lat"));
             const endLon = parseFloat(pts[pts.length-1].getAttribute("lon"));
-            await addRoutePoint(L.latLng(endLat, endLon), true); // true = finalne przeliczenie
+            await addRoutePoint(L.latLng(endLat, endLon), true);
 
             map.fitBounds(polyline.getBounds());
             
@@ -308,7 +309,6 @@ function importGPX(e) {
 /* ================= TRASOWANIE I PUNKTY ================= */
 async function getRouteSegment(start, end) {
     try {
-        // BRouter: hiking-mountain dla najlepszych ścieżek
         const url = `https://brouter.de/brouter?lonlats=${start.lng},${start.lat}|${end.lng},${end.lat}&profile=hiking-mountain&alternativeidx=0&format=geojson`;
         const resp = await fetch(url);
         if (!resp.ok) throw new Error("Routing error");
@@ -321,18 +321,18 @@ async function getRouteSegment(start, end) {
         }
         throw new Error("No path");
     } catch (e) {
-        // Fallback do prostej linii
         return { coords: [[start.lat, start.lng], [end.lat, end.lng]], distance: L.latLng(start).distanceTo(L.latLng(end)) }; 
     }
 }
 
 map.on('click', async e => {
     if (poiMode) { addPOI(e.latlng); poiMode = false; return; }
+    if (isRouting) return; // Blokada klikania podczas liczenia
     await addRoutePoint(e.latlng, true);
 });
 
 async function addRoutePoint(latlng, recalc = true) {
-    const pointId = Date.now() + Math.random(); // unikalne ID
+    const pointId = Date.now() + Math.random();
     const m = L.circleMarker(latlng, { 
         radius: 8, color: '#fff', weight: 3, fillColor: '#22c55e', fillOpacity: 1, zIndexOffset: 1000 
     }).addTo(map);
@@ -342,7 +342,6 @@ async function addRoutePoint(latlng, recalc = true) {
         removePointById(pointId);
     });
 
-    // Pobieramy wysokość dla punktu kontrolnego
     let elev = 0;
     try {
          const r = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${latlng.lat}&longitude=${latlng.lng}`);
@@ -361,34 +360,48 @@ async function addRoutePoint(latlng, recalc = true) {
     if (recalc) await recalculateRoute();
 }
 
+// GŁÓWNA FUNKCJA PRZELICZAJĄCA Z BLOKADĄ (FIX PAJĘCZYNY)
 async function recalculateRoute() {
-    routeGeometry = [];
-    totalAscent = 0;
-    
-    if (routePoints.length === 0) {
-        polyline.setLatLngs([]);
-        updateStats(0);
-        document.getElementById('route-desc').innerHTML = "<em>Dodaj punkty na mapie...</em>";
-        return;
-    }
+    if (isRouting) return; // Zapobiegaj wyścigom funkcji
+    isRouting = true;
+    document.getElementById('loader').style.display = 'block';
+    document.body.style.cursor = 'wait';
 
-    routeGeometry = [[routePoints[0].latlng.lat, routePoints[0].latlng.lng]];
-    
-    // Obliczanie segmentów
-    for (let i = 1; i < routePoints.length; i++) {
-        const res = await getRouteSegment(routePoints[i-1].latlng, routePoints[i].latlng);
-        routePoints[i].distFromPrev = res.distance;
-        routeGeometry = routeGeometry.concat(res.coords.slice(1));
-    }
+    try {
+        routeGeometry = [];
+        totalAscent = 0;
+        
+        if (routePoints.length === 0) {
+            polyline.setLatLngs([]);
+            updateStats(0);
+            document.getElementById('route-desc').innerHTML = "<em>Dodaj punkty na mapie...</em>";
+            return;
+        }
 
-    polyline.setLatLngs(routeGeometry);
-    const totalDist = calculateTotalDist();
-    
-    await fetchFullElevationProfile(); // To też zaktualizuje statystyki
-    generateRouteDescription();
+        routeGeometry = [[routePoints[0].latlng.lat, routePoints[0].latlng.lng]];
+        
+        for (let i = 1; i < routePoints.length; i++) {
+            const res = await getRouteSegment(routePoints[i-1].latlng, routePoints[i].latlng);
+            routePoints[i].distFromPrev = res.distance;
+            routeGeometry = routeGeometry.concat(res.coords.slice(1));
+        }
+
+        polyline.setLatLngs(routeGeometry);
+        const totalDist = calculateTotalDist();
+        
+        await fetchFullElevationProfile();
+        generateRouteDescription();
+        
+    } catch(e) {
+        console.error("Critical routing error", e);
+    } finally {
+        isRouting = false;
+        document.getElementById('loader').style.display = 'none';
+        document.body.style.cursor = 'default';
+    }
 }
 
-/* ================= OPIS TRASY (NARRATOR) ================= */
+/* ================= OPIS TRASY (ULEPSZONY - AGREGACJA) ================= */
 function generateRouteDescription() {
     const container = document.getElementById('route-desc');
     if (routePoints.length < 2) {
@@ -397,14 +410,16 @@ function generateRouteDescription() {
     }
 
     let text = `<strong>📖 Opis trasy:</strong>\n`;
-    text += `Startujesz z wysokości ${routePoints[0].elevation.toFixed(0)} m n.p.m.\n`;
+    text += `Start: ${routePoints[0].elevation.toFixed(0)} m n.p.m.\n\n`;
+
+    // Tablica do agregacji kroków
+    let steps = [];
 
     for (let i = 1; i < routePoints.length; i++) {
         const p1 = routePoints[i-1].latlng;
         const p2 = routePoints[i].latlng;
         const dist = routePoints[i].distFromPrev;
         
-        // Obliczanie azymutu
         const y = Math.sin(p2.lng - p1.lng) * Math.cos(p2.lat);
         const x = Math.cos(p1.lat) * Math.sin(p2.lat) - Math.sin(p1.lat) * Math.cos(p2.lat) * Math.cos(p2.lng - p1.lng);
         const brng = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
@@ -418,10 +433,20 @@ function generateRouteDescription() {
         else if (brng >= 247.5 && brng < 292.5) direction = "na zachód";
         else if (brng >= 292.5 && brng < 337.5) direction = "na północny-zachód";
 
-        text += `• Odcinek ${i}: Kieruj się <strong>${direction}</strong> przez ok. ${(dist).toFixed(0)}m.\n`;
+        // Logika łączenia tych samych kierunków
+        if (steps.length > 0 && steps[steps.length - 1].direction === direction) {
+            steps[steps.length - 1].dist += dist;
+        } else {
+            steps.push({ direction: direction, dist: dist });
+        }
     }
+
+    // Generowanie tekstu z zagregowanej tablicy
+    steps.forEach((step, index) => {
+        text += `• Odcinek ${index + 1}: Kieruj się <strong>${step.direction}</strong> przez ${(step.dist).toFixed(0)}m.\n`;
+    });
     
-    text += `\n🏁 Meta na wysokości ${routePoints[routePoints.length-1].elevation.toFixed(0)} m n.p.m.`;
+    text += `\n🏁 Meta: ${routePoints[routePoints.length-1].elevation.toFixed(0)} m n.p.m.`;
     container.innerHTML = text.replace(/\n/g, '<br>');
 }
 
@@ -429,7 +454,6 @@ function generateRouteDescription() {
 async function fetchFullElevationProfile() {
     if (routeGeometry.length < 2) { clearElevation(); return; }
     
-    // Upraszczanie do max 100 punktów dla zapytania API
     const step = Math.max(1, Math.floor(routeGeometry.length / 80));
     const lats = [];
     const lngs = [];
@@ -445,7 +469,6 @@ async function fetchFullElevationProfile() {
         const data = await res.json();
         const elevations = data.elevation;
         
-        // Obliczanie przewyższeń
         totalAscent = 0;
         for(let i=1; i<elevations.length; i++) {
             if(elevations[i] > elevations[i-1]) totalAscent += (elevations[i] - elevations[i-1]);
@@ -453,10 +476,8 @@ async function fetchFullElevationProfile() {
         totalAscent = Math.round(totalAscent);
         
         drawElevation(elevations);
-        updateStats(calculateTotalDist()); // Aktualizacja statystyk z nowym ascentem
+        updateStats(calculateTotalDist());
     } catch (e) { 
-        console.error("Elevation error (Open-Meteo)", e);
-        // W razie błędu API rysujemy płaski wykres
         clearElevation();
     }
 }
@@ -469,19 +490,19 @@ function updateStats(distMeters) {
     document.getElementById('time').innerText = `Czas: ~${Math.floor(minutes/60)}h ${Math.round(minutes%60)}m | ⬆️ ${totalAscent}m`;
 }
 
-/* ================= EKSPORT GPX Z CZASEM (ANIMACJA) ================= */
+/* ================= EKSPORT GPX ================= */
 function exportGPX() {
     if (routeGeometry.length < 2) return alert("Brak trasy");
     
     const startTime = new Date();
-    const speedMs = 1.2; // ~4.3 km/h
+    const speedMs = 1.2; 
     let currentTime = new Date(startTime);
 
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="GPX Hiker Puszcza" xmlns="http://www.topografix.com/GPX/1/1">
 <metadata>
     <name>Wycieczka Puszcza Wkrzańska</name>
-    <desc>Trasa wygenerowana w GPX Hiker. Dystans: ${(calculateTotalDist()/1000).toFixed(2)}km.</desc>
+    <desc>Dystans: ${(calculateTotalDist()/1000).toFixed(2)}km.</desc>
     <time>${startTime.toISOString()}</time>
 </metadata>
 <trk><name>Trasa Puszcza</name><trkseg>`;
@@ -489,7 +510,6 @@ function exportGPX() {
     let prevPt = null;
 
     routeGeometry.forEach((p, index) => {
-        // Symulacja czasu dla animacji
         if (index > 0 && prevPt) {
             const d = L.latLng(prevPt).distanceTo(L.latLng(p));
             const seconds = d / speedMs;
@@ -515,7 +535,7 @@ function exportGPX() {
     a.click();
 }
 
-/* ================= POZOSTAŁE FUNKCJE (UI, RYSOWANIE) ================= */
+/* ================= POMOCNICZE UI ================= */
 function calculateTotalDist() {
     let d = 0;
     for (let i = 1; i < routeGeometry.length; i++) {
@@ -541,7 +561,7 @@ function drawElevation(data) {
     if(data.length === 0) return;
     const min = Math.min(...data);
     const max = Math.max(...data);
-    const range = (max - min) < 10 ? 10 : (max - min); // min range to avoid flat line issues
+    const range = (max - min) < 10 ? 10 : (max - min);
 
     ctx.clearRect(0,0,w,h);
     const grad = ctx.createLinearGradient(0, 0, 0, h);
@@ -552,7 +572,7 @@ function drawElevation(data) {
     ctx.moveTo(0, h);
     data.forEach((v, i) => {
         const x = (i / (data.length - 1)) * w;
-        const y = h - ((v - min) / range) * (h - 20) - 10; // padding
+        const y = h - ((v - min) / range) * (h - 20) - 10;
         ctx.lineTo(x, y);
     });
     ctx.lineTo(w, h);
@@ -571,6 +591,7 @@ function drawElevation(data) {
 }
 
 function removePointById(id) {
+    if (isRouting) return;
     const idx = routePoints.findIndex(p => p.id === id);
     if (idx > -1) {
         map.removeLayer(routePoints[idx].marker);
@@ -581,6 +602,7 @@ function removePointById(id) {
 }
 
 function movePoint(idx, direction) {
+    if (isRouting) return;
     if (direction === 'up' && idx > 0) {
         [routePoints[idx], routePoints[idx-1]] = [routePoints[idx-1], routePoints[idx]];
     } else if (direction === 'down' && idx < routePoints.length - 1) {
@@ -693,6 +715,7 @@ function takeScreenshot() {
 }
 
 function clearAll() {
+    if (isRouting) return;
     routePoints.forEach(p => map.removeLayer(p.marker));
     pois.forEach(p => map.removeLayer(p.marker));
     routePoints = []; routeGeometry = []; pois = [];
