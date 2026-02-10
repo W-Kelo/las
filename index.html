@@ -195,8 +195,7 @@
     <div class="btn-group">
         <button class="secondary" onclick="exportGPX()">⬇️ Eksport</button>
         <button class="secondary" onclick="document.getElementById('fileInput').click()">⬆️ Import</button>
-    </div>
-            <div style="display:grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px;">
+        <button onclick="openMapImageModal()" style="background:#0ea5e9;">🗺️ Obraz mapy</button>
         <button onclick="openPdfModal()" style="background: #a855f7;">📄 Pobierz PDF</button>
     </div>
     <input type="file" id="fileInput" hidden accept=".gpx" onchange="importGPX(event)">
@@ -281,6 +280,20 @@
         </div>
         <br>
         <button onclick="generatePDF()" id="pdfGenBtn" style="width:100%; background: #22c55e;">Generuj i Pobierz</button>
+    </div>
+</div>
+<div id="mapImageModal" class="floating-modal" style="width: 70vw; height: 70vh;">
+    <div class="modal-header">
+        <span>🗺️ Mapa trasy</span>
+        <div>
+            <button class="secondary" onclick="copyMapImage()">📋 Kopiuj</button>
+            <button class="secondary" onclick="downloadMapImage()">⬇️ Pobierz</button>
+            <button class="secondary" onclick="printMapImage()">🖨️ Drukuj</button>
+            <button class="danger" onclick="closeModal('mapImageModal')">X</button>
+        </div>
+    </div>
+    <div class="modal-body" style="padding:0">
+        <div id="mapImage" style="width:100%; height:100%;"></div>
     </div>
 </div>
 
@@ -914,6 +927,76 @@ async function generatePDF() {
         btn.innerText = "Generuj i Pobierz";
     }
 }
+    let imageMap = null;
+let imagePolyline = null;
+
+function openMapImageModal() {
+    const modal = document.getElementById('mapImageModal');
+    modal.style.display = 'flex';
+    makeDraggable(modal);
+
+    if (imageMap) {
+        imageMap.invalidateSize();
+        return;
+    }
+
+    imageMap = L.map('mapImage', {
+        zoomControl: false,
+        attributionControl: false,
+        preferCanvas: true
+    });
+
+    (dark ? tiles.dark : tiles.light).addTo(imageMap);
+
+    imagePolyline = L.polyline(routeGeometry, {
+        color: '#22c55e',
+        weight: 6,
+        opacity: 0.95,
+        lineJoin: 'round'
+    }).addTo(imageMap);
+
+    if (routeGeometry.length > 1) {
+        imageMap.fitBounds(imagePolyline.getBounds(), { padding: [40, 40] });
+    }
+}
+function getMapImage() {
+    const el = document.getElementById('mapImage');
+    return domtoimage.toPng(el, {
+        width: el.clientWidth,
+        height: el.clientHeight
+    });
+}
+
+async function copyMapImage() {
+    const dataUrl = await getMapImage();
+    const blob = await (await fetch(dataUrl)).blob();
+    await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+    ]);
+    alert("Mapa skopiowana do schowka");
+}
+
+async function downloadMapImage() {
+    const dataUrl = await getMapImage();
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'mapa_trasy.png';
+    a.click();
+}
+
+async function printMapImage() {
+    const dataUrl = await getMapImage();
+    const win = window.open('', '_blank');
+    win.document.write(`
+        <html>
+        <body style="margin:0">
+            <img src="${dataUrl}" style="width:100%">
+            <script>window.onload = () => window.print();<\/script>
+        </body>
+        </html>
+    `);
+}
+
 </script>
 
 </body>
