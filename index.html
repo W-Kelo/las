@@ -371,6 +371,8 @@
     const OSM_BLACKLIST = {
     amenity: [
         'parking_entrance',
+        'bbq',
+        'picnic_site',
         'bicycle_parking',
         'waste_transfer_station',
         'loading_dock'
@@ -890,6 +892,7 @@ async function loadOSMData() {
         else if (e.tags.tourism === 'viewpoint') icon = '🔭';
         else if (e.tags.amenity === 'parking') icon = '🅿️';
         else if (e.tags.tourism === 'information') icon = 'ℹ️';
+        else if (e.tags.tourism === 'drinking_water') icon = '💧';
 
         L.marker([e.lat, e.lon], {
             icon: L.divIcon({
@@ -946,10 +949,9 @@ function translateOSM(val) {
         shelter: 'Wiata',
         parking: 'Parking',
         bench: 'Ławka',
-        drinking_water: 'Woda pitna',
+        drinking_water: 'Poidełko',
         viewpoint: 'Punkt widokowy',
-        picnic_site: 'Miejsce piknikowe',
-        information: 'Informacja turystyczna'
+        information: 'Tablica informacyjna'
     };
     return dict[val] || val;
 }
