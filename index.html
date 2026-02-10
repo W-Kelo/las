@@ -180,8 +180,16 @@
     height: 88vh;
     max-width: 1300px;
     max-height: 900px;
+
+    /* ⬇️ KLUCZOWE */
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
     resize: none;
 }
+
 
 .map-export-header {
     background: linear-gradient(90deg, #16a34a, #22c55e);
@@ -216,6 +224,23 @@
     height: 100%;
     background: #e5e7eb;
 }
+        #mapExport .leaflet-control-zoom {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#mapExport .leaflet-control-zoom a {
+    background: rgba(30, 41, 59, 0.9);
+    color: white;
+    border: none;
+}
+
+.light #mapExport .leaflet-control-zoom a {
+    background: rgba(255,255,255,0.9);
+    color: #0f172a;
+}
+
 
     </style>
 </head>
@@ -979,15 +1004,20 @@ let scaleVisible = false;
 
 function openMapExportModal() {
     const modal = document.getElementById('mapExportModal');
+
+    // 🔄 reset pozycji (po ewentualnym przeciąganiu)
+    modal.style.left = '50%';
+    modal.style.top = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
+
     modal.style.display = 'flex';
 
-    // ⏳ Dajemy przeglądarce czas na layout
     requestAnimationFrame(() => {
         console.log('[EXPORT] Modal visible');
-
         initExportMap();
     });
 }
+
 function initExportMap() {
     const container = document.getElementById('mapExport');
     console.log('[EXPORT] Container size:',
@@ -1002,7 +1032,7 @@ function initExportMap() {
     }
 
     exportMap = L.map(container, {
-        zoomControl: false,
+        zoomControl: true,
         attributionControl: false,
         preferCanvas: true
     });
@@ -1023,11 +1053,16 @@ function initExportMap() {
         weight: 6,
         opacity: 1
     }).addTo(exportMap);
+    L.control.zoom({
+    position: 'topright'
+}).addTo(exportMap);
+
 
     scaleControl = L.control.scale({
         imperial: false,
         position: 'bottomleft'
     });
+    
 
     if (routeGeometry.length > 1) {
         exportMap.fitBounds(exportPolyline.getBounds(), {
@@ -1043,6 +1078,7 @@ function initExportMap() {
         console.log('[EXPORT] invalidateSize (delayed)');
         exportMap.invalidateSize(true);
     }, 200);
+    
 }
 
 
