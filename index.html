@@ -801,82 +801,114 @@ async function generatePDF() {
     const title = document.getElementById('pdfTitle').value || "Plan trasy";
     
     btn.disabled = true;
-    btn.innerText = "⏳ Składanie dokumentu...";
+    btn.innerText = "⏳ Generowanie danych...";
 
-    // 1. Przygotowanie mapy (widok na całość)
+    // --- 1. PRZYGOTOWANIE MAPY (Większy kadr) ---
     const oldBounds = map.getBounds();
-    map.fitBounds(polyline.getBounds(), { padding: [30, 30], animate: false });
-    await new Promise(r => setTimeout(r, 1000)); // Czekamy na kafelki
+    map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
+    await new Promise(r => setTimeout(r, 1200)); 
+    const mapImg = await domtoimage.toPng(document.getElementById('map'), {
+        width: 1600, // Zwiększona rozdzielczość dla PDF
+        height: 900
+    });
 
-    // 2. Pobranie danych z UI
-    const stats = document.getElementById('stats').innerText;
-    const time = document.getElementById('time').innerText;
-    const elevCanvas = document.getElementById('elevation');
-    const pointsList = document.getElementById('pointsList').innerHTML;
-    const routeDesc = document.getElementById('routeDescText').innerHTML;
-    const mapImg = await domtoimage.toPng(document.getElementById('map'));
+ // --- 2. EKSTRAKCJA SUROWYCH DANYCH (Model danych) ---
+    const stats = {
+        dist: document.getElementById('stats').innerText,
+        time: document.getElementById('time').innerText
+    };
 
-    // 3. Budowanie struktury HTML dla PDF (nowoczesny styl)
+    // Budowanie czystej listy punktów z wysokością i współrzędnymi
+    const pointsData = routePoints.map((p, i) => {
+        const type = i === 0 ? "START" : (i === routePoints.length - 1 ? "META" : `Punkt ${i+1}`);
+        
+        // Pobieramy współrzędne z obiektu latlng (format: DD.DDDDD)
+        const lat = p.latlng.lat.toFixed(5);
+        const lng = p.latlng.lng.toFixed(5);
+        const elev = p.elevation ? `${p.elevation.toFixed(0)} m n.p.m.` : "---";
+        const dist = i === 0 ? "Punkt początkowy" : `+${p.distFromPrev.toFixed(0)} m`;
+
+        return `
+            <li style="margin-bottom: 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 5px;">
+                <div style="font-weight: bold; color: #16a34a;">${type}</div>
+                <div style="font-size: 11px; color: #475569;">
+                    📍 Współrzędne: <code style="background: #f1f5f9; padding: 1px 4px;">${lat}, ${lng}</code> | 
+                    ⛰️ Wysokość: <b>${elev}</b> | 
+                    📏 Odległość: ${dist}
+                </div>
+            </li>`;
+    }).join('');
+
+    // Pobieramy surowy tekst instrukcji, usuwając tagi HTML, ale zachowując nowe linie
+    const rawDesc = document.getElementById('routeDescText').innerText;
+
+    // --- 3. BUDOWANIE "SZABLONU" (Czysty, nowoczesny dokument) ---
     const element = document.createElement('div');
+    element.style.width = "750px"; // Szerokość robocza
     element.innerHTML = `
-        <div style="padding: 40px; font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; line-height: 1.6;">
-            <h1 style="color: #16a34a; font-size: 28px; margin-bottom: 5px; border-bottom: 2px solid #16a34a;">${title}</h1>
-            <p style="font-size: 12px; color: #64748b; margin-bottom: 20px;">Wygenerowano: ${new Date().toLocaleString('pl-PL')}</p>
-            
-            <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                <strong style="font-size: 16px;">Podsumowanie: ${stats}</strong><br>
-                <span style="color: #475569;">${time}</span>
+        <div style="padding: 30px; font-family: 'DejaVu Sans', Arial, sans-serif; color: #1e293b;">
+            <header style="border-bottom: 3px solid #16a34a; padding-bottom: 10px; margin-bottom: 20px;">
+                <h1 style="font-size: 26px; margin: 0; color: #16a34a;">${title}</h1>
+                <p style="margin: 5px 0 0 0; color: #64748b; font-size: 12px;">Planer Puszczy Wkrzańskiej | ${new Date().toLocaleString('pl-PL')}</p>
+            </header>
+
+            <div style="margin-bottom: 20px; font-size: 14px;">
+                <strong>Podsumowanie trasy:</strong> ${stats.dist} | ${stats.time}
             </div>
 
             ${document.getElementById('pdfIncludeMap').checked ? `
                 <div style="margin-bottom: 25px;">
-                    <h2 style="font-size: 18px; color: #334155;">Mapa trasy</h2>
-                    <img src="${mapImg}" style="width: 100%; border-radius: 8px; border: 1px solid #cbd5e1;">
+                    <img src="${mapImg}" style="width: 100%; border: 1px solid #ddd; border-radius: 4px;">
                 </div>
             ` : ''}
 
             ${document.getElementById('pdfIncludeElev').checked ? `
                 <div style="margin-bottom: 25px;">
-                    <h2 style="font-size: 18px; color: #334155;">Profil wysokości</h2>
-                    <img src="${elevCanvas.toDataURL()}" style="width: 100%; height: 120px; background: #f8fafc; border-radius: 8px;">
+                    <h2 style="font-size: 16px; border-left: 4px solid #16a34a; padding-left: 10px;">Profil wysokości</h2>
+                    <img src="${document.getElementById('elevation').toDataURL()}" style="width: 100%; height: 100px;">
                 </div>
             ` : ''}
 
-            <div style="display: grid; grid-template-columns: 1fr; gap: 20px;">
+            <div style="display: block;">
                 ${document.getElementById('pdfIncludePoints').checked ? `
-                    <div>
-                        <h2 style="font-size: 18px; color: #334155;">Punkty kontrolne</h2>
-                        <div style="font-size: 13px;">${pointsList}</div>
+                    <div style="margin-bottom: 25px;">
+                        <h2 style="font-size: 16px; border-left: 4px solid #16a34a; padding-left: 10px;">Lista punktów</h2>
+                        <ul style="font-size: 12px; color: #334155; padding-left: 20px;">
+                            ${pointsData}
+                        </ul>
                     </div>
                 ` : ''}
 
                 ${document.getElementById('pdfIncludeDesc').checked ? `
                     <div style="page-break-before: auto;">
-                        <h2 style="font-size: 18px; color: #334155;">Instrukcja przejścia</h2>
-                        <div style="font-size: 13px; text-align: justify; white-space: pre-wrap;">${routeDesc}</div>
+                        <h2 style="font-size: 16px; border-left: 4px solid #16a34a; padding-left: 10px;">Instrukcja przejścia</h2>
+                        <div style="font-size: 12px; text-align: justify; line-height: 1.5; white-space: pre-line; background: #f8fafc; padding: 15px; border-radius: 5px;">
+                            ${rawDesc}
+                        </div>
                     </div>
                 ` : ''}
             </div>
         </div>
     `;
 
-    // 4. Konfiguracja i eksport
+    // --- 4. KONFIGURACJA EKSPORTU ---
     const opt = {
-        margin: [10, 10],
+        margin: 10,
         filename: title.replace(/\s+/g, '_') + '.pdf',
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        image: { type: 'jpeg', quality: 1.0 },
+        html2canvas: { 
+            scale: 3, // Wysoka jakość
+            useCORS: true, 
+            letterRendering: true 
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
     try {
         await html2pdf().set(opt).from(element).save();
     } catch (err) {
         console.error("PDF Error:", err);
-        alert("Błąd podczas generowania PDF. Spróbuj ponownie.");
     } finally {
-        // Przywrócenie widoku mapy
         map.fitBounds(oldBounds, { animate: false });
         btn.disabled = false;
         btn.innerText = "Generuj i Pobierz";
