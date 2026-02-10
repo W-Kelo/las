@@ -193,8 +193,10 @@
 
     <div class="btn-group">
         <button class="secondary" onclick="exportGPX()">⬇️ Eksport</button>
-        <button onclick="openPdfModal()" style="background: #a855f7;">📄 Pobierz PDF</button>
         <button class="secondary" onclick="document.getElementById('fileInput').click()">⬆️ Import</button>
+    </div>
+            <div style="display:grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px;">
+        <button onclick="openPdfModal()" style="background: #a855f7;">📄 Pobierz PDF</button>
     </div>
     <input type="file" id="fileInput" hidden accept=".gpx" onchange="importGPX(event)">
 
@@ -797,90 +799,121 @@ async function generatePDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF('p', 'mm', 'a4');
     const btn = document.getElementById('pdfGenBtn');
+    
     btn.disabled = true;
-    btn.innerText = "⏳ Generowanie...";
+    btn.innerText = "⏳ Przygotowywanie składu...";
 
     const title = document.getElementById('pdfTitle').value || "Plan trasy";
-    let y = 20;
+    const margin = 20;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const contentWidth = pageWidth - (2 * margin);
+    let y = 25;
 
-    // --- Stylizacja i Nagłówek ---
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.setTextColor(34, 197, 94); // Zielony akcent
-    doc.text(title, 20, y);
+    // --- POMOCNIK: STYLIŚCI ---
+    const setHeaderStyle = () => { doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(34, 197, 94); };
+    const setSubHeaderStyle = () => { doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(0, 0, 0); };
+    const setNormalStyle = () => { doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor(60, 60, 60); };
+
+    // 1. TYTUŁ I NAGŁÓWEK
+    setHeaderStyle();
+    doc.text(title, margin, y);
     y += 10;
+    
+    setNormalStyle();
+    doc.text(`Data wygenerowania: ${new Date().toLocaleDateString('pl-PL')} ${new Date().toLocaleTimeString('pl-PL')}`, margin, y);
+    y += 15;
 
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Wygenerowano: ${new Date().toLocaleString()}`, 20, y);
-    y += 10;
-
-    // 1. Statystyki
+    // 2. STATYSTYKI
     if (document.getElementById('pdfIncludeStats').checked) {
-        doc.setFontSize(12);
-        doc.setTextColor(0);
+        setSubHeaderStyle();
         const stats = document.getElementById('stats').innerText;
         const time = document.getElementById('time').innerText;
-        doc.text(`Dystans: ${stats} | ${time}`, 20, y);
-        y += 10;
+        doc.text(`Podsumowanie: ${stats} | ${time}`, margin, y);
+        y += 12;
     }
 
-    // 2. Mapa
-    if (document.getElementById('pdfIncludeMap').checked) {
+    // 3. MAPA (Poprawiona: widok na całą trasę)
+    if (document.getElementById('pdfIncludeMap').checked && routeGeometry.length > 0) {
         try {
+            btn.innerText = "📸 Przechwytywanie mapy...";
+            // Zapamiętaj obecny widok
+            const oldBounds = map.getBounds();
+            // Dopasuj do trasy bez animacji
+            map.fitBounds(polyline.getBounds(), { padding: [20, 20], animate: false });
+            
+            // Czekamy 800ms na dociągnięcie kafelków mapy
+            await new Promise(r => setTimeout(r, 800));
+
             const mapEl = document.getElementById('map');
-            const mapImg = await domtoimage.toPng(mapEl, {width: 800, height: 600});
-            doc.addImage(mapImg, 'PNG', 20, y, 170, 100);
-            y += 110;
-        } catch(e) { console.error("PDF Map Error", e); }
+            const mapImg = await domtoimage.toPng(mapEl, { 
+                width: 1200, 
+                height: 800,
+                style: { transform: 'scale(1)', left: 0, top: 0 } 
+            });
+            
+            doc.addImage(mapImg, 'PNG', margin, y, contentWidth, 90);
+            y += 100;
+
+            // Przywróć widok użytkownika
+            map.fitBounds(oldBounds, { animate: false });
+        } catch(e) { console.error("Błąd mapy:", e); }
     }
 
-    // 3. Wykres wysokości
+    // 4. WYKRES WYSOKOŚCI (Poprawiona ostrość)
     if (document.getElementById('pdfIncludeElev').checked) {
+        if (y > 230) { doc.addPage(); y = 25; }
+        setSubHeaderStyle();
+        doc.text("Profil terenu:", margin, y);
+        y += 5;
+        
         const canvas = document.getElementById('elevation');
-        const elevImg = canvas.toDataURL("image/png");
-        doc.setFontSize(14);
-        doc.text("Profil wysokości:", 20, y - 5);
-        doc.addImage(elevImg, 'PNG', 20, y, 170, 40);
+        // Pobieramy obraz w najwyższej dostępnej jakości z canvasu
+        const elevImg = canvas.toDataURL("image/png", 1.0);
+        doc.addImage(elevImg, 'PNG', margin, y, contentWidth, 40);
         y += 50;
     }
 
-    // Dodanie nowej strony jeśli mało miejsca
-    if (y > 200) { doc.addPage(); y = 20; }
-
-    // 4. Lista punktów
+    // 5. PUNKTY KONTROLNE
     if (document.getElementById('pdfIncludePoints').checked && routePoints.length > 0) {
-        doc.setFontSize(16);
-        doc.setTextColor(34, 197, 94);
-        doc.text("Punkty kontrolne:", 20, y);
-        y += 10;
-        doc.setFontSize(10);
-        doc.setTextColor(0);
+        if (y > 250) { doc.addPage(); y = 25; }
+        setSubHeaderStyle();
+        doc.text("Lista punktów na trasie:", margin, y);
+        y += 8;
+        
+        setNormalStyle();
         routePoints.forEach((p, i) => {
-            if (y > 270) { doc.addPage(); y = 20; }
-            doc.text(`${i + 1}. Punkt (${p.elevation.toFixed(0)}m n.p.m.) - +${p.distFromPrev.toFixed(0)}m`, 25, y);
+            const txt = `${i + 1}. Punkt: ${p.elevation.toFixed(0)}m n.p.m. (odcinek: +${p.distFromPrev.toFixed(0)}m)`;
+            doc.text(txt, margin + 5, y);
             y += 7;
+            if (y > 280) { doc.addPage(); y = 25; }
         });
         y += 10;
     }
 
-    // 5. Opis trasy
+    // 6. SZCZEGÓŁOWY OPIS (Poprawione zawijanie tekstu)
     if (document.getElementById('pdfIncludeDesc').checked) {
-        if (y > 240) { doc.addPage(); y = 20; }
-        doc.setFontSize(16);
-        doc.setTextColor(34, 197, 94);
-        doc.text("Szczegółowy opis:", 20, y);
-        y += 10;
-        doc.setFontSize(9);
-        doc.setTextColor(50);
+        if (y > 260) { doc.addPage(); y = 25; }
+        setSubHeaderStyle();
+        doc.text("Instrukcja przejścia:", margin, y);
+        y += 8;
         
-        // Wyciągamy czysty tekst z modala opisu
+        setNormalStyle();
         const descText = document.getElementById('routeDescText').innerText;
-        const splitText = doc.splitTextToSize(descText, 170);
-        doc.text(splitText, 20, y);
+        
+        // Automatyczne dzielenie tekstu na linie, które mieszczą się w szerokości strony
+        const lines = doc.splitTextToSize(descText, contentWidth);
+        
+        lines.forEach(line => {
+            if (y > 285) { doc.addPage(); y = 25; }
+            doc.text(line, margin, y);
+            y += 6; // interliniia
+        });
     }
 
-    doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
+    // FINALIZACJA
+    const fileName = title.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    doc.save(`${fileName}.pdf`);
+    
     btn.disabled = false;
     btn.innerText = "Generuj i Pobierz";
 }
