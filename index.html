@@ -175,12 +175,24 @@
             .leaflet-control-zoom { display: none; }
             .floating-modal { width: 95%; left: 2.5% !important; top: 10% !important; height: auto; max-height: 60vh;}
         }
-        .map-export-modal {
-    width: 80vw;
-    height: 80vh;
-    max-width: 1100px;
-    max-height: 800px;
+.map-export-modal {
+    width: 85vw;
+    height: 85vh;
+    max-width: 1200px;
+    max-height: 850px;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    resize: none;
 }
+
+#mapExport {
+    width: 100%;
+    height: 100%;
+    background: #111;
+    border-radius: 0 0 12px 12px;
+}
+
 
 .map-export-header {
     background: linear-gradient(90deg, #16a34a, #22c55e);
@@ -205,11 +217,7 @@
     background: rgba(255,255,255,0.3);
 }
 
-#mapExport {
-    width: 100%;
-    height: 100%;
-    background: #000;
-}
+
 
     </style>
 </head>
@@ -965,7 +973,7 @@ async function generatePDF() {
         btn.innerText = "Generuj i Pobierz";
     }
 }
-   let exportMap, exportPolyline, scaleControl;
+   let exportMap, exportPolyline, scaleControl, scaleVisible = false;
 
 function openMapExportModal() {
     const modal = document.getElementById('mapExportModal');
@@ -980,23 +988,30 @@ function openMapExportModal() {
     exportMap = L.map('mapExport', {
         zoomControl: false,
         attributionControl: false,
-        renderer: L.svg()   // ⬅️ WYMUSZENIE SVG
+        preferCanvas: true   // ⬅️ TO JEST WAŻNE
     });
 
-    (dark ? tiles.dark : tiles.light).addTo(exportMap);
+    // KAFELKI – MUSZĄ BYĆ Z CORS
+    const tile = (dark ? tiles.dark : tiles.light);
+    tile.addTo(exportMap);
 
     exportPolyline = L.polyline(routeGeometry, {
         color: '#22c55e',
         weight: 6,
-        opacity: 1
+        opacity: 1,
+        lineJoin: 'round'
     }).addTo(exportMap);
 
-    scaleControl = L.control.scale({ imperial: false });
+    scaleControl = L.control.scale({
+        position: 'bottomleft',
+        imperial: false
+    });
 
     exportMap.fitBounds(exportPolyline.getBounds(), {
-        padding: [40, 40]
+        padding: [50, 50]
     });
 }
+
 let scaleVisible = false;
 
 function toggleScale() {
@@ -1008,36 +1023,83 @@ function toggleScale() {
         exportMap.removeControl(scaleControl);
     }
 }
+
 async function exportMapPNG() {
     const el = document.getElementById('mapExport');
-    const dataUrl = await domtoimage.toPng(el, { useCORS: true });
+
+    const canvas = await html2canvas(el, {
+        useCORS: true,
+        backgroundColor: null,
+        scale: 2
+    });
+
     const a = document.createElement('a');
-    a.href = dataUrl;
+    a.href = canvas.toDataURL('image/png');
     a.download = 'mapa_trasy.png';
     a.click();
 }
 
-    function exportMapSVG() {
-    const svg = exportMap.getPanes().overlayPane.querySelector('svg');
-    if (!svg) {
-        alert("Brak danych SVG");
+
+   function exportMapSVG() {
+    if (!routeGeometry.length) {
+        alert("Brak trasy");
         return;
     }
 
-    const serializer = new XMLSerializer();
-    let source = serializer.serializeToString(svg);
+    const bounds = exportPolyline.getBounds();
+    const size = exportMap.getSize();
 
-    const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
+    let path = '';
+    routeGeometry.forEach((p, i) => {
+        const point = exportMap.latLngToLayerPoint(p);
+        path += (i === 0 ? 'M' : 'L') + point.x + ' ' + point.y + ' ';
+    });
 
+    const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${size.x}" height="${size.y}">
+    <rect width="100%" height="100%" fill="white"/>
+    <path d="${path}"
+          fill="none"
+          stroke="#22c55e"
+          stroke-width="6"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+</svg>`;
+
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
     const a = document.createElement('a');
-    a.href = url;
+    a.href = URL.createObjectURL(blob);
     a.download = 'trasa.svg';
     a.click();
 }
-function printExportMap() {
-    exportMapPNG().then(() => window.print());
+
+async function printExportMap() {
+    const el = document.getElementById('mapExport');
+    const canvas = await html2canvas(el, {
+        useCORS: true,
+        scale: 2
+    });
+
+    const win = window.open('', '_blank');
+    win.document.write(`
+        <html>
+        <head>
+            <title>Mapa trasy</title>
+            <style>
+                body { margin:0; display:flex; justify-content:center; align-items:center; }
+                img { max-width:100%; }
+            </style>
+        </head>
+        <body>
+            <img src="${canvas.toDataURL('image/png')}">
+            <script>
+                window.onload = () => window.print();
+            <\/script>
+        </body>
+        </html>
+    `);
 }
+
 </script>
 
 </body>
