@@ -869,7 +869,7 @@ async function loadOSMData() {
         });
         data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
             let icon = '📍'; if(e.tags.amenity === 'shelter') icon = '🛖'; else if(e.tags.tourism === 'viewpoint') icon = '🔭'; else if(e.tags.amenity === 'parking') icon = '🅿️';
-            L.marker([e.lat, e.lon], {icon: L.divIcon({ html: `<div style="font-size:18px">${icon}</div>`, className: 'poi-icon' })}).bindPopup(`<b>${e.tags.name || "Punkt"}</b>`).addTo(poiLayer);
+            L.marker([e.lat, e.lon], {icon: L.divIcon({ html: `<div style="font-size:18px">${icon}</div>`, className: 'poi-icon' })}).bindPopup(buildOSMPopup(e)).addTo(poiLayer);
         });
     } catch (e) {}
 }
@@ -878,6 +878,52 @@ loadOSMData();
     document.getElementById('pdfModal').style.display = 'flex';
     makeDraggable(document.getElementById('pdfModal'));
 }
+    function buildOSMPopup(e) {
+    const t = e.tags || {};
+    let html = '';
+
+    // Tytuł
+    if (t.name) {
+        html += `<b>${t.name}</b><br>`;
+    } else if (t.amenity) {
+        html += `<b>${translateOSM(t.amenity)}</b><br>`;
+    } else if (t.tourism) {
+        html += `<b>${translateOSM(t.tourism)}</b><br>`;
+    } else if (t.historic) {
+        html += `<b>${translateOSM(t.historic)}</b><br>`;
+    } else if (t.natural) {
+        html += `<b>${translateOSM(t.natural)}</b><br>`;
+    } else {
+        html += `<b>Obiekt OSM</b><br>`;
+    }
+
+    // Szczegóły
+    html += `<hr style="margin:4px 0">`;
+    for (const k in t) {
+        html += `<small>${k}: ${t[k]}</small><br>`;
+    }
+
+    // Link do OSM
+    html += `<hr style="margin:4px 0">
+        <a href="https://www.openstreetmap.org/node/${e.id}" target="_blank">
+        🔗 Zobacz w OpenStreetMap
+        </a>`;
+
+    return html;
+}
+function translateOSM(val) {
+    const dict = {
+        shelter: 'Wiata',
+        parking: 'Parking',
+        bench: 'Ławka',
+        drinking_water: 'Woda pitna',
+        viewpoint: 'Punkt widokowy',
+        picnic_site: 'Miejsce piknikowe',
+        information: 'Informacja turystyczna'
+    };
+    return dict[val] || val;
+}
+
 
 async function generatePDF() {
     const btn = document.getElementById('pdfGenBtn');
