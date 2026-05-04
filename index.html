@@ -1566,17 +1566,18 @@ function placeSearchMarker(lat, lon, title) {
 }
 
 
-/* ================= ULEPSZONY EKSPORT MAPY ================= */
+/* ================= ULEPSZONY EKSPORT MAPY (SPOSPRZĄTANY) ================= */
 let exportLegendMode = false;
-let exportMarkers = [];
+let exportLegendItems = {}; 
+let editingLegendId = null;
 let tempLegendClickLatLng = null;
 let selectedEmoji = "📍";
-let exportMapDark = dark; // Niezależna flaga motywu dla mapy eksportowej
+let exportMapDark = dark; 
 let exportTileLayer = null;
 
-// Więcej ikon dla lepszego wyboru
 const EMOJIS = ["📍","🛖","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "🪧"];
 
+// UI Emoji Pickera
 document.getElementById('emojiGridList').innerHTML = EMOJIS.map(e => 
     `<div class="emoji-btn ${e==='📍'?'selected':''}" onclick="selectEmoji('${e}', this)">${e}</div>`
 ).join('');
@@ -1587,23 +1588,7 @@ function selectEmoji(e, btn) {
     btn.classList.add('selected');
 }
 
-// Niezależna zmiana motywu w modalu eksportu
-function toggleExportTheme() {
-    if(!exportMap) return;
-    exportMapDark = !exportMapDark;
-    
-    if(exportTileLayer) exportMap.removeLayer(exportTileLayer);
-    
-    const url = exportMapDark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-    exportTileLayer = L.tileLayer(url, { maxZoom: 19, crossOrigin: true, attribution: '' });
-    exportTileLayer.addTo(exportMap);
-}
-
-const originalInitExportMap = initExportMap;
-initExportMap = function() {
+function initExportMap() {
     exportMapDark = dark; // Synchronizuj z główną aplikacją przy otwarciu
     
     if (exportMap) {
@@ -1615,13 +1600,14 @@ initExportMap = function() {
     }
 
     const container = document.getElementById('mapExport');
+    
+    // zoomControl: false ukrywa na stałe przyciski na samej mapie
     exportMap = L.map(container, { zoomControl: false, attributionControl: false, preferCanvas: true });
     
     exportTileLayer = getExportTileLayer();
     exportTileLayer.addTo(exportMap);
 
     exportPolyline = L.polyline(routeGeometry, { color: '#22c55e', weight: 6, opacity: 1 }).addTo(exportMap);
-    L.control.zoom({ position: 'topright' }).addTo(exportMap);
     scaleControl = L.control.scale({ imperial: false, position: 'bottomright' });
 
     if (routeGeometry.length > 1) {
@@ -1630,17 +1616,16 @@ initExportMap = function() {
 
     setTimeout(() => exportMap.invalidateSize(true), 400);
 
-    // Event Legendy
+    // Event Legendy na mapie
     exportMap.on('click', function(e) {
         if(!exportLegendMode) return;
-        editingLegendId = null; // Zresetuj ID edycji (zaczynamy nowy punkt)
+        editingLegendId = null; 
         tempLegendClickLatLng = e.latlng;
         
         const ui = document.getElementById('emojiPickerUI');
         ui.style.display = 'block';
-        ui.style.transform = 'none'; // Reset transform z trybu edycji
+        ui.style.transform = 'none'; 
         
-        const container = document.getElementById('mapExport');
         const point = exportMap.latLngToContainerPoint(e.latlng);
         let posX = point.x + 10;
         let posY = point.y + 10;
@@ -1653,7 +1638,7 @@ initExportMap = function() {
         document.getElementById('emojiLabelText').value = '';
         document.getElementById('emojiLabelText').focus();
     });
-};
+}
 
 function getExportTileLayer() {
     const url = exportMapDark
@@ -1662,9 +1647,21 @@ function getExportTileLayer() {
     return L.tileLayer(url, { maxZoom: 19, crossOrigin: true, attribution: '' });
 }
 
-/* --- OBSŁUGA WEWNĘTRZNEGO MODALA INFORMACJI (KARTUSZA) --- */
-function openExportMetaModal() {
-    document.getElementById('exportMetaModal').style.display = 'flex';
+function toggleExportTheme() {
+    if(!exportMap) return;
+    exportMapDark = !exportMapDark;
+    if(exportTileLayer) exportMap.removeLayer(exportTileLayer);
+    exportTileLayer = getExportTileLayer();
+    exportTileLayer.addTo(exportMap);
+}
+
+// Zewnętrzne przyciski ZOOMA w nagłówku okna
+function exportZoomIn() { if (exportMap) exportMap.zoomIn(); }
+function exportZoomOut() { if (exportMap) exportMap.zoomOut(); }
+
+/* --- OBSŁUGA WEWNĘTRZNEGO MODALA INFORMACJI --- */
+function openExportMetaModal() { 
+    document.getElementById('exportMetaModal').style.display = 'flex'; 
 }
 
 function togglePanelTheme(isDark) {
@@ -1683,7 +1680,6 @@ function saveExportMeta() {
     const elDate = document.getElementById('miDate');
     const elDesc = document.getElementById('miDesc');
 
-    // Aktualizacja tekstów i widoczności
     if(tTitle) { elTitle.innerHTML = tTitle; elTitle.style.display = 'block'; } else elTitle.style.display = 'none';
     if(tDate) { elDate.innerHTML = tDate; elDate.style.display = 'block'; } else elDate.style.display = 'none';
     if(tDesc) { elDesc.innerHTML = tDesc.replace(/\n/g, '<br>'); elDesc.style.display = 'block'; } else elDesc.style.display = 'none';
@@ -1703,10 +1699,7 @@ function updatePanelVisibility() {
     else panel.style.display = 'none';
 }
 
-/* --- OBSŁUGA LEGENDY (Z EDYCJĄ I PRZECIĄGANIEM) --- */
-let exportLegendItems = {}; // Zamiast tablicy, używamy obiektu z ID
-let editingLegendId = null; // Przechowuje ID obecnie edytowanego punktu
-
+/* --- OBSŁUGA LEGENDY --- */
 function toggleLegendMode() {
     exportLegendMode = !exportLegendMode;
     const btn = document.getElementById('btnLegend');
@@ -1714,7 +1707,7 @@ function toggleLegendMode() {
     if(exportLegendMode) {
         btn.style.boxShadow = "0 0 10px white";
         document.getElementById('mapExport').style.cursor = 'crosshair';
-        alert("Tryb legendy aktywny.\n1. Kliknij na mapę, by dodać punkt.\n2. Przytrzymaj i przeciągnij istniejący punkt na mapie, by zmienić jego pozycję.\n3. Najedź na listę w panelu, by edytować tekst/ikonę.");
+        // Alert usunięty zgodnie z życzeniem!
     } else {
         btn.style.boxShadow = "none";
         document.getElementById('mapExport').style.cursor = '';
@@ -1732,27 +1725,19 @@ function saveLegendItem() {
     const text = document.getElementById('emojiLabelText').value.trim() || "Ważny punkt";
     
     if (editingLegendId && exportLegendItems[editingLegendId]) {
-        // --- AKTUALIZACJA ISTNIEJĄCEGO PUNKTU ---
         const item = exportLegendItems[editingLegendId];
         item.text = text;
         item.emoji = selectedEmoji;
-        
-        // Aktualizuj marker
         item.marker.setIcon(L.divIcon({ 
             html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));" title="Przeciągnij by przenieść">${selectedEmoji}</div>`, 
             className: 'poi-icon' 
         }));
         
-        // Aktualizuj listę w HTML
         const li = document.getElementById(editingLegendId);
         li.querySelector('.leg-icon').innerHTML = selectedEmoji;
         li.querySelector('.leg-text').innerText = text;
-        
     } else if (tempLegendClickLatLng) {
-        // --- TWORZENIE NOWEGO PUNKTU ---
         const id = 'leg_' + Date.now();
-        
-        // Tworzenie markera z opcją DRAGGABLE (przeciąganie!)
         const marker = L.marker(tempLegendClickLatLng, {
             draggable: true, 
             icon: L.divIcon({ 
@@ -1761,15 +1746,9 @@ function saveLegendItem() {
             })
         }).addTo(exportMap);
 
-        // Zapobiega pojawianiu się okienka tworzenia przy kliknięciu w sam znacznik
-        marker.on('click', function(e) {
-            L.DomEvent.stopPropagation(e);
-        });
-
-        // Dodawanie elementu do obiektu
+        marker.on('click', function(e) { L.DomEvent.stopPropagation(e); });
         exportLegendItems[id] = { marker, emoji: selectedEmoji, text };
 
-        // Dodawanie do listy legendy w panelu HTML
         document.getElementById('miLegendContainer').style.display = 'block';
         const list = document.getElementById('exportLegendList');
         const li = document.createElement('li');
@@ -1784,23 +1763,18 @@ function saveLegendItem() {
         `;
         list.appendChild(li);
     }
-
     updatePanelVisibility();
     closeEmojiPicker();
 }
 
-// Funkcja wywoływana przyciskiem ✏️ w panelu
 function editLegendItem(id) {
     const item = exportLegendItems[id];
     if(!item) return;
 
     editingLegendId = id;
-    
-    // Ustaw wartości w UI modala
     document.getElementById('emojiLabelText').value = item.text;
     selectEmoji(item.emoji, Array.from(document.querySelectorAll('.emoji-btn')).find(b => b.innerText === item.emoji));
     
-    // Pokaż UI po środku ekranu (dla wygody edycji)
     const ui = document.getElementById('emojiPickerUI');
     ui.style.display = 'block';
     ui.style.left = '50%';
@@ -1808,31 +1782,16 @@ function editLegendItem(id) {
     ui.style.transform = 'translate(-50%, -50%)';
 }
 
-// Funkcja wywoływana przyciskiem 🗑️ w panelu
 function deleteLegendItem(id) {
     const item = exportLegendItems[id];
     if(!item) return;
-
-    // Usuń z mapy
     exportMap.removeLayer(item.marker);
-    
-    // Usuń z panelu HTML
     document.getElementById(id).remove();
-    
-    // Usuń ze słownika danych
     delete exportLegendItems[id];
-    
     updatePanelVisibility();
 }
-/* --- STEROWANIE ZOOMEM Z PASKA NARZĘDZI --- */
-function exportZoomIn() {
-    if (exportMap) exportMap.zoomIn();
-}
 
-function exportZoomOut() {
-    if (exportMap) exportMap.zoomOut();
-}
-// Zrzuty ekranu dla ExportWrapper
+/* --- ZRZUTY EKRANU DLA EKSPORTU --- */
 async function exportMapPNG() {
     const el = document.getElementById('exportWrapper');
     const canvas = await html2canvas(el, { useCORS: true, scale: 2, backgroundColor: null });
