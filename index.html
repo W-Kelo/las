@@ -275,17 +275,73 @@
 .export-overlay.bottom-left { bottom: 20px; left: 20px; font-size: 0.9rem; min-width: 150px; pointer-events: auto; }
 #exportLegendList { list-style: none; padding: 0; margin: 0; }
 #exportLegendList li { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-
-/* Emoji Picker */
-#emojiPickerUI {
-    position: absolute; background: white; color: black; padding: 12px;
-    border-radius: 8px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); z-index: 2000;
-    display: none; width: 220px; cursor: default;
+/* --- ELEGANCKI PANEL INFORMACYJNY NA MAPIE (KARTUSZ) --- */
+.map-info-panel {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #0f172a;
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 1000;
+    pointer-events: auto; /* Pozwala klikać w panel, ale nie psuje mapy */
+    font-family: 'Segoe UI', sans-serif;
+    min-width: 200px;
+    max-width: 350px;
+    display: none; /* Domyślnie ukryty, pokazuje się gdy dodamy dane */
+    border: 1px solid rgba(0,0,0,0.1);
+    backdrop-filter: blur(4px);
 }
-.emoji-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin-bottom: 10px; }
-.emoji-btn { background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px; cursor: pointer; text-align: center; font-size: 18px; }
-.emoji-btn:hover, .emoji-btn.selected { background: #cbd5e1; border-color: #94a3b8; }
-.emoji-picker-actions { display: flex; gap: 5px; margin-top: 10px; }
+.map-info-panel.dark-theme {
+    background: rgba(15, 23, 42, 0.92);
+    color: #f1f5f9;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+.map-info-title { font-size: 1.4rem; font-weight: bold; color: #16a34a; margin: 0 0 5px 0; }
+.map-info-date { font-size: 0.85rem; color: #64748b; margin-bottom: 8px; font-style: italic; }
+.map-info-desc { font-size: 0.95rem; margin-bottom: 12px; line-height: 1.4; }
+.map-info-legend-title { font-size: 1rem; font-weight: bold; margin: 10px 0 5px 0; border-top: 1px solid #ccc; padding-top: 10px; }
+.dark-theme .map-info-legend-title { border-top-color: #334155; }
+.map-info-legend-list { list-style: none; padding: 0; margin: 0; font-size: 0.9rem; }
+.map-info-legend-list li { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+
+/* --- POPRAWIONY EMOJI PICKER --- */
+#emojiPickerUI {
+    position: absolute; background: white; color: black; padding: 15px;
+    border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 2000;
+    display: none; width: 300px; cursor: default; border: 1px solid #ccc;
+}
+.emoji-grid { 
+    display: grid; 
+    grid-template-columns: repeat(6, 1fr); 
+    gap: 6px; 
+    margin-bottom: 15px; 
+    max-height: 140px; 
+    overflow-y: auto; 
+    padding-right: 5px;
+}
+.emoji-btn { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 0; cursor: pointer; text-align: center; font-size: 20px; transition: 0.2s;}
+.emoji-btn:hover, .emoji-btn.selected { background: #cbd5e1; border-color: #94a3b8; transform: scale(1.05); }
+
+/* --- WEWNĘTRZNY MODAL DO EDYCJI DANYCH MAPY --- */
+.inner-modal-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6); z-index: 3000; display: none;
+    align-items: center; justify-content: center; backdrop-filter: blur(2px);
+}
+.inner-modal {
+    background: #1e293b; color: white; padding: 20px; border-radius: 12px;
+    width: 350px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column; gap: 12px; border: 1px solid rgba(255,255,255,0.1);
+}
+.inner-modal input, .inner-modal textarea {
+    width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #475569;
+    background: #0f172a; color: white; box-sizing: border-box; font-family: inherit;
+}
+.inner-modal textarea { resize: vertical; min-height: 80px; }
+
 
     </style>
 </head>
@@ -403,11 +459,10 @@
     <div class="map-export-header modal-header">
         <strong>🗺️ Eksport mapy trasy</strong>
         <div class="map-export-actions">
-            <!-- Przyciski opcjonalnych elementów -->
-            <button onclick="toggleScale()" title="Skala">📏</button>
-            <button onclick="toggleOverlay('Title', 'Tytuł mapy')" title="Tytuł mapy">Tytuł</button>
-            <button onclick="toggleOverlay('Date', 'Data wycieczki (np. 12 Maj 2026)')" title="Data wycieczki">Data</button>
-            <button onclick="toggleOverlay('Desc', 'Krótki opis wycieczki')" title="Opis">Opis</button>
+            <!-- Nowe opcje w nagłówku -->
+            <button onclick="toggleExportTheme()" title="Zmień motyw samej mapy eksportowej">🌓 Motyw Mapy</button>
+            <button onclick="openExportMetaModal()" title="Edytuj tytuł, datę i opis">📝 Edytuj Info</button>
+            <button onclick="toggleScale()">📏 Skala</button>
             <button onclick="toggleLegendMode()" id="btnLegend" style="background: #a855f7" title="Zaznacz na mapie obiekty do legendy">📍 Legenda</button>
             
             <span style="border-left: 1px solid rgba(255,255,255,0.3); margin: 0 4px;"></span>
@@ -418,33 +473,65 @@
             <button onclick="closeModal('mapExportModal')">✖</button>
         </div>
     </div>
-    <div class="modal-body" style="padding:0">
-        <!-- Wrapper łączący mapę i nakładki (do zrzutu ekranu) -->
+    <div class="modal-body" style="padding:0; position:relative;">
+        
+        <!-- Warstwa tła i mapy (do screenshota) -->
         <div id="exportWrapper">
             <div id="mapExport"></div>
             
-            <!-- Nakładki tekstowe -->
-            <div id="extOverlayTitle" class="export-overlay top-center" style="display:none;"></div>
-            <div id="extOverlayDate" class="export-overlay bottom-right" style="display:none;"></div>
-            <div id="extOverlayDesc" class="export-overlay top-left" style="display:none;"></div>
-            
-            <!-- Legenda -->
-            <div id="extOverlayLegend" class="export-overlay bottom-left" style="display:none;">
-                <h4>Legenda</h4>
-                <ul id="exportLegendList"></ul>
+            <!-- Uporządkowany panel informacyjny na mapie -->
+            <div id="mapInfoPanel" class="map-info-panel">
+                <div id="miTitle" class="map-info-title" style="display:none;"></div>
+                <div id="miDate" class="map-info-date" style="display:none;"></div>
+                <div id="miDesc" class="map-info-desc" style="display:none;"></div>
+                
+                <div id="miLegendContainer" style="display:none;">
+                    <div class="map-info-legend-title">Legenda</div>
+                    <ul id="exportLegendList" class="map-info-legend-list"></ul>
+                </div>
             </div>
 
-            <!-- Interfejs do wprowadzania punktów legendy (Nie renderuje się w eksporcie!) -->
+            <!-- Interfejs do wprowadzania punktów legendy (Ignorowany przy zrzucie ekranu) -->
             <div id="emojiPickerUI" data-html2canvas-ignore>
-                <div style="font-weight:bold; margin-bottom: 5px;">Wybierz ikonę i opis:</div>
+                <div style="font-weight:bold; margin-bottom: 10px; font-size: 0.95rem;">Wybierz ikonę i podpis:</div>
                 <div class="emoji-grid" id="emojiGridList"></div>
-                <input type="text" id="emojiLabelText" placeholder="Opis miejsca..." style="width: 100%; box-sizing:border-box; padding:5px;">
-                <div class="emoji-picker-actions">
-                    <button onclick="saveLegendItem()" style="flex:1; background:var(--accent);">Dodaj</button>
-                    <button onclick="closeEmojiPicker()" style="flex:1;" class="danger">Anuluj</button>
+                <input type="text" id="emojiLabelText" placeholder="Opis miejsca na mapie..." style="width: 100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius: 6px; margin-bottom: 10px;">
+                <div class="emoji-picker-actions" style="display: flex; gap: 8px;">
+                    <button onclick="saveLegendItem()" style="flex:1; background:var(--accent); padding:10px;">Zapisz punkt</button>
+                    <button onclick="closeEmojiPicker()" style="flex:1; padding:10px;" class="danger">Anuluj</button>
                 </div>
             </div>
         </div>
+
+        <!-- Nowy, niestandardowy Modal do edycji informacji (Nie widać na zrzucie ekranu) -->
+        <div id="exportMetaModal" class="inner-modal-overlay" data-html2canvas-ignore>
+            <div class="inner-modal">
+                <h3 style="margin: 0; color: #22c55e;">📝 Informacje o mapie</h3>
+                <div>
+                    <label style="font-size: 0.85rem; color: #94a3b8;">Tytuł mapy (opcjonalnie):</label>
+                    <input type="text" id="metaInputTitle" placeholder="np. Wyprawa przez Puszczę">
+                </div>
+                <div>
+                    <label style="font-size: 0.85rem; color: #94a3b8;">Data (opcjonalnie):</label>
+                    <input type="text" id="metaInputDate" placeholder="np. 15 Sierpnia 2026">
+                </div>
+                <div>
+                    <label style="font-size: 0.85rem; color: #94a3b8;">Krótki opis (opcjonalnie):</label>
+                    <textarea id="metaInputDesc" placeholder="Krótki opis lub uwagi do wycieczki..."></textarea>
+                </div>
+                
+                <label style="display:flex; align-items:center; gap:8px; font-size: 0.85rem; margin-top: 5px; cursor: pointer;">
+                    <input type="checkbox" id="metaThemeToggle" onchange="togglePanelTheme(this.checked)"> 
+                    Ciemny motyw panelu informacyjnego
+                </label>
+
+                <div style="display:flex; gap: 10px; margin-top: 10px;">
+                    <button onclick="saveExportMeta()" style="flex:1; background: #22c55e;">Zastosuj</button>
+                    <button onclick="document.getElementById('exportMetaModal').style.display='none'" style="flex:1;" class="danger">Anuluj</button>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -1449,14 +1536,17 @@ function placeSearchMarker(lat, lon, title) {
 }
 
 
-/* ================= NAPRAWA I OPCJE EKSPORTU MAPY ================= */
+/* ================= ULEPSZONY EKSPORT MAPY ================= */
 let exportLegendMode = false;
 let exportMarkers = [];
 let tempLegendClickLatLng = null;
 let selectedEmoji = "📍";
-const EMOJIS = ["📍","🛖","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓"];
+let exportMapDark = dark; // Niezależna flaga motywu dla mapy eksportowej
+let exportTileLayer = null;
 
-// Inicjalizacja siatki emoji
+// Więcej ikon dla lepszego wyboru
+const EMOJIS = ["📍","🛖","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "🪧"];
+
 document.getElementById('emojiGridList').innerHTML = EMOJIS.map(e => 
     `<div class="emoji-btn ${e==='📍'?'selected':''}" onclick="selectEmoji('${e}', this)">${e}</div>`
 ).join('');
@@ -1467,54 +1557,121 @@ function selectEmoji(e, btn) {
     btn.classList.add('selected');
 }
 
-// Nadpisujemy funkcję initExportMap, dodając event kliknięcia dla legendy i mocniejszy invalidateSize
+// Niezależna zmiana motywu w modalu eksportu
+function toggleExportTheme() {
+    if(!exportMap) return;
+    exportMapDark = !exportMapDark;
+    
+    if(exportTileLayer) exportMap.removeLayer(exportTileLayer);
+    
+    const url = exportMapDark
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+    exportTileLayer = L.tileLayer(url, { maxZoom: 19, crossOrigin: true, attribution: '' });
+    exportTileLayer.addTo(exportMap);
+}
+
 const originalInitExportMap = initExportMap;
 initExportMap = function() {
-    originalInitExportMap();
+    exportMapDark = dark; // Synchronizuj z główną aplikacją przy otwarciu
     
-    // Potężniejszy reset Leafleta, aby mapa ładowała się na 100% po pokazaniu modala
-    setTimeout(() => {
-        if(exportMap) {
-            exportMap.invalidateSize();
-            if (routeGeometry.length > 1) exportMap.fitBounds(exportPolyline.getBounds(), { padding: [60, 60] });
-        }
-    }, 400);
+    if (exportMap) {
+        exportMap.invalidateSize(true);
+        if (exportTileLayer) exportMap.removeLayer(exportTileLayer);
+        exportTileLayer = getExportTileLayer();
+        exportTileLayer.addTo(exportMap);
+        return;
+    }
 
-    // Eventy dla legendy
-    exportMap.off('click'); // Zapobiega dublowaniu eventów
+    const container = document.getElementById('mapExport');
+    exportMap = L.map(container, { zoomControl: true, attributionControl: false, preferCanvas: true });
+    
+    exportTileLayer = getExportTileLayer();
+    exportTileLayer.addTo(exportMap);
+
+    exportPolyline = L.polyline(routeGeometry, { color: '#22c55e', weight: 6, opacity: 1 }).addTo(exportMap);
+    L.control.zoom({ position: 'topright' }).addTo(exportMap);
+    scaleControl = L.control.scale({ imperial: false, position: 'bottomright' });
+
+    if (routeGeometry.length > 1) {
+        exportMap.fitBounds(exportPolyline.getBounds(), { padding: [60, 60] });
+    }
+
+    setTimeout(() => exportMap.invalidateSize(true), 400);
+
+    // Event Legendy
     exportMap.on('click', function(e) {
         if(!exportLegendMode) return;
         tempLegendClickLatLng = e.latlng;
         
-        // Pokaż UI pickera w miejscu kliknięcia
         const ui = document.getElementById('emojiPickerUI');
         ui.style.display = 'block';
         
-        // Konwersja na koordynaty kontenera, by ustawić okienko pickera
+        // Zabezpieczenie przed uciekaniem okienka poza ekran
         const point = exportMap.latLngToContainerPoint(e.latlng);
-        ui.style.left = (point.x + 10) + 'px';
-        ui.style.top = (point.y + 10) + 'px';
+        let posX = point.x + 10;
+        let posY = point.y + 10;
+        if(posX + 300 > container.clientWidth) posX = point.x - 310;
+        if(posY + 250 > container.clientHeight) posY = point.y - 260;
+
+        ui.style.left = posX + 'px';
+        ui.style.top = posY + 'px';
         
         document.getElementById('emojiLabelText').value = '';
         document.getElementById('emojiLabelText').focus();
     });
 };
 
-// Opcje nakładek tekstowych (Tytuł, Data, Opis)
-function toggleOverlay(type, promptText) {
-    const el = document.getElementById(`extOverlay${type}`);
-    if(el.style.display !== 'none') {
-        el.style.display = 'none'; // Jeśli widoczny, ukryj
-        return;
-    }
-    const val = prompt(`Wprowadź ${promptText}:`);
-    if(val) {
-        el.innerHTML = type === 'Title' ? `<h3>${val}</h3>` : val;
-        el.style.display = 'block';
-    }
+function getExportTileLayer() {
+    const url = exportMapDark
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    return L.tileLayer(url, { maxZoom: 19, crossOrigin: true, attribution: '' });
 }
 
-// Funkcje obsługi Legendy
+/* --- OBSŁUGA WEWNĘTRZNEGO MODALA INFORMACJI (KARTUSZA) --- */
+function openExportMetaModal() {
+    document.getElementById('exportMetaModal').style.display = 'flex';
+}
+
+function togglePanelTheme(isDark) {
+    const panel = document.getElementById('mapInfoPanel');
+    if(isDark) panel.classList.add('dark-theme');
+    else panel.classList.remove('dark-theme');
+}
+
+function saveExportMeta() {
+    const tTitle = document.getElementById('metaInputTitle').value.trim();
+    const tDate = document.getElementById('metaInputDate').value.trim();
+    const tDesc = document.getElementById('metaInputDesc').value.trim();
+    
+    const panel = document.getElementById('mapInfoPanel');
+    const elTitle = document.getElementById('miTitle');
+    const elDate = document.getElementById('miDate');
+    const elDesc = document.getElementById('miDesc');
+
+    // Aktualizacja tekstów i widoczności
+    if(tTitle) { elTitle.innerHTML = tTitle; elTitle.style.display = 'block'; } else elTitle.style.display = 'none';
+    if(tDate) { elDate.innerHTML = tDate; elDate.style.display = 'block'; } else elDate.style.display = 'none';
+    if(tDesc) { elDesc.innerHTML = tDesc.replace(/\n/g, '<br>'); elDesc.style.display = 'block'; } else elDesc.style.display = 'none';
+
+    updatePanelVisibility();
+    document.getElementById('exportMetaModal').style.display = 'none';
+}
+
+function updatePanelVisibility() {
+    const panel = document.getElementById('mapInfoPanel');
+    const hasText = document.getElementById('miTitle').style.display === 'block' || 
+                    document.getElementById('miDate').style.display === 'block' || 
+                    document.getElementById('miDesc').style.display === 'block';
+    const hasLegend = document.getElementById('exportLegendList').children.length > 0;
+    
+    if(hasText || hasLegend) panel.style.display = 'block';
+    else panel.style.display = 'none';
+}
+
+/* --- OBSŁUGA LEGENDY --- */
 function toggleLegendMode() {
     exportLegendMode = !exportLegendMode;
     const btn = document.getElementById('btnLegend');
@@ -1522,16 +1679,10 @@ function toggleLegendMode() {
     if(exportLegendMode) {
         btn.style.boxShadow = "0 0 10px white";
         document.getElementById('mapExport').style.cursor = 'crosshair';
-        document.getElementById('extOverlayLegend').style.display = 'block';
     } else {
         btn.style.boxShadow = "none";
         document.getElementById('mapExport').style.cursor = '';
         closeEmojiPicker();
-        
-        // Jeśli nie ma elementów w legendzie, ukryj całe pole
-        if(document.getElementById('exportLegendList').children.length === 0) {
-            document.getElementById('extOverlayLegend').style.display = 'none';
-        }
     }
 }
 
@@ -1542,26 +1693,26 @@ function closeEmojiPicker() {
 
 function saveLegendItem() {
     if(!tempLegendClickLatLng) return;
-    const text = document.getElementById('emojiLabelText').value.trim() || "Punkt trasy";
+    const text = document.getElementById('emojiLabelText').value.trim() || "Ważny punkt";
     
-    // Dodaj marker na mapie eksportu
+    // Rysowanie na mapie
     const marker = L.marker(tempLegendClickLatLng, {
-        icon: L.divIcon({ html: `<div style="font-size:22px;">${selectedEmoji}</div>`, className: 'poi-icon' })
+        icon: L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${selectedEmoji}</div>`, className: 'poi-icon' })
     }).addTo(exportMap);
-    
     exportMarkers.push(marker);
 
-    // Dodaj tekst do nakładki legendy
+    // Dodawanie do zunifikowanego panelu
+    document.getElementById('miLegendContainer').style.display = 'block';
     const list = document.getElementById('exportLegendList');
     const li = document.createElement('li');
-    li.innerHTML = `<span style="font-size:18px;">${selectedEmoji}</span> ${text}`;
+    li.innerHTML = `<span style="font-size:20px;">${selectedEmoji}</span> <span>${text}</span>`;
     list.appendChild(li);
 
+    updatePanelVisibility();
     closeEmojiPicker();
 }
 
-// --- NADPISANIE EKSPORTU ---
-// Zmieniamy kontener do robienia screenshota z 'mapExport' na 'exportWrapper'
+// Zrzuty ekranu dla ExportWrapper
 async function exportMapPNG() {
     const el = document.getElementById('exportWrapper');
     const canvas = await html2canvas(el, { useCORS: true, scale: 2, backgroundColor: null });
@@ -1576,7 +1727,7 @@ async function copyMapPNG() {
     const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
     canvas.toBlob(blob => {
         navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        alert("Mapa z elementami dodatkowymi skopiowana do schowka 👍");
+        alert("Mapa skopiowana do schowka 👍");
     });
 }
 
@@ -1585,8 +1736,8 @@ async function printExportMap() {
     const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
     const win = window.open('');
     win.document.write(`
-        <style>@page { size: landscape; margin: 0; }</style>
-        <img src="${canvas.toDataURL('image/png')}" style="width:100%; height:100%; object-fit:contain;">
+        <style>@page { size: landscape; margin: 0; } body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }</style>
+        <img src="${canvas.toDataURL('image/png')}" style="max-width:100%; max-height:100%; object-fit:contain;">
         <script>window.onload = () => window.print()<\/script>
     `);
 }
