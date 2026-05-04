@@ -345,11 +345,15 @@
     flex-grow: 1; /* Popycha przyciski na prawą stronę */
 }
 .leg-actions {
-    display: none; /* Ukryte domyślnie */
+    display: flex;
     gap: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
 }
 .map-info-legend-list li:hover .leg-actions {
-    display: flex; /* Pokazują się po najechaniu na element listy */
+    opacity: 1;
+    pointer-events: auto;
 }
 .leg-actions button {
     background: rgba(0,0,0,0.1);
@@ -366,8 +370,16 @@
 .dark-theme .leg-actions button { background: rgba(255,255,255,0.2); color: white; }
 .dark-theme .leg-actions button:hover { background: rgba(255,255,255,0.3); }
 
-/* Żeby przyciski i UI Emoji nie załapały się na zrzut ekranu */
-[data-html2canvas-ignore] { display: none !important; }
+/* Podbicie z-index, aby Leaflet nie przykrywał panelu */
+.map-info-panel {
+    z-index: 2500 !important;
+}
+#emojiPickerUI {
+    z-index: 2600 !important;
+}
+.inner-modal-overlay {
+    z-index: 3000 !important;
+}
 
     </style>
 </head>
