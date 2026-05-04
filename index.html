@@ -464,6 +464,10 @@
             <button onclick="openExportMetaModal()" title="Edytuj tytuł, datę i opis">📝 Edytuj Info</button>
             <button onclick="toggleScale()">📏 Skala</button>
             <button onclick="toggleLegendMode()" id="btnLegend" style="background: #a855f7" title="Zaznacz na mapie obiekty do legendy">📍 Legenda</button>
+                        
+            <!-- Nowe przyciski Zoom -->
+            <button onclick="exportZoomIn()" title="Przybliż mapę">➕</button>
+            <button onclick="exportZoomOut()" title="Oddal mapę">➖</button>
             
             <span style="border-left: 1px solid rgba(255,255,255,0.3); margin: 0 4px;"></span>
             
@@ -1385,7 +1389,7 @@ function initExportMap() {
     }
 
     exportMap = L.map(container, {
-        zoomControl: true,
+        zoomControl: false,
         attributionControl: false,
         preferCanvas: true
     });
@@ -1585,7 +1589,7 @@ initExportMap = function() {
     }
 
     const container = document.getElementById('mapExport');
-    exportMap = L.map(container, { zoomControl: true, attributionControl: false, preferCanvas: true });
+    exportMap = L.map(container, { zoomControl: false, attributionControl: false, preferCanvas: true });
     
     exportTileLayer = getExportTileLayer();
     exportTileLayer.addTo(exportMap);
@@ -1711,7 +1715,14 @@ function saveLegendItem() {
     updatePanelVisibility();
     closeEmojiPicker();
 }
+/* --- STEROWANIE ZOOMEM Z PASKA NARZĘDZI --- */
+function exportZoomIn() {
+    if (exportMap) exportMap.zoomIn();
+}
 
+function exportZoomOut() {
+    if (exportMap) exportMap.zoomOut();
+}
 // Zrzuty ekranu dla ExportWrapper
 async function exportMapPNG() {
     const el = document.getElementById('exportWrapper');
