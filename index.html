@@ -240,7 +240,52 @@
     background: rgba(255,255,255,0.9);
     color: #0f172a;
 }
+/* --- WYSZUKIWARKA --- */
+.search-box {
+    display: flex; gap: 6px; margin-bottom: 8px;
+}
+.search-box input {
+    flex-grow: 1; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(0,0,0,0.1); color: var(--text); outline: none;
+}
+.light .search-box input { background: rgba(0,0,0,0.05); border: 1px solid #ccc; }
 
+/* --- NAKŁADKI EKSPORTU MAPY --- */
+#exportWrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+.export-overlay {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.9);
+    color: #0f172a;
+    padding: 10px 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 1000;
+    pointer-events: none; /* Żeby można było klikać mapę pod spodem */
+    font-family: 'Segoe UI', sans-serif;
+}
+.export-overlay h3, .export-overlay h4 { margin: 0 0 5px 0; color: #16a34a; }
+.export-overlay.top-center { top: 20px; left: 50%; transform: translateX(-50%); font-size: 1.2rem; font-weight: bold; }
+.export-overlay.bottom-right { bottom: 20px; right: 20px; font-size: 0.85rem; }
+.export-overlay.top-left { top: 20px; left: 20px; max-width: 300px; font-size: 0.9rem; }
+.export-overlay.bottom-left { bottom: 20px; left: 20px; font-size: 0.9rem; min-width: 150px; pointer-events: auto; }
+#exportLegendList { list-style: none; padding: 0; margin: 0; }
+#exportLegendList li { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+
+/* Emoji Picker */
+#emojiPickerUI {
+    position: absolute; background: white; color: black; padding: 12px;
+    border-radius: 8px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); z-index: 2000;
+    display: none; width: 220px; cursor: default;
+}
+.emoji-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin-bottom: 10px; }
+.emoji-btn { background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px; cursor: pointer; text-align: center; font-size: 18px; }
+.emoji-btn:hover, .emoji-btn.selected { background: #cbd5e1; border-color: #94a3b8; }
+.emoji-picker-actions { display: flex; gap: 5px; margin-top: 10px; }
 
     </style>
 </head>
@@ -252,6 +297,11 @@
     <div>
         <h3>🌲 GPX Hiker</h3>
         <span class="subtitle">Planer Puszczy Wkrzańskiej</span>
+    </div>
+     <!-- NOWE: Wyszukiwarka -->
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Szukaj: nazwa lub lat, lon" onkeypress="if(event.key === 'Enter') searchLocation()">
+        <button onclick="searchLocation()" title="Szukaj">🔍</button>
     </div>
 
     <div class="btn-group">
@@ -353,7 +403,15 @@
     <div class="map-export-header modal-header">
         <strong>🗺️ Eksport mapy trasy</strong>
         <div class="map-export-actions">
-            <button onclick="toggleScale()">📏 Skala</button>
+            <!-- Przyciski opcjonalnych elementów -->
+            <button onclick="toggleScale()" title="Skala">📏</button>
+            <button onclick="toggleOverlay('Title', 'Tytuł mapy')" title="Tytuł mapy">Tytuł</button>
+            <button onclick="toggleOverlay('Date', 'Data wycieczki (np. 12 Maj 2026)')" title="Data wycieczki">Data</button>
+            <button onclick="toggleOverlay('Desc', 'Krótki opis wycieczki')" title="Opis">Opis</button>
+            <button onclick="toggleLegendMode()" id="btnLegend" style="background: #a855f7" title="Zaznacz na mapie obiekty do legendy">📍 Legenda</button>
+            
+            <span style="border-left: 1px solid rgba(255,255,255,0.3); margin: 0 4px;"></span>
+            
             <button onclick="copyMapPNG()">📋 Kopiuj</button>
             <button onclick="exportMapPNG()">⬇ PNG</button>
             <button onclick="printExportMap()">🖨️</button>
@@ -361,7 +419,32 @@
         </div>
     </div>
     <div class="modal-body" style="padding:0">
-        <div id="mapExport"></div>
+        <!-- Wrapper łączący mapę i nakładki (do zrzutu ekranu) -->
+        <div id="exportWrapper">
+            <div id="mapExport"></div>
+            
+            <!-- Nakładki tekstowe -->
+            <div id="extOverlayTitle" class="export-overlay top-center" style="display:none;"></div>
+            <div id="extOverlayDate" class="export-overlay bottom-right" style="display:none;"></div>
+            <div id="extOverlayDesc" class="export-overlay top-left" style="display:none;"></div>
+            
+            <!-- Legenda -->
+            <div id="extOverlayLegend" class="export-overlay bottom-left" style="display:none;">
+                <h4>Legenda</h4>
+                <ul id="exportLegendList"></ul>
+            </div>
+
+            <!-- Interfejs do wprowadzania punktów legendy (Nie renderuje się w eksporcie!) -->
+            <div id="emojiPickerUI" data-html2canvas-ignore>
+                <div style="font-weight:bold; margin-bottom: 5px;">Wybierz ikonę i opis:</div>
+                <div class="emoji-grid" id="emojiGridList"></div>
+                <input type="text" id="emojiLabelText" placeholder="Opis miejsca..." style="width: 100%; box-sizing:border-box; padding:5px;">
+                <div class="emoji-picker-actions">
+                    <button onclick="saveLegendItem()" style="flex:1; background:var(--accent);">Dodaj</button>
+                    <button onclick="closeEmojiPicker()" style="flex:1;" class="danger">Anuluj</button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1326,7 +1409,187 @@ async function printExportMap() {
     });
 }
 
+/* ================= WYSZUKIWARKA MIEJSC ================= */
+let searchMarker = null;
 
+async function searchLocation() {
+    const val = document.getElementById('searchInput').value.trim();
+    if(!val) return;
+
+    // Próba detekcji współrzędnych (np. "53.54, 14.55")
+    const coordsMatch = val.match(/^([-+]?\d{1,2}(?:\.\d+)?)[,\s]+([-+]?\d{1,3}(?:\.\d+)?)$/);
+    if(coordsMatch) {
+        placeSearchMarker(parseFloat(coordsMatch[1]), parseFloat(coordsMatch[2]), "Wyszukane współrzędne: " + val);
+        return;
+    }
+
+    // Wyszukiwanie przez OSM Nominatim
+    document.body.style.cursor = 'wait';
+    try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=1`);
+        const data = await res.json();
+        if(data && data.length > 0) {
+            placeSearchMarker(data[0].lat, data[0].lon, data[0].display_name);
+        } else {
+            alert("Nie znaleziono miejsca.");
+        }
+    } catch(e) {
+        console.error(e);
+        alert("Wystąpił błąd podczas wyszukiwania.");
+    } finally {
+        document.body.style.cursor = 'default';
+    }
+}
+
+function placeSearchMarker(lat, lon, title) {
+    const ll = L.latLng(lat, lon);
+    map.setView(ll, 14);
+    if(searchMarker) map.removeLayer(searchMarker);
+    searchMarker = L.marker(ll).addTo(map).bindPopup(`<b>Wyszukano:</b><br>${title}`).openPopup();
+}
+
+
+/* ================= NAPRAWA I OPCJE EKSPORTU MAPY ================= */
+let exportLegendMode = false;
+let exportMarkers = [];
+let tempLegendClickLatLng = null;
+let selectedEmoji = "📍";
+const EMOJIS = ["📍","🛖","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓"];
+
+// Inicjalizacja siatki emoji
+document.getElementById('emojiGridList').innerHTML = EMOJIS.map(e => 
+    `<div class="emoji-btn ${e==='📍'?'selected':''}" onclick="selectEmoji('${e}', this)">${e}</div>`
+).join('');
+
+function selectEmoji(e, btn) {
+    selectedEmoji = e;
+    document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+}
+
+// Nadpisujemy funkcję initExportMap, dodając event kliknięcia dla legendy i mocniejszy invalidateSize
+const originalInitExportMap = initExportMap;
+initExportMap = function() {
+    originalInitExportMap();
+    
+    // Potężniejszy reset Leafleta, aby mapa ładowała się na 100% po pokazaniu modala
+    setTimeout(() => {
+        if(exportMap) {
+            exportMap.invalidateSize();
+            if (routeGeometry.length > 1) exportMap.fitBounds(exportPolyline.getBounds(), { padding: [60, 60] });
+        }
+    }, 400);
+
+    // Eventy dla legendy
+    exportMap.off('click'); // Zapobiega dublowaniu eventów
+    exportMap.on('click', function(e) {
+        if(!exportLegendMode) return;
+        tempLegendClickLatLng = e.latlng;
+        
+        // Pokaż UI pickera w miejscu kliknięcia
+        const ui = document.getElementById('emojiPickerUI');
+        ui.style.display = 'block';
+        
+        // Konwersja na koordynaty kontenera, by ustawić okienko pickera
+        const point = exportMap.latLngToContainerPoint(e.latlng);
+        ui.style.left = (point.x + 10) + 'px';
+        ui.style.top = (point.y + 10) + 'px';
+        
+        document.getElementById('emojiLabelText').value = '';
+        document.getElementById('emojiLabelText').focus();
+    });
+};
+
+// Opcje nakładek tekstowych (Tytuł, Data, Opis)
+function toggleOverlay(type, promptText) {
+    const el = document.getElementById(`extOverlay${type}`);
+    if(el.style.display !== 'none') {
+        el.style.display = 'none'; // Jeśli widoczny, ukryj
+        return;
+    }
+    const val = prompt(`Wprowadź ${promptText}:`);
+    if(val) {
+        el.innerHTML = type === 'Title' ? `<h3>${val}</h3>` : val;
+        el.style.display = 'block';
+    }
+}
+
+// Funkcje obsługi Legendy
+function toggleLegendMode() {
+    exportLegendMode = !exportLegendMode;
+    const btn = document.getElementById('btnLegend');
+    
+    if(exportLegendMode) {
+        btn.style.boxShadow = "0 0 10px white";
+        document.getElementById('mapExport').style.cursor = 'crosshair';
+        document.getElementById('extOverlayLegend').style.display = 'block';
+    } else {
+        btn.style.boxShadow = "none";
+        document.getElementById('mapExport').style.cursor = '';
+        closeEmojiPicker();
+        
+        // Jeśli nie ma elementów w legendzie, ukryj całe pole
+        if(document.getElementById('exportLegendList').children.length === 0) {
+            document.getElementById('extOverlayLegend').style.display = 'none';
+        }
+    }
+}
+
+function closeEmojiPicker() {
+    document.getElementById('emojiPickerUI').style.display = 'none';
+    tempLegendClickLatLng = null;
+}
+
+function saveLegendItem() {
+    if(!tempLegendClickLatLng) return;
+    const text = document.getElementById('emojiLabelText').value.trim() || "Punkt trasy";
+    
+    // Dodaj marker na mapie eksportu
+    const marker = L.marker(tempLegendClickLatLng, {
+        icon: L.divIcon({ html: `<div style="font-size:22px;">${selectedEmoji}</div>`, className: 'poi-icon' })
+    }).addTo(exportMap);
+    
+    exportMarkers.push(marker);
+
+    // Dodaj tekst do nakładki legendy
+    const list = document.getElementById('exportLegendList');
+    const li = document.createElement('li');
+    li.innerHTML = `<span style="font-size:18px;">${selectedEmoji}</span> ${text}`;
+    list.appendChild(li);
+
+    closeEmojiPicker();
+}
+
+// --- NADPISANIE EKSPORTU ---
+// Zmieniamy kontener do robienia screenshota z 'mapExport' na 'exportWrapper'
+async function exportMapPNG() {
+    const el = document.getElementById('exportWrapper');
+    const canvas = await html2canvas(el, { useCORS: true, scale: 2, backgroundColor: null });
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'mapa_trasy_export.png';
+    a.click();
+}
+
+async function copyMapPNG() {
+    const el = document.getElementById('exportWrapper');
+    const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
+    canvas.toBlob(blob => {
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        alert("Mapa z elementami dodatkowymi skopiowana do schowka 👍");
+    });
+}
+
+async function printExportMap() {
+    const el = document.getElementById('exportWrapper');
+    const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
+    const win = window.open('');
+    win.document.write(`
+        <style>@page { size: landscape; margin: 0; }</style>
+        <img src="${canvas.toDataURL('image/png')}" style="width:100%; height:100%; object-fit:contain;">
+        <script>window.onload = () => window.print()<\/script>
+    `);
+}
 
 </script>
 
