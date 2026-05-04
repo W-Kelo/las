@@ -172,7 +172,6 @@
             }
             aside.open { transform: translateX(0); }
             #mobile-toggle { display: flex; }
-            .leaflet-control-zoom { display: none; }
             .floating-modal { width: 95%; left: 2.5% !important; top: 10% !important; height: auto; max-height: 60vh;}
         }
 .map-export-modal {
@@ -224,22 +223,7 @@
     height: 100%;
     background: #e5e7eb;
 }
-        #mapExport .leaflet-control-zoom {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-#mapExport .leaflet-control-zoom a {
-    background: rgba(30, 41, 59, 0.9);
-    color: white;
-    border: none;
-}
-
-.light #mapExport .leaflet-control-zoom a {
-    background: rgba(255,255,255,0.9);
-    color: #0f172a;
-}
+      
 /* --- WYSZUKIWARKA --- */
 .search-box {
     display: flex; gap: 6px; margin-bottom: 8px;
@@ -341,7 +325,49 @@
     background: #0f172a; color: white; box-sizing: border-box; font-family: inherit;
 }
 .inner-modal textarea { resize: vertical; min-height: 80px; }
+/* --- AKCJE W LEGENDZIE (Edycja/Usuwanie) --- */
+.map-info-legend-list li {
+    display: flex; 
+    align-items: center; 
+    gap: 8px; 
+    margin-bottom: 5px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+.map-info-legend-list li:hover {
+    background: rgba(0,0,0,0.05);
+}
+.dark-theme .map-info-legend-list li:hover {
+    background: rgba(255,255,255,0.1);
+}
+.leg-text {
+    flex-grow: 1; /* Popycha przyciski na prawą stronę */
+}
+.leg-actions {
+    display: none; /* Ukryte domyślnie */
+    gap: 4px;
+}
+.map-info-legend-list li:hover .leg-actions {
+    display: flex; /* Pokazują się po najechaniu na element listy */
+}
+.leg-actions button {
+    background: rgba(0,0,0,0.1);
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.leg-actions button:hover { background: #cbd5e1; transform: scale(1.1); }
+.dark-theme .leg-actions button { background: rgba(255,255,255,0.2); color: white; }
+.dark-theme .leg-actions button:hover { background: rgba(255,255,255,0.3); }
 
+/* Żeby przyciski i UI Emoji nie załapały się na zrzut ekranu */
+[data-html2canvas-ignore] { display: none !important; }
 
     </style>
 </head>
@@ -1607,12 +1633,14 @@ initExportMap = function() {
     // Event Legendy
     exportMap.on('click', function(e) {
         if(!exportLegendMode) return;
+        editingLegendId = null; // Zresetuj ID edycji (zaczynamy nowy punkt)
         tempLegendClickLatLng = e.latlng;
         
         const ui = document.getElementById('emojiPickerUI');
         ui.style.display = 'block';
+        ui.style.transform = 'none'; // Reset transform z trybu edycji
         
-        // Zabezpieczenie przed uciekaniem okienka poza ekran
+        const container = document.getElementById('mapExport');
         const point = exportMap.latLngToContainerPoint(e.latlng);
         let posX = point.x + 10;
         let posY = point.y + 10;
@@ -1675,7 +1703,10 @@ function updatePanelVisibility() {
     else panel.style.display = 'none';
 }
 
-/* --- OBSŁUGA LEGENDY --- */
+/* --- OBSŁUGA LEGENDY (Z EDYCJĄ I PRZECIĄGANIEM) --- */
+let exportLegendItems = {}; // Zamiast tablicy, używamy obiektu z ID
+let editingLegendId = null; // Przechowuje ID obecnie edytowanego punktu
+
 function toggleLegendMode() {
     exportLegendMode = !exportLegendMode;
     const btn = document.getElementById('btnLegend');
@@ -1683,6 +1714,7 @@ function toggleLegendMode() {
     if(exportLegendMode) {
         btn.style.boxShadow = "0 0 10px white";
         document.getElementById('mapExport').style.cursor = 'crosshair';
+        alert("Tryb legendy aktywny.\n1. Kliknij na mapę, by dodać punkt.\n2. Przytrzymaj i przeciągnij istniejący punkt na mapie, by zmienić jego pozycję.\n3. Najedź na listę w panelu, by edytować tekst/ikonę.");
     } else {
         btn.style.boxShadow = "none";
         document.getElementById('mapExport').style.cursor = '';
@@ -1693,27 +1725,104 @@ function toggleLegendMode() {
 function closeEmojiPicker() {
     document.getElementById('emojiPickerUI').style.display = 'none';
     tempLegendClickLatLng = null;
+    editingLegendId = null;
 }
 
 function saveLegendItem() {
-    if(!tempLegendClickLatLng) return;
     const text = document.getElementById('emojiLabelText').value.trim() || "Ważny punkt";
     
-    // Rysowanie na mapie
-    const marker = L.marker(tempLegendClickLatLng, {
-        icon: L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${selectedEmoji}</div>`, className: 'poi-icon' })
-    }).addTo(exportMap);
-    exportMarkers.push(marker);
+    if (editingLegendId && exportLegendItems[editingLegendId]) {
+        // --- AKTUALIZACJA ISTNIEJĄCEGO PUNKTU ---
+        const item = exportLegendItems[editingLegendId];
+        item.text = text;
+        item.emoji = selectedEmoji;
+        
+        // Aktualizuj marker
+        item.marker.setIcon(L.divIcon({ 
+            html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));" title="Przeciągnij by przenieść">${selectedEmoji}</div>`, 
+            className: 'poi-icon' 
+        }));
+        
+        // Aktualizuj listę w HTML
+        const li = document.getElementById(editingLegendId);
+        li.querySelector('.leg-icon').innerHTML = selectedEmoji;
+        li.querySelector('.leg-text').innerText = text;
+        
+    } else if (tempLegendClickLatLng) {
+        // --- TWORZENIE NOWEGO PUNKTU ---
+        const id = 'leg_' + Date.now();
+        
+        // Tworzenie markera z opcją DRAGGABLE (przeciąganie!)
+        const marker = L.marker(tempLegendClickLatLng, {
+            draggable: true, 
+            icon: L.divIcon({ 
+                html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));" title="Przeciągnij by przenieść">${selectedEmoji}</div>`, 
+                className: 'poi-icon' 
+            })
+        }).addTo(exportMap);
 
-    // Dodawanie do zunifikowanego panelu
-    document.getElementById('miLegendContainer').style.display = 'block';
-    const list = document.getElementById('exportLegendList');
-    const li = document.createElement('li');
-    li.innerHTML = `<span style="font-size:20px;">${selectedEmoji}</span> <span>${text}</span>`;
-    list.appendChild(li);
+        // Zapobiega pojawianiu się okienka tworzenia przy kliknięciu w sam znacznik
+        marker.on('click', function(e) {
+            L.DomEvent.stopPropagation(e);
+        });
+
+        // Dodawanie elementu do obiektu
+        exportLegendItems[id] = { marker, emoji: selectedEmoji, text };
+
+        // Dodawanie do listy legendy w panelu HTML
+        document.getElementById('miLegendContainer').style.display = 'block';
+        const list = document.getElementById('exportLegendList');
+        const li = document.createElement('li');
+        li.id = id;
+        li.innerHTML = `
+            <span class="leg-icon" style="font-size:20px;">${selectedEmoji}</span> 
+            <span class="leg-text">${text}</span>
+            <div class="leg-actions" data-html2canvas-ignore>
+                <button onclick="editLegendItem('${id}')" title="Edytuj">✏️</button>
+                <button onclick="deleteLegendItem('${id}')" title="Usuń">🗑️</button>
+            </div>
+        `;
+        list.appendChild(li);
+    }
 
     updatePanelVisibility();
     closeEmojiPicker();
+}
+
+// Funkcja wywoływana przyciskiem ✏️ w panelu
+function editLegendItem(id) {
+    const item = exportLegendItems[id];
+    if(!item) return;
+
+    editingLegendId = id;
+    
+    // Ustaw wartości w UI modala
+    document.getElementById('emojiLabelText').value = item.text;
+    selectEmoji(item.emoji, Array.from(document.querySelectorAll('.emoji-btn')).find(b => b.innerText === item.emoji));
+    
+    // Pokaż UI po środku ekranu (dla wygody edycji)
+    const ui = document.getElementById('emojiPickerUI');
+    ui.style.display = 'block';
+    ui.style.left = '50%';
+    ui.style.top = '50%';
+    ui.style.transform = 'translate(-50%, -50%)';
+}
+
+// Funkcja wywoływana przyciskiem 🗑️ w panelu
+function deleteLegendItem(id) {
+    const item = exportLegendItems[id];
+    if(!item) return;
+
+    // Usuń z mapy
+    exportMap.removeLayer(item.marker);
+    
+    // Usuń z panelu HTML
+    document.getElementById(id).remove();
+    
+    // Usuń ze słownika danych
+    delete exportLegendItems[id];
+    
+    updatePanelVisibility();
 }
 /* --- STEROWANIE ZOOMEM Z PASKA NARZĘDZI --- */
 function exportZoomIn() {
