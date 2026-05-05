@@ -380,7 +380,47 @@
 .inner-modal-overlay {
     z-index: 3000 !important;
 }
+/* --- FUNKCJE EDYCJI PANELU (Przesuwanie i Kadrowanie) --- */
+.map-info-panel.draggable {
+    cursor: grab;
+    border: 2px dashed #3b82f6;
+    user-select: none; /* Zapobiega zaznaczaniu tekstu podczas przeciągania */
+}
+.map-info-panel.draggable:active {
+    cursor: grabbing;
+}
+.map-info-panel.resizable {
+    resize: both;
+    overflow: auto; /* Zapewnia, że tekst nie "wypadnie" poza okienko */
+    border: 2px dashed #a855f7;
+    min-width: 150px;
+    min-height: 80px;
+}
 
+/* --- KAFELKI STATYSTYK --- */
+.mi-stats-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+}
+.mi-stat-item {
+    background: rgba(0,0,0,0.06);
+    padding: 6px 10px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 500;
+    color: #334155;
+    border: 1px solid rgba(0,0,0,0.05);
+}
+.dark-theme .mi-stat-item {
+    background: rgba(255,255,255,0.1);
+    color: #e2e8f0;
+    border: 1px solid rgba(255,255,255,0.1);
+}
     </style>
 </head>
 <body class="dark">
@@ -496,14 +536,20 @@
 <div id="mapExportModal" class="floating-modal map-export-modal">
     <div class="map-export-header modal-header">
         <strong>🗺️ Eksport mapy trasy</strong>
-        <div class="map-export-actions">
-            <!-- Nowe opcje w nagłówku -->
+<div class="map-export-actions">
+            <!-- Nowe przyciski narzędzi panelu -->
+            <button onclick="confirmRefreshRoute()" title="Pobierz zaktualizowaną trasę z głównej mapy">🔄 Odśwież</button>
+            <button onclick="togglePanelDrag()" id="btnDragPanel" title="Przesuń panel informacyjny">✋ Przesuń</button>
+            <button onclick="togglePanelResize()" id="btnResizePanel" title="Rozciągnij / zwęź panel">📐 Kadrowanie</button>
+            <button onclick="openStatsModal()" title="Dodaj dystans i czas do panelu">📊 Statystyki</button>
+            
+            <span style="border-left: 1px solid rgba(255,255,255,0.3); margin: 0 4px;"></span>
+
             <button onclick="toggleExportTheme()" title="Zmień motyw samej mapy eksportowej">🌓 Motyw Mapy</button>
             <button onclick="openExportMetaModal()" title="Edytuj tytuł, datę i opis">📝 Edytuj Info</button>
             <button onclick="toggleScale()">📏 Skala</button>
             <button onclick="toggleLegendMode()" id="btnLegend" style="background: #a855f7" title="Zaznacz na mapie obiekty do legendy">📍 Legenda</button>
                         
-            <!-- Nowe przyciski Zoom -->
             <button onclick="exportZoomIn()" title="Przybliż mapę">➕</button>
             <button onclick="exportZoomOut()" title="Oddal mapę">➖</button>
             
@@ -526,6 +572,7 @@
                 <div id="miTitle" class="map-info-title" style="display:none;"></div>
                 <div id="miDate" class="map-info-date" style="display:none;"></div>
                 <div id="miDesc" class="map-info-desc" style="display:none;"></div>
+                <div id="miStats" class="mi-stats-container" style="display:none;"></div>
                 
                 <div id="miLegendContainer" style="display:none;">
                     <div class="map-info-legend-title">Legenda</div>
@@ -576,7 +623,35 @@
 
     </div>
 </div>
+<div id="confirmRefreshModal" class="inner-modal-overlay" data-html2canvas-ignore>
+            <div class="inner-modal" style="width: 320px; text-align: center;">
+                <h3 style="color: #ef4444; margin-top:0;">⚠️ Potwierdzenie</h3>
+                <p style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">Czy na pewno chcesz pobrać nową trasę? Ta operacja zresetuje panel informacyjny i wyczyści Twoją legendę!</p>
+                <div style="display:flex; gap: 10px; margin-top: 15px;">
+                    <button onclick="executeRefreshRoute()" style="flex:1; background: #ef4444;">Tak, odśwież</button>
+                    <button onclick="document.getElementById('confirmRefreshModal').style.display='none'" style="flex:1;" class="secondary">Anuluj</button>
+                </div>
+            </div>
+        </div>
 
+        <div id="statsSelectionModal" class="inner-modal-overlay" data-html2canvas-ignore>
+            <div class="inner-modal" style="width: 300px;">
+                <h3 style="color: #3b82f6; margin-top:0;">📊 Dodaj Statystyki</h3>
+                <p style="font-size: 0.8rem; color: #94a3b8; margin-top: -5px;">Zaznacz informacje, które mają pojawić się na mapie.</p>
+                
+                <label style="display:flex; align-items:center; gap:8px; margin-bottom: 8px; font-size: 0.9rem; cursor: pointer;">
+                    <input type="checkbox" id="statCheckDist" checked style="width:auto;"> Długość trasy (dystans)
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; margin-bottom: 15px; font-size: 0.9rem; cursor: pointer;">
+                    <input type="checkbox" id="statCheckTime" checked style="width:auto;"> Czas i przewyższenia
+                </label>
+                
+                <div style="display:flex; gap: 10px;">
+                    <button onclick="applyStatsToPanel()" style="flex:1; background: #3b82f6;">Wstaw</button>
+                    <button onclick="document.getElementById('statsSelectionModal').style.display='none'" style="flex:1;" class="danger">Anuluj</button>
+                </div>
+            </div>
+        </div>
 
 
 <script>
@@ -1700,16 +1775,7 @@ function saveExportMeta() {
     document.getElementById('exportMetaModal').style.display = 'none';
 }
 
-function updatePanelVisibility() {
-    const panel = document.getElementById('mapInfoPanel');
-    const hasText = document.getElementById('miTitle').style.display === 'block' || 
-                    document.getElementById('miDate').style.display === 'block' || 
-                    document.getElementById('miDesc').style.display === 'block';
-    const hasLegend = document.getElementById('exportLegendList').children.length > 0;
-    
-    if(hasText || hasLegend) panel.style.display = 'block';
-    else panel.style.display = 'none';
-}
+
 
 /* --- OBSŁUGA LEGENDY --- */
 function toggleLegendMode() {
@@ -1831,6 +1897,165 @@ async function printExportMap() {
         <img src="${canvas.toDataURL('image/png')}" style="max-width:100%; max-height:100%; object-fit:contain;">
         <script>window.onload = () => window.print()<\/script>
     `);
+}
+    /* --- AKTUALIZACJA WIDOCZNOŚCI PANELU (z uwzględnieniem statystyk) --- */
+function updatePanelVisibility() {
+    const panel = document.getElementById('mapInfoPanel');
+    const hasText = document.getElementById('miTitle').style.display === 'block' || 
+                    document.getElementById('miDate').style.display === 'block' || 
+                    document.getElementById('miDesc').style.display === 'block' ||
+                    document.getElementById('miStats').style.display === 'flex'; // Zmieniono na FLEX
+    const hasLegend = document.getElementById('exportLegendList').children.length > 0;
+    
+    if(hasText || hasLegend) panel.style.display = 'block';
+    else panel.style.display = 'none';
+}
+
+/* --- STATYSTYKI --- */
+function openStatsModal() {
+    document.getElementById('statsSelectionModal').style.display = 'flex';
+}
+
+function applyStatsToPanel() {
+    const incDist = document.getElementById('statCheckDist').checked;
+    const incTime = document.getElementById('statCheckTime').checked;
+    const statsContainer = document.getElementById('miStats');
+    
+    // Pobieranie wartości wprost z głównego UI pod menu po lewej
+    const distText = document.getElementById('stats').innerText; 
+    const timeText = document.getElementById('time').innerText; 
+
+    let html = '';
+    if(incDist) html += `<div class="mi-stat-item">📏 <span>${distText}</span></div>`;
+    if(incTime) {
+        // Usuwamy słowo "Czas: " z początku, żeby ładnie wyglądało w kafelku
+        const cleanTime = timeText.replace('Czas: ', '');
+        html += `<div class="mi-stat-item">⏱️ <span>${cleanTime}</span></div>`;
+    }
+
+    if(html !== '') {
+        statsContainer.innerHTML = html;
+        statsContainer.style.display = 'flex';
+    } else {
+        statsContainer.style.display = 'none';
+    }
+    
+    updatePanelVisibility();
+    document.getElementById('statsSelectionModal').style.display = 'none';
+}
+
+/* --- ODŚWIEŻANIE TRASY --- */
+function confirmRefreshRoute() {
+    document.getElementById('confirmRefreshModal').style.display = 'flex';
+}
+
+function executeRefreshRoute() {
+    document.getElementById('confirmRefreshModal').style.display = 'none';
+    
+    // 1. Czyszczenie legendy z mapy eksportu
+    Object.values(exportLegendItems).forEach(item => exportMap.removeLayer(item.marker));
+    exportLegendItems = {};
+    document.getElementById('exportLegendList').innerHTML = '';
+    
+    // 2. Czyszczenie tekstów i inputów
+    document.getElementById('metaInputTitle').value = '';
+    document.getElementById('metaInputDate').value = '';
+    document.getElementById('metaInputDesc').value = '';
+    
+    document.getElementById('miTitle').style.display = 'none';
+    document.getElementById('miDate').style.display = 'none';
+    document.getElementById('miDesc').style.display = 'none';
+    document.getElementById('miStats').style.display = 'none';
+    document.getElementById('miLegendContainer').style.display = 'none';
+    
+    // 3. Resetowanie pozycji i rozmiaru panelu (jeśli były zmieniane)
+    const panel = document.getElementById('mapInfoPanel');
+    panel.style.top = '20px';
+    panel.style.left = '20px';
+    panel.style.width = 'auto';
+    panel.style.height = 'auto';
+    updatePanelVisibility();
+
+    // 4. Przerysowanie linii trasy
+    if(exportPolyline) exportMap.removeLayer(exportPolyline);
+    exportPolyline = L.polyline(routeGeometry, { color: '#22c55e', weight: 6, opacity: 1 }).addTo(exportMap);
+    
+    // 5. Dopasowanie widoku do nowej trasy
+    if (routeGeometry.length > 1) {
+        exportMap.fitBounds(exportPolyline.getBounds(), { padding: [60, 60] });
+    }
+}
+
+/* --- FUNKCJE PRZESUWANIA (DRAG & DROP) --- */
+let isPanelDraggable = false;
+
+function togglePanelDrag() {
+    const panel = document.getElementById('mapInfoPanel');
+    const btn = document.getElementById('btnDragPanel');
+    isPanelDraggable = !isPanelDraggable;
+    
+    if(isPanelDraggable) {
+        panel.classList.add('draggable');
+        btn.style.boxShadow = "0 0 10px white";
+        makePanelDraggable(panel);
+    } else {
+        panel.classList.remove('draggable');
+        btn.style.boxShadow = "none";
+        removePanelDraggable(panel);
+    }
+}
+
+function makePanelDraggable(el) {
+    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    el.onmousedown = dragMouseDown;
+
+    function dragMouseDown(e) {
+        if(!isPanelDraggable) return;
+        // Zignoruj przeciąganie, jeśli użytkownik klika w suwak (resize) w rogu
+        if(e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return;
+        
+        e.preventDefault();
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        document.onmouseup = closeDragElement;
+        document.onmousemove = elementDrag;
+    }
+
+    function elementDrag(e) {
+        e.preventDefault();
+        pos1 = pos3 - e.clientX;
+        pos2 = pos4 - e.clientY;
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        el.style.top = (el.offsetTop - pos2) + "px";
+        el.style.left = (el.offsetLeft - pos1) + "px";
+    }
+
+    function closeDragElement() {
+        document.onmouseup = null;
+        document.onmousemove = null;
+    }
+}
+
+function removePanelDraggable(el) {
+    el.onmousedown = null;
+}
+
+/* --- FUNKCJE KADROWANIA (RESIZE) --- */
+let isPanelResizable = false;
+
+function togglePanelResize() {
+    const panel = document.getElementById('mapInfoPanel');
+    const btn = document.getElementById('btnResizePanel');
+    isPanelResizable = !isPanelResizable;
+    
+    if(isPanelResizable) {
+        panel.classList.add('resizable');
+        btn.style.boxShadow = "0 0 10px white";
+    } else {
+        panel.classList.remove('resizable');
+        btn.style.boxShadow = "none";
+    }
 }
 
 </script>
