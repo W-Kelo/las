@@ -999,13 +999,18 @@ async function getRouteSegment(start, end) {
         const data = await resp.json();
         
         if (data.features && data.features.length > 0) {
-            const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
+            // Zmieniono: Pobieramy c[1] (lat), c[0] (lng) ORAZ c[2] (wysokość)
+            const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0], Math.round(c[2] || 0)]);
             const dist = data.features[0].properties['track-length'] || 0;
             return { coords, distance: parseFloat(dist) };
         }
         throw new Error("No path");
     } catch (e) {
-        return { coords: [[start.lat, start.lng], [end.lat, end.lng]], distance: L.latLng(start).distanceTo(L.latLng(end)) }; 
+        // Fallback w razie braku trasy - po prostu prosta linia (z wysokością 0)
+        return { 
+            coords: [[start.lat, start.lng, 0], [end.lat, end.lng, 0]], 
+            distance: L.latLng(start).distanceTo(L.latLng(end)) 
+        }; 
     }
 }
 
@@ -1017,7 +1022,7 @@ map.on('click', async e => {
 
 async function addRoutePoint(latlng, recalc = true) {
     const pointId = Date.now() + Math.random();
-   const dotColor = routePrefPointsEnabled ? routePrefPointsColor : '#22c55e';
+    const dotColor = routePrefPointsEnabled ? routePrefPointsColor : '#22c55e';
     const m = L.circleMarker(latlng, { 
         radius: 8, color: '#fff', weight: 3, fillColor: dotColor, fillOpacity: 1, zIndexOffset: 1000 
     }).addTo(map);
@@ -1027,14 +1032,8 @@ async function addRoutePoint(latlng, recalc = true) {
         removePointById(pointId);
     });
 
-    let elev = 0;
-    try {
-         const r = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${latlng.lat}&longitude=${latlng.lng}`);
-         const d = await r.json();
-         if(d.elevation) elev = d.elevation[0];
-    } catch(e) {}
-    
-    routePoints.push({ id: pointId, latlng: latlng, marker: m, elevation: elev, distFromPrev: 0 });
+    // Wstawiamy wstępnie 0, prawdziwą wysokość uzupełni nam silnik trasy (BRouter) za ułamek sekundy
+    routePoints.push({ id: pointId, latlng: latlng, marker: m, elevation: 0, distFromPrev: 0 });
     renderPointsList();
     if (recalc) await recalculateRoute();
 }
@@ -1055,17 +1054,34 @@ async function recalculateRoute() {
             return;
         }
 
-        routeGeometry = [[routePoints[0].latlng.lat, routePoints[0].latlng.lng]];
-        
+        // Zbieramy trasę segment po segmencie
         for (let i = 1; i < routePoints.length; i++) {
             const res = await getRouteSegment(routePoints[i-1].latlng, routePoints[i].latlng);
             routePoints[i].distFromPrev = res.distance;
-            routeGeometry = routeGeometry.concat(res.coords.slice(1));
+            
+            // Uaktualnij wysokość obecnego punktu wg BRoutera
+            if(res.coords.length > 0) {
+                routePoints[i].elevation = res.coords[res.coords.length - 1][2];
+            }
+
+            if (i === 1) {
+                routeGeometry = res.coords;
+                // Uaktualnij wysokość punktu startowego
+                routePoints[0].elevation = res.coords[0][2];
+            } else {
+                // Doklejamy omijając dublujący się punkt styku segmentów
+                routeGeometry = routeGeometry.concat(res.coords.slice(1));
+            }
+        }
+        
+        // Jeśli jest tylko 1 punkt, inicjujemy go na mapie bez linii
+        if (routePoints.length === 1) {
+            routeGeometry = [[routePoints[0].latlng.lat, routePoints[0].latlng.lng, 0]];
         }
 
         polyline.setLatLngs(routeGeometry);
         
-        await fetchFullElevationProfile();
+        await fetchFullElevationProfile(); // Teraz to zadziała od razu z pamięci!
         generateRouteDescription(); 
         renderPointsList();
     } catch(e) {
@@ -1180,51 +1196,36 @@ async function fetchFullElevationProfile() {
         return; 
     }
     
-    // Próbkujemy max ok. 80-100 punktów z geometrii dla optymalizacji
     const step = Math.max(1, Math.floor(routeGeometry.length / 90));
-    const lats = [];
-    const lngs = [];
+    globalElevationData = [];
     globalElevationDist = [];
     let cumDist = 0;
     
-    // Zbieramy współrzędne i na bieżąco obliczamy ich precyzyjny dystans od startu
+    // Zamiast wysyłać zapytania, po prostu czytamy 3-ci element z koordynatów BRoutera!
     for(let i = 0; i < routeGeometry.length; i += step) {
-        lats.push(routeGeometry[i][0]);
-        lngs.push(routeGeometry[i][1]);
+        const elevation = routeGeometry[i][2] || 0; // Odczyt z zapisanego z [lat, lng, elev]
+        globalElevationData.push(elevation);
         
         if(i > 0) {
+            // Leaflet ignoruje 3 argument (wysokość) przy obliczaniu distanceTo, więc to jest bezpieczne
             cumDist += L.latLng(routeGeometry[i-step]).distanceTo(L.latLng(routeGeometry[i]));
-        } else if (i === 0 && lats.length > 1) {
-            // Dla pierwszego kroku po starcie
+        } else if (i === 0 && routeGeometry.length > 1) {
             cumDist += L.latLng(routeGeometry[0]).distanceTo(L.latLng(routeGeometry[i]));
         }
         globalElevationDist.push(cumDist);
     }
     
-    try {
-        const url = `https://api.open-meteo.com/v1/elevation?latitude=${lats.join(',')}&longitude=${lngs.join(',')}`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("API Limit");
-        
-        const data = await res.json();
-        globalElevationData = data.elevation;
-        
-        totalAscent = 0;
-        for(let i = 1; i < globalElevationData.length; i++) {
-            if(globalElevationData[i] > globalElevationData[i-1]) {
-                totalAscent += (globalElevationData[i] - globalElevationData[i-1]);
-            }
+    // Obliczanie przewyższeń bezpośrednio z danych lokalnych
+    totalAscent = 0;
+    for(let i = 1; i < globalElevationData.length; i++) {
+        if(globalElevationData[i] > globalElevationData[i-1]) {
+            totalAscent += (globalElevationData[i] - globalElevationData[i-1]);
         }
-        totalAscent = Math.round(totalAscent);
-        
-        drawElevation(); // Rysuje bazowy wykres bez interakcji
-        updateStats(calculateTotalDist());
-        
-    } catch (e) { 
-        console.warn("Błąd pobierania wysokości (możliwy limit API). Trzymam stare dane na wykresie.");
-        // Zamiast czyścić, rysujemy na starych danych żeby nic nie migało
-        if(globalElevationData.length > 0) drawElevation();
     }
+    totalAscent = Math.round(totalAscent);
+    
+    drawElevation(); 
+    updateStats(calculateTotalDist());
 }
 
 function clearElevation() {
