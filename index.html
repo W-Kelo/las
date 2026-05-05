@@ -915,8 +915,6 @@ const tiles = {
     light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', crossOrigin: true })
 };
 tiles.dark.addTo(map);
-
-/* ================= STAN APLIKACJI ================= */
 let routePoints = []; 
 let routeGeometry = []; 
 let pois = [];
@@ -924,14 +922,41 @@ let poiMode = false;
 let totalAscent = 0;
 let userMarker = null;
 let isRouting = false; 
-
-// Konfiguracja stylów użytkownika
 let routePrefColor = localStorage.getItem('gpx_color') || '#22c55e';
 let routePrefWeight = parseInt(localStorage.getItem('gpx_weight')) || 6;
 let routePrefSpeed = localStorage.getItem('gpx_speed') || 'medium';
-// NOWE ZMIENNE DLA KROPEK
 let routePrefPointsEnabled = localStorage.getItem('gpx_points_enabled') === 'true';
 let routePrefPointsColor = localStorage.getItem('gpx_points_color') || '#22c55e';
+let globalElevationData = [];
+let globalElevationDist = []; 
+let globalElevationLatLng = []; 
+let chartHoverMarker = null;
+let exportLineColor = routePrefColor;
+let exportLineWeight = routePrefWeight;   
+let globalCustomPois = []; 
+let searchMarker = null;
+let globalOsmPois = [];  
+let globalTrails = [];
+let routeStepsGeom = [];
+let stepHighlightLayer = null; 
+let exportMap = null;
+let exportPolyline = null;
+let scaleControl = null;
+let scaleVisible = false;
+let animLineLayer = null;
+let animDotMarker = null;
+let animInterval = null;
+let exportLegendMode = false;
+let exportLegendItems = {}; 
+let editingLegendId = null;
+let tempLegendClickLatLng = null;
+let selectedEmoji = "📍";
+let exportMapDark = dark; 
+let exportTileLayer = null;
+const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆"];
+const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
+
+
 const polyline = L.polyline([], {
     color: routePrefColor, 
     weight: routePrefWeight, 
@@ -1445,11 +1470,7 @@ function unhighlightStep() {
         stepHighlightLayer = null;
     }
 }
-/* ================= WYSOKOŚĆ I INTERAKTYWNY PROFIL TERENU ================= */
-let globalElevationData = [];
-let globalElevationDist = []; // Przechowuje dystans dla każdego punktu na osi X
-let globalElevationLatLng = []; // NOWE: Przechowuje koordynaty [lat, lng] dla wykresu
-let chartHoverMarker = null;    // NOWE: Marker latający po mapie
+
 
 async function fetchFullElevationProfile() {
     if (routeGeometry.length < 2) { 
@@ -1791,11 +1812,8 @@ async function fetchFromAnyOverpass(query) {
     }
     throw new Error("All Overpass servers failed");
 }
-let globalOsmPois = [];   // Przechowuje punkty z OpenStreetMap
-let globalTrails = [];    // Przechowuje szlaki z OpenStreetMap
-let routeStepsGeom = [];  // Przechowuje geometrię poszczególnych kroków (do podświetlania na mapie)
-let stepHighlightLayer = null; // Warstwa podświetlenia
-// Dodajemy parametr 'externalData', żeby funkcja mogła przyjąć dane z .then()
+
+
 async function loadOSMData(externalData = null) {
     const query = `[out:json][timeout:25];(relation["route"="hiking"](53.4,14.3,53.6,14.7);node["amenity"~"shelter|drinking_water|parking"](53.4,14.3,53.6,14.7);node["tourism"~"viewpoint|picnic_site|information"](53.4,14.3,53.6,14.7););out body;>;out skel qt;`;
     
@@ -2046,10 +2064,7 @@ async function generatePDF() {
         btn.innerText = "Generuj i Pobierz";
     }
 }
- let exportMap = null;
-let exportPolyline = null;
-let scaleControl = null;
-let scaleVisible = false;
+
 
 function openMapExportModal() {
     const modal = document.getElementById('mapExportModal');
@@ -2193,7 +2208,7 @@ async function printExportMap() {
 }
 
 /* ================= WYSZUKIWARKA MIEJSC ================= */
-let searchMarker = null;
+
 
 async function searchLocation() {
     const val = document.getElementById('searchInput').value.trim();
@@ -2233,15 +2248,7 @@ function placeSearchMarker(lat, lon, title) {
 
 
 /* ================= ULEPSZONY EKSPORT MAPY (SPOSPRZĄTANY) ================= */
-let exportLegendMode = false;
-let exportLegendItems = {}; 
-let editingLegendId = null;
-let tempLegendClickLatLng = null;
-let selectedEmoji = "📍";
-let exportMapDark = dark; 
-let exportTileLayer = null;
 
-const EMOJIS = ["📍","🛖","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "🪧"];
 
 // UI Emoji Pickera
 document.getElementById('emojiGridList').innerHTML = EMOJIS.map(e => 
@@ -2682,9 +2689,7 @@ function saveStyle(saveToLocal) {
     document.getElementById('styleModal').style.display = 'none';
 }
 /* ================= STYLIZACJA TYLKO W EKSPORCIE ================= */
-// Ustawiamy domyślnie takie same jak na mapie głównej, ale przechowujemy osobno
-let exportLineColor = routePrefColor;
-let exportLineWeight = routePrefWeight;
+
 
 function openExportStyleModal() {
     document.getElementById('expStyleColor').value = exportLineColor;
@@ -2707,9 +2712,7 @@ function applyExportStyle() {
 
 
 /* ================= ANIMACJA TRASY ================= */
-let animLineLayer = null;
-let animDotMarker = null;
-let animInterval = null;
+
 
 // Oblicza punkt na linii dla danego dystansu (interpolacja matematyczna)
 function getPointAtDistance(geometry, targetDist) {
@@ -2927,8 +2930,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 /* ================= PUNKTY Z BAZY DANYCH (GOOGLE SHEETS) ================= */
 
-let globalCustomPois = []; // <--- NOWA TABLICA NA POTRZEBY OPISU TRASY
-const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
 
 async function loadGoogleSheetsPOIs() {
     try {
