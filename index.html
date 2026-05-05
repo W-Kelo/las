@@ -1151,57 +1151,77 @@ function importGPX(e) {
     reader.readAsText(file);
 }
 
-/* ================= TRASOWANIE ================= */
-
-// Lista głównych i zapasowych serwerów BRoutera
-const BROUTER_ENDPOINTS = [
-    'https://brouter.de/brouter',       // Główny
-    'https://brouter.m11n.de/brouter',  // Niezawodny niemiecki mirror
-    'https://brouter.damsy.net/brouter' // Francuski mirror (wymaga obejścia CORS)
-];
 
 async function getRouteSegment(start, end) {
     let lastError = null;
 
+    // ---------------------------------------------------------
+    // SYSTEM 1: BRouter (Główny - wyznacza ścieżki + profil wysokości)
+    // ---------------------------------------------------------
+    const BROUTER_ENDPOINTS = [
+        'https://brouter.de/brouter',
+        'https://brouter.m11n.de/brouter'
+    ];
+
     for (const baseUrl of BROUTER_ENDPOINTS) {
         try {
-            // Zbudowanie standardowego linku do wyznaczenia trasy
-            let url = `${baseUrl}?lonlats=${start.lng},${start.lat}|${end.lng},${end.lat}&profile=hiking-mountain&alternativeidx=0&format=geojson`;
-            
-            // OBEJŚCIE CORS: Jeśli wiemy, że serwer ma blokadę (jak damsy.net), przepuszczamy go przez serwer pośredniczący proxy
-            if (baseUrl.includes('damsy.net')) {
-                // Używamy darmowej bramki proxy, która omija blokady w przeglądarkach
-                url = 'https://corsproxy.io/?' + encodeURIComponent(url);
-            }
+            const url = `${baseUrl}?lonlats=${start.lng},${start.lat}|${end.lng},${end.lat}&profile=hiking-mountain&alternativeidx=0&format=geojson`;
             
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 sekund na odpowiedź
-            
+            const timeoutId = setTimeout(() => controller.abort(), 4000); 
             const resp = await fetch(url, { signal: controller.signal });
             clearTimeout(timeoutId);
 
-            if (!resp.ok) throw new Error(`Błąd serwera: ${resp.status}`);
-            
+            if (!resp.ok) throw new Error(`BRouter HTTP: ${resp.status}`);
             const data = await resp.json();
             
             if (data.features && data.features.length > 0) {
-                // Sukces!
                 const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0], Math.round(c[2] || 0)]);
                 const dist = data.features[0].properties['track-length'] || 0;
                 return { coords, distance: parseFloat(dist) };
             }
-            throw new Error("Brak logicznej ścieżki (No path)");
-
         } catch (e) {
-            console.warn(`[Awaria serwera] Omijanie ${baseUrl}:`, e.message);
+            console.warn(`[BRouter Awaria] Omijanie ${baseUrl}:`, e.message);
             lastError = e;
         }
     }
 
-    // Fallback: Jeśli wszystkie serwery na świecie padły
-    console.error("Wszystkie serwery BRouter są niedostępne!", lastError);
+    // ---------------------------------------------------------
+    // SYSTEM 2: OSRM (Niezawodny serwer zapasowy - rysuje trasy, ale bez wysokości)
+    // ---------------------------------------------------------
+    try {
+        console.log("Przełączam na niezawodny serwer zapasowy (OSRM)...");
+        // OSRM dla pieszych (foot)
+        const osrmUrl = `https://router.project-osrm.org/route/v1/foot/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const resp = await fetch(osrmUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (!resp.ok) throw new Error(`OSRM HTTP: ${resp.status}`);
+        const data = await resp.json();
+
+        if (data.routes && data.routes.length > 0) {
+            // OSRM zwraca koordynaty w formacie [lon, lat]. My potrzebujemy [lat, lon, wysokosc]
+            // Jako że nie mamy wysokości z OSRM, wstawiamy tymczasowe 0
+            const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0], 0]);
+            const dist = data.routes[0].distance || 0;
+            
+            console.warn("Trasa wyznaczona poprawnie przez OSRM. Tymczasowy brak wykresu wysokości.");
+            return { coords, distance: parseFloat(dist) };
+        }
+    } catch(e) {
+        console.warn(`[OSRM Awaria]:`, e.message);
+        lastError = e;
+    }
+
+    // ---------------------------------------------------------
+    // SYSTEM 3: OSTATECZNY RATUNEK (Gdy nie ma w ogóle internetu - Linia prosta)
+    // ---------------------------------------------------------
+    console.error("Wszystkie silniki nawigacji są niedostępne!", lastError);
     
-    // Modal powiadamiający użytkownika o linii prostej
+    // Uruchomienie Twojego modala informacyjnego
     if (typeof brouterOutageNotified !== 'undefined' && !brouterOutageNotified) {
         const errorModal = document.getElementById('brouterErrorModal');
         if(errorModal) {
