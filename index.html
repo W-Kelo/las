@@ -751,7 +751,7 @@ canvas#elevation {
     </div>
 </div>
    <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) -->
-<div id="styleModal" class="inner-modal-overlay" data-html2canvas-ignore>
+<div id="styleModal" class="floating-modal" data-html2canvas-ignore>
     <div class="inner-modal" style="width: 320px;">
         <h3 style="margin: 0; color: #f59e0b;">🎨 Styl i Animacja Trasy</h3>
         
@@ -1403,94 +1403,106 @@ function generateRouteDescription() {
         <small>Wysokość: ${routePoints[0].elevation.toFixed(0)} m n.p.m.</small>
     </div>`;
     
-    let currentDist = 0;
-    let stepCoordsBuffer = []; 
-    
-    // Szukanie danych dla punktu 0
-    let startFeatures = getNearbyFeatures(keyPoints[0]);
-    let startDirection = getCompassDirection(getBearing(keyPoints[0][0], keyPoints[0][1], keyPoints[1][0], keyPoints[1][1]));
-    
-    let startTxt = `Ruszaj na <strong>${startDirection}</strong>.`;
-    if(startFeatures.trail) startTxt += ` ${getRandom(phrases.trailPrefix)} <b>${startFeatures.trail}</b>.`;
-    if(startFeatures.pois.length > 0) startTxt += ` ${getRandom(phrases.poiPrefix)}: <b>${startFeatures.pois.join(', ')}</b>.`;
+    let stepNumber = 1;
+    let accumulatedGeom = [keyPoints[0]]; // Zbiera koordynaty dla żółtego podświetlenia etapu na mapie
+    let accumulatedDist = 0;
 
-    text += `<div class="route-step" onmouseenter="highlightStep(0)" onmouseleave="unhighlightStep()">
-                <span class="route-step-icon">🧭</span> ${startTxt}
-             </div>`;
-             
-    routeStepsGeom.push([keyPoints[0], keyPoints[1]]);
-
-    for (let i = 1; i < keyPoints.length - 1; i++) {
-        const prevP = keyPoints[i-1];
+    for (let i = 0; i < keyPoints.length - 1; i++) {
         const currP = keyPoints[i];
         const nextP = keyPoints[i+1];
-
-        const segDist = L.latLng(prevP).distanceTo(L.latLng(currP));
-        currentDist += segDist;
-        stepCoordsBuffer.push(prevP, currP);
-
-        // Zapobiega podawaniu instrukcji co 20 metrów
-        if (currentDist < 25 && i !== keyPoints.length - 2) continue;
-
-        // Prawdziwy kąt z perspektywy oczu pieszego:
-        const turnAngle = getTurnAngle(prevP, currP, nextP);
-
-        let instruction = "";
-        let icon = "⬆️";
-
-        if (Math.abs(turnAngle) < 20) { instruction = getRandom(phrases.straight); icon = "⬆️"; }
-        else if (turnAngle >= 20 && turnAngle <= 60) { instruction = getRandom(phrases.softRight); icon = "↗️"; }
-        else if (turnAngle > 60 && turnAngle <= 130) { instruction = getRandom(phrases.right); icon = "➡️"; }
-        else if (turnAngle > 130) { instruction = getRandom(phrases.sharpRight); icon = "⤵️"; }
-        else if (turnAngle <= -20 && turnAngle >= -60) { instruction = getRandom(phrases.softLeft); icon = "↖️"; }
-        else if (turnAngle < -60 && turnAngle >= -130) { instruction = getRandom(phrases.left); icon = "⬅️"; }
-        else if (turnAngle < -130) { instruction = getRandom(phrases.sharpLeft); icon = "⤴️"; }
-
-        // Czas przejścia (zakładamy średnio 4.5 km/h -> ok 75m/minutę)
-        const timeMins = currentDist / 75;
-        let timeTxt = timeMins < 1 ? "< 1 min" : `~${Math.round(timeMins)} min`;
-
-        let features = getNearbyFeatures(currP);
-        let extraInfo = "";
         
-        if (features.trail) extraInfo += `<span class="route-step-poi">🥾 ${getRandom(phrases.trailPrefix)} <b>${features.trail}</b>.</span>`;
-        if (features.pois.length > 0) extraInfo += `<span class="route-step-poi">📍 ${getRandom(phrases.poiPrefix)}: <b>${features.pois.join(', ')}</b>.</span>`;
+        // Dystans tego konkretnego odcinka do przebycia PO skręcie
+        const dist = L.latLng(currP).distanceTo(L.latLng(nextP));
+        
+        // Kąt skrętu NA aktualnym węźle (jak wejść na ten odcinek)
+        let turnAngle = 0;
+        if (i > 0) {
+            const prevP = keyPoints[i-1];
+            turnAngle = getTurnAngle(prevP, currP, nextP);
+        }
 
-        const stepIdx = routeStepsGeom.length;
-        text += `
-            <div class="route-step" onmouseenter="highlightStep(${stepIdx})" onmouseleave="unhighlightStep()" style="cursor:pointer;">
-                <div style="display:flex; align-items:center;">
-                    <span class="route-step-icon">${icon}</span> 
-                    <div>
-                        ${instruction} <span class="route-step-dist">${currentDist.toFixed(0)} m</span>.
-                        <small style="opacity:0.7; margin-left: 5px;">(⏱️ ${timeTxt})</small>
+        accumulatedGeom.push(nextP);
+        accumulatedDist += dist;
+
+        const isLastSegment = (i === keyPoints.length - 2);
+
+        // Generujemy instrukcję jeśli: to pierwszy krok, ostatni krok, skręt jest wyraźny lub idziemy baaardzo długo prosto
+        if (i === 0 || isLastSegment || Math.abs(turnAngle) >= 20 || accumulatedDist > 500) {
+            
+            let instruction = "";
+            let icon = "🧭";
+
+            // 1. Instrukcja dla STARTU (Etap 1)
+            if (i === 0) {
+                let startDirection = getCompassDirection(getBearing(currP[0], currP[1], nextP[0], nextP[1]));
+                if (isLastSegment) {
+                    instruction = `<strong>Ostatnia prosta!</strong> Ruszaj na <strong>${startDirection}</strong>. Za`;
+                    icon = "🏁";
+                } else {
+                    instruction = `Ruszaj na <strong>${startDirection}</strong> i idź prosto przez`;
+                }
+            } 
+            // 2. Instrukcja dla ŚRODKA TRASY (Etap 2+)
+            else if (!isLastSegment) {
+                if (Math.abs(turnAngle) < 20) { instruction = getRandom(phrases.straight); icon = "⬆️"; }
+                else if (turnAngle >= 20 && turnAngle <= 60) { instruction = getRandom(phrases.softRight); icon = "↗️"; }
+                else if (turnAngle > 60 && turnAngle <= 130) { instruction = getRandom(phrases.right); icon = "➡️"; }
+                else if (turnAngle > 130) { instruction = getRandom(phrases.sharpRight); icon = "⤵️"; }
+                else if (turnAngle <= -20 && turnAngle >= -60) { instruction = getRandom(phrases.softLeft); icon = "↖️"; }
+                else if (turnAngle < -60 && turnAngle >= -130) { instruction = getRandom(phrases.left); icon = "⬅️"; }
+                else if (turnAngle < -130) { instruction = getRandom(phrases.sharpLeft); icon = "⤴️"; }
+            }
+            // 3. Instrukcja dla KOŃCÓWKI (Ostatnia prosta, z uwzględnieniem skrętu wchodzącego)
+            else if (isLastSegment && i !== 0) {
+                let basicTurn = "Idź prosto";
+                if (turnAngle >= 20 && turnAngle <= 60) basicTurn = "Skręć lekko w prawo";
+                else if (turnAngle > 60 && turnAngle <= 130) basicTurn = "Skręć w prawo";
+                else if (turnAngle > 130) basicTurn = "Ostro w prawo";
+                else if (turnAngle <= -20 && turnAngle >= -60) basicTurn = "Skręć lekko w lewo";
+                else if (turnAngle < -60 && turnAngle >= -130) basicTurn = "Skręć w lewo";
+                else if (turnAngle < -130) basicTurn = "Ostro w lewo";
+
+                instruction = `<strong>Ostatnia prosta!</strong> ${basicTurn}, za`;
+                icon = "🏁";
+            }
+
+            // Obliczenia czasu i POI
+            const timeMins = accumulatedDist / 75; // ok. 4.5 km/h
+            let timeTxt = timeMins < 1 ? "< 1 min" : `~${Math.round(timeMins)} min`;
+            
+            let features = getNearbyFeatures(nextP);
+            let extraInfo = "";
+            if (features.trail) extraInfo += `<span class="route-step-poi">🥾 ${getRandom(phrases.trailPrefix)} <b>${features.trail}</b>.</span>`;
+            if (features.pois.length > 0) extraInfo += `<span class="route-step-poi">📍 ${getRandom(phrases.poiPrefix)}: <b>${features.pois.join(', ')}</b>.</span>`;
+
+            // Zapis do narysowania podświetlenia na mapie
+            const stepIdx = routeStepsGeom.length;
+            routeStepsGeom.push([...accumulatedGeom]);
+
+            let borderStyle = isLastSegment ? 'border-left-color: #ef4444;' : '';
+            
+            // Renderowanie pojedynczego bloku etapu
+            text += `
+                <div class="route-step" onmouseenter="highlightStep(${stepIdx})" onmouseleave="unhighlightStep()" style="cursor:pointer; ${borderStyle}">
+                    <div style="display:flex; align-items:center;">
+                        <span class="route-step-icon" style="font-size:1.5rem;">${icon}</span> 
+                        <div>
+                            <small style="color:var(--accent); font-weight:bold; display:block; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem; margin-bottom: 2px;">Etap ${stepNumber}</small>
+                            ${instruction} <span class="route-step-dist">${accumulatedDist.toFixed(0)} m</span>.
+                            <small style="opacity:0.7; margin-left: 5px; white-space: nowrap;">(⏱️ ${timeTxt})</small>
+                        </div>
                     </div>
-                </div>
-                ${extraInfo}
-            </div>`;
-        
-        routeStepsGeom.push([...stepCoordsBuffer]);
-        stepCoordsBuffer = [];
-        currentDist = 0;
+                    ${extraInfo}
+                </div>`;
+
+            // Zresetowanie "licznika" dla następnego etapu
+            accumulatedGeom = [nextP];
+            accumulatedDist = 0;
+            stepNumber++;
+        }
     }
 
-    // Odcinek końcowy
-    const lastP = keyPoints[keyPoints.length - 1];
-    const finalDist = L.latLng(keyPoints[keyPoints.length - 2]).distanceTo(L.latLng(lastP));
-    const finalTime = Math.round(finalDist / 75);
-    
-    let endFeatures = getNearbyFeatures(lastP);
-    let endPoiText = endFeatures.pois.length > 0 ? `<br><span class="route-step-poi">U celu powita cię: <b>${endFeatures.pois.join(', ')}</b>.</span>` : '';
-
-    const lastStepIdx = routeStepsGeom.length;
-    routeStepsGeom.push([keyPoints[keyPoints.length - 2], lastP]);
-
     text += `
-        <div class="route-step" onmouseenter="highlightStep(${lastStepIdx})" onmouseleave="unhighlightStep()" style="border-left-color: #ef4444; cursor:pointer;">
-            <span class="route-step-icon">🏁</span> 
-            Ostatnia prosta! Za <span class="route-step-dist">${finalDist.toFixed(0)} m</span> (⏱️ ~${finalTime} min) dotrzesz do celu.
-            ${endPoiText}
-        </div>
         <div style="margin-top:15px; font-weight:bold; border-top: 1px solid rgba(255,255,255,0.1); padding-top:10px;">
             📍 Meta wycieczki <small>(${routePoints[routePoints.length-1].elevation.toFixed(0)} m n.p.m.)</small>
         </div>
@@ -1498,7 +1510,6 @@ function generateRouteDescription() {
 
     container.innerHTML = text;
 }
-
 /* --- INTERAKTYWNE PODŚWIETLANIE TRASY --- */
 function highlightStep(idx) {
     if(!routeStepsGeom[idx]) return;
