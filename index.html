@@ -1270,20 +1270,36 @@ function getNearbyFeatures(latlng, radius = 45) {
 
 // Oblicza relatywny kąt skrętu z perspektywy pieszego (eliminując błędy kulistości Ziemi)
 // CAŁKOWICIE NOWA FUNKCJA - Niezawodne obliczanie kąta na podstawie azymutu
+// Całkowicie nowy algorytm oparty na wektorach płaskich (odporny na błędy osi)
 function getTurnAngle(p1, p2, p3) {
-    // Pobieramy prawdziwy azymut wejścia w zakręt i wyjścia z zakrętu
-    const bearingIn = getBearing(p1[0], p1[1], p2[0], p2[1]);
-    const bearingOut = getBearing(p2[0], p2[1], p3[0], p3[1]);
+    // 1. Zamieniamy punkty geograficzne na płaskie metry dokładnie tak, jak widzi to Leaflet na ekranie
+    const v1 = L.CRS.EPSG3857.project(L.latLng(p1[0], p1[1]));
+    const v2 = L.CRS.EPSG3857.project(L.latLng(p2[0], p2[1]));
+    const v3 = L.CRS.EPSG3857.project(L.latLng(p3[0], p3[1]));
 
-    // Różnica kątów (zmiana kierunku)
-    let turn = bearingOut - bearingIn;
+    // 2. Tworzymy dwa wektory ruchu: A (wchodzący w zakręt) i B (wychodzący z zakrętu)
+    const ax = v2.x - v1.x;
+    const ay = v2.y - v1.y;
+    
+    const bx = v3.x - v2.x;
+    const by = v3.y - v2.y;
 
-    // Normalizacja do przedziału -180 do 180 stopni (żeby skręt o 270 w prawo był widziany jako 90 w lewo)
-    if (turn > 180) turn -= 360;
-    if (turn < -180) turn += 360;
+    // 3. Liczymy Iloczyn Skalarny (Dot Product) - to da nam dokładny kąt zgięcia (0-180 stopni)
+    const magA = Math.sqrt(ax * ax + ay * ay);
+    const magB = Math.sqrt(bx * bx + by * by);
+    if (magA === 0 || magB === 0) return 0;
 
-    // ZWRACA: Dodatni = Skręt w PRAWO | Ujemny = Skręt w LEWO
-    return turn;
+    let cosTheta = (ax * bx + ay * by) / (magA * magB);
+    cosTheta = Math.max(-1, Math.min(1, cosTheta)); // Zabezpieczenie przed błędem zmiennoprzecinkowym
+    const angleDeg = Math.acos(cosTheta) * (180 / Math.PI);
+
+    // 4. Liczymy Iloczyn Wektorowy (Cross Product 2D) - to BEZBŁĘDNIE mówi nam: LEWO czy PRAWO
+    // W matematyce przeglądarki (gdzie Y rośnie w dół):
+    // Jeśli wynik > 0 to skręt jest w prawo. Jeśli < 0 to w lewo.
+    const cross = ax * by - ay * bx;
+
+    // Zwracamy kąt ze znakiem (dodatni = prawo, ujemny = lewo)
+    return cross >= 0 ? angleDeg : -angleDeg;
 }
 
 // Baza losowych sformułowań przewodnika
