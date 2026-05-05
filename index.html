@@ -750,10 +750,11 @@ canvas#elevation {
 
     </div>
 </div>
+
    <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) -->
-<div id="styleModal" class="floating-modal" data-html2canvas-ignore>
-    <div class="inner-modal" style="width: 320px;">
-        <h3 style="margin: 0; color: #f59e0b;">🎨 Styl i Animacja Trasy</h3>
+<div id="styleModal" class="floating-modal" style="width: 350px;">
+    <div class="modal-header"
+        <span">🎨 Styl i Animacja Trasy</span>
         
         <div class="style-control-group">
             <label>Kolor linii:</label>
@@ -768,7 +769,6 @@ canvas#elevation {
             <input type="range" id="styleWeight" class="thick-slider" min="2" max="15" value="6" oninput="document.getElementById('styleWeightVal').innerText=this.value">
         </div>
         
-        <!-- NOWE: Opcja i kolor kropek -->
         <div class="style-control-group" style="padding-top: 5px;">
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
                 <input type="checkbox" id="stylePointsToggle" onchange="togglePointsColorInput(this.checked)">
