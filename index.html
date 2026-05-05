@@ -12,6 +12,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
 
     <style>
         :root {
@@ -421,6 +422,43 @@
     color: #e2e8f0;
     border: 1px solid rgba(255,255,255,0.1);
 }
+        /* --- STYLIZACJA TRASY I NAGRYWANIE GIF --- */
+.style-control-group {
+    margin-bottom: 15px;
+    background: rgba(0,0,0,0.1);
+    padding: 10px;
+    border-radius: 8px;
+}
+.style-control-group label {
+    display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 5px;
+}
+.color-picker-wrap {
+    display: flex; align-items: center; gap: 10px;
+}
+input[type="color"] {
+    -webkit-appearance: none; border: none; width: 40px; height: 40px; 
+    border-radius: 5px; cursor: pointer; background: none; padding: 0;
+}
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"]::-webkit-color-swatch { border: 2px solid rgba(255,255,255,0.2); border-radius: 5px; }
+
+input[type="range"].thick-slider {
+    width: 100%; accent-color: var(--accent);
+}
+select.style-select {
+    width: 100%; padding: 8px; background: #0f172a; color: white;
+    border: 1px solid #475569; border-radius: 6px; outline: none;
+}
+#recordingOverlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.8); z-index: 5000; display: none;
+    flex-direction: column; align-items: center; justify-content: center; color: white;
+}
+.record-pulse {
+    width: 20px; height: 20px; background: red; border-radius: 50%;
+    animation: pulse 1s infinite; margin-bottom: 10px;
+}
+@keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(255, 0, 0, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); } }
     </style>
 </head>
 <body class="dark">
@@ -453,6 +491,12 @@
 
     <button onclick="openPointsModal()">📑 Edytuj Punkty</button>
     <button onclick="openDescModal()">📜 Opis Trasy</button>
+     <!-- NOWE PRZYCISKI DO ANIMACJI I STYLU -->
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+        <button onclick="openStyleModal()" style="background: #f59e0b;">🎨 Styl trasy</button>
+        <button onclick="playRouteAnimation()" style="background: #ec4899;">▶️ Animuj</button>
+    </div>
+    <button onclick="recordRouteGIF()" style="width: 100%; margin-top: 4px; background: #8b5cf6;">🎞️ Zapisz jako GIF</button>
     
     <div style="display:grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px;">
         <button class="secondary" onclick="enablePOI()">📍 Dodaj Własny Punkt</button>
@@ -623,6 +667,51 @@
 
     </div>
 </div>
+    <!-- MODAL STYLU TRASY -->
+<div id="styleModal" class="inner-modal-overlay" data-html2canvas-ignore>
+    <div class="inner-modal" style="width: 320px;">
+        <h3 style="margin: 0; color: #f59e0b;">🎨 Styl i Animacja Trasy</h3>
+        
+        <div class="style-control-group">
+            <label>Kolor linii:</label>
+            <div class="color-picker-wrap">
+                <input type="color" id="styleColor" value="#22c55e">
+                <span id="styleColorHex" style="font-family: monospace; font-size: 0.9em;">#22c55e</span>
+            </div>
+        </div>
+
+        <div class="style-control-group">
+            <label>Grubość linii: <span id="styleWeightVal">6</span> px</label>
+            <input type="range" id="styleWeight" class="thick-slider" min="2" max="15" value="6" oninput="document.getElementById('styleWeightVal').innerText=this.value">
+        </div>
+
+        <div class="style-control-group">
+            <label>Szybkość animacji:</label>
+            <select id="styleSpeed" class="style-select">
+                <option value="slow">Wolno</option>
+                <option value="medium" selected>Średnio</option>
+                <option value="fast">Szybko</option>
+            </select>
+        </div>
+
+        <div style="display:flex; flex-direction: column; gap: 8px; margin-top: 5px;">
+            <button onclick="saveStyle(false)" style="background: #22c55e;">Zastosuj w tej sesji</button>
+            <button onclick="saveStyle(true)" style="background: #3b82f6;">Zapisz jako domyślne (Zawsze)</button>
+            <button onclick="document.getElementById('styleModal').style.display='none'" class="secondary">Anuluj</button>
+        </div>
+    </div>
+</div>
+
+<!-- NAKŁADKA POSTĘPU GENEROWANIA GIF -->
+<div id="recordingOverlay" data-html2canvas-ignore>
+    <div class="record-pulse"></div>
+    <h2 style="margin:0 0 10px 0;">Trwa renderowanie GIF...</h2>
+    <p id="gifProgressText" style="color:#cbd5e1; margin:0;">Klatka 0 / 0</p>
+    <div style="width: 300px; height: 10px; background: #334155; border-radius: 5px; margin-top: 15px; overflow: hidden;">
+        <div id="gifProgressBar" style="height: 100%; width: 0%; background: #ec4899; transition: width 0.2s;"></div>
+    </div>
+    <p style="font-size: 0.8rem; color:#94a3b8; margin-top: 10px;">Proszę nie zmieniać rozmiaru okna.</p>
+</div>
 <div id="confirmRefreshModal" class="inner-modal-overlay" data-html2canvas-ignore>
             <div class="inner-modal" style="width: 320px; text-align: center;">
                 <h3 style="color: #ef4444; margin-top:0;">⚠️ Potwierdzenie</h3>
@@ -694,7 +783,22 @@ let totalAscent = 0;
 let userMarker = null;
 let isRouting = false; 
 
-const polyline = L.polyline([], {color: '#22c55e', weight: 6, opacity: 0.9, lineJoin: 'round'}).addTo(map);
+// Konfiguracja stylów użytkownika
+let routePrefColor = localStorage.getItem('gpx_color') || '#22c55e';
+let routePrefWeight = parseInt(localStorage.getItem('gpx_weight')) || 6;
+let routePrefSpeed = localStorage.getItem('gpx_speed') || 'medium';
+
+const polyline = L.polyline([], {
+    color: routePrefColor, 
+    weight: routePrefWeight, 
+    opacity: 0.9, 
+    lineJoin: 'round'
+}).addTo(map);
+
+// Nasłuchiwacz na aktualizację podglądu hex
+document.getElementById('styleColor').addEventListener('input', function(e) {
+    document.getElementById('styleColorHex').innerText = e.target.value;
+});
 const hikingLayer = L.layerGroup().addTo(map);
 const poiLayer = L.layerGroup().addTo(map);
 const OVERPASS_SERVERS = [
@@ -2056,6 +2160,224 @@ function togglePanelResize() {
         panel.classList.remove('resizable');
         btn.style.boxShadow = "none";
     }
+}
+    /* ================= STYLIZACJA TRASY ================= */
+function openStyleModal() {
+    document.getElementById('styleColor').value = routePrefColor;
+    document.getElementById('styleColorHex').innerText = routePrefColor;
+    document.getElementById('styleWeight').value = routePrefWeight;
+    document.getElementById('styleWeightVal').innerText = routePrefWeight;
+    document.getElementById('styleSpeed').value = routePrefSpeed;
+    document.getElementById('styleModal').style.display = 'flex';
+}
+
+function saveStyle(saveToLocal) {
+    routePrefColor = document.getElementById('styleColor').value;
+    routePrefWeight = parseInt(document.getElementById('styleWeight').value);
+    routePrefSpeed = document.getElementById('styleSpeed').value;
+
+    if (saveToLocal) {
+        localStorage.setItem('gpx_color', routePrefColor);
+        localStorage.setItem('gpx_weight', routePrefWeight);
+        localStorage.setItem('gpx_speed', routePrefSpeed);
+        alert("Zapisano ustawienia domyślne!");
+    }
+
+    // Aktualizuj główną linię
+    polyline.setStyle({ color: routePrefColor, weight: routePrefWeight });
+    
+    // Zaktualizuj też linię w modalu eksportu, jeśli istnieje
+    if (typeof exportPolyline !== 'undefined' && exportPolyline != null) {
+        exportPolyline.setStyle({ color: routePrefColor, weight: routePrefWeight });
+    }
+
+    document.getElementById('styleModal').style.display = 'none';
+}
+
+
+/* ================= ANIMACJA TRASY ================= */
+let animLineLayer = null;
+let animDotMarker = null;
+let animInterval = null;
+
+// Oblicza punkt na linii dla danego dystansu (interpolacja matematyczna)
+function getPointAtDistance(geometry, targetDist) {
+    let currentDist = 0;
+    for (let i = 1; i < geometry.length; i++) {
+        const p1 = L.latLng(geometry[i-1]);
+        const p2 = L.latLng(geometry[i]);
+        const segmentDist = p1.distanceTo(p2);
+        
+        if (currentDist + segmentDist >= targetDist) {
+            const ratio = (targetDist - currentDist) / segmentDist;
+            const lat = p1.lat + (p2.lat - p1.lat) * ratio;
+            const lng = p1.lng + (p2.lng - p1.lng) * ratio;
+            return { latLng: [lat, lng], segmentIndex: i };
+        }
+        currentDist += segmentDist;
+    }
+    return { latLng: geometry[geometry.length - 1], segmentIndex: geometry.length - 1 };
+}
+
+function playRouteAnimation() {
+    if (routeGeometry.length < 2) return alert("Brak trasy do animacji!");
+    
+    // Jeśli animacja trwa, zatrzymaj ją
+    if (animInterval) clearInterval(animInterval);
+    if (animLineLayer) map.removeLayer(animLineLayer);
+    if (animDotMarker) map.removeLayer(animDotMarker);
+
+    map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
+
+    // Ukryj główną linię
+    polyline.setStyle({ opacity: 0 });
+
+    animLineLayer = L.polyline([routeGeometry[0]], { 
+        color: routePrefColor, weight: routePrefWeight, opacity: 0.9, lineJoin: 'round' 
+    }).addTo(map);
+
+    animDotMarker = L.circleMarker(routeGeometry[0], {
+        radius: routePrefWeight + 2, color: '#fff', weight: 2, fillColor: routePrefColor, fillOpacity: 1
+    }).addTo(map);
+
+    const totalDist = calculateTotalDist();
+    
+    // Obliczanie prędkości (ile metrów pokonujemy na jedną klatkę animacji - ok 60fps)
+    let speedMetersPerFrame = totalDist / 100; 
+    if (routePrefSpeed === 'slow') speedMetersPerFrame = totalDist / 400;
+    else if (routePrefSpeed === 'fast') speedMetersPerFrame = totalDist / 40;
+
+    let currentAnimDist = 0;
+
+    animInterval = setInterval(() => {
+        currentAnimDist += speedMetersPerFrame;
+        
+        if (currentAnimDist >= totalDist) {
+            currentAnimDist = totalDist;
+            clearInterval(animInterval);
+            animInterval = null;
+            setTimeout(() => {
+                // Po 2 sekundach od zakończenia przywróć normalną mapę
+                if (animLineLayer) map.removeLayer(animLineLayer);
+                if (animDotMarker) map.removeLayer(animDotMarker);
+                polyline.setStyle({ opacity: 0.9 });
+            }, 2000);
+        }
+
+        const currentPosData = getPointAtDistance(routeGeometry, currentAnimDist);
+        
+        // Zbuduj linię od 0 do aktualnego segmentu, plus interpolowany punkt na końcu
+        const currentLineCoords = routeGeometry.slice(0, currentPosData.segmentIndex);
+        currentLineCoords.push(currentPosData.latLng);
+        
+        animLineLayer.setLatLngs(currentLineCoords);
+        animDotMarker.setLatLng(currentPosData.latLng);
+        
+    }, 16); // ~60 fps
+}
+
+/* ================= EKSPORT DO GIF ================= */
+async function recordRouteGIF() {
+    if (routeGeometry.length < 2) return alert("Brak trasy do nagrania!");
+    
+    const overlay = document.getElementById('recordingOverlay');
+    const progressText = document.getElementById('gifProgressText');
+    const progressBar = document.getElementById('gifProgressBar');
+    
+    overlay.style.display = 'flex';
+    map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
+    
+    // Poczekaj na załadowanie kafli po dopasowaniu boundów
+    await new Promise(r => setTimeout(r, 1000));
+
+    polyline.setStyle({ opacity: 0 });
+    
+    if (animLineLayer) map.removeLayer(animLineLayer);
+    if (animDotMarker) map.removeLayer(animDotMarker);
+
+    animLineLayer = L.polyline([routeGeometry[0]], { 
+        color: routePrefColor, weight: routePrefWeight, opacity: 0.9, lineJoin: 'round' 
+    }).addTo(map);
+
+    animDotMarker = L.circleMarker(routeGeometry[0], {
+        radius: routePrefWeight + 2, color: '#fff', weight: 2, fillColor: routePrefColor, fillOpacity: 1
+    }).addTo(map);
+
+    // Aby uniknąć problemów CORS z Web Workerem gif.js, używamy triku z Blob url
+    const workerBlob = new Blob([`
+        importScripts('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js');
+    `], { type: 'application/javascript' });
+
+    const gif = new GIF({
+        workers: 2,
+        quality: 10,
+        workerScript: URL.createObjectURL(workerBlob),
+        width: map.getSize().x,
+        height: map.getSize().y
+    });
+
+    // Ustawienia klatek w zależności od szybkości
+    const totalDist = calculateTotalDist();
+    let framesCount = 20; // Default
+    if (routePrefSpeed === 'slow') framesCount = 45;
+    else if (routePrefSpeed === 'fast') framesCount = 10;
+    
+    const distStep = totalDist / framesCount;
+    const mapContainer = document.getElementById('map');
+
+    for (let i = 0; i <= framesCount; i++) {
+        let targetDist = i * distStep;
+        if(targetDist > totalDist) targetDist = totalDist;
+
+        // Aktualizacja mapy
+        const posData = getPointAtDistance(routeGeometry, targetDist);
+        const currentLineCoords = routeGeometry.slice(0, posData.segmentIndex);
+        currentLineCoords.push(posData.latLng);
+        animLineLayer.setLatLngs(currentLineCoords);
+        animDotMarker.setLatLng(posData.latLng);
+
+        // Krótkie opóźnienie by DOM się wyrenderował przed screenem
+        await new Promise(r => setTimeout(r, 50));
+
+        progressText.innerText = `Robienie zrzutów: ${i} / ${framesCount}`;
+        progressBar.style.width = `${(i / framesCount) * 50}%`; // Pierwsze 50% to screeny
+
+        // Rób screen mapy
+        const canvas = await html2canvas(mapContainer, { useCORS: true, scale: 1 });
+        
+        // Zatrzymanie klatki na początku i końcu żeby gif był czytelny
+        let delay = 100;
+        if (i === 0) delay = 1000;
+        if (i === framesCount) delay = 2000;
+        
+        gif.addFrame(canvas, {delay: delay, copy: true});
+    }
+
+    progressText.innerText = `Składanie pliku GIF... (może to chwilę potrwać)`;
+
+    gif.on('progress', function(p) {
+        progressBar.style.width = `${50 + (p * 50)}%`; // Drugie 50% to renderowanie
+    });
+
+    gif.on('finished', function(blob) {
+        overlay.style.display = 'none';
+        
+        // Sprzątanie po animacji
+        map.removeLayer(animLineLayer);
+        map.removeLayer(animDotMarker);
+        polyline.setStyle({ opacity: 0.9 });
+        
+        // Pobieranie
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `animacja_trasy_${new Date().toLocaleDateString()}.gif`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    });
+
+    gif.render();
 }
 
 </script>
