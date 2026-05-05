@@ -1136,27 +1136,53 @@ function importGPX(e) {
 }
 
 /* ================= TRASOWANIE ================= */
+// Lista głównych i zapasowych serwerów BRoutera
+const BROUTER_ENDPOINTS = [
+    'https://brouter.de/brouter',       // Główny (często bywa przeciążony/wyłączony)
+    'https://brouter.m11n.de/brouter',  // Niezawodny niemiecki mirror
+    'https://brouter.damsy.net/brouter' // Francuski mirror
+];
+
 async function getRouteSegment(start, end) {
-    try {
-        const url = `https://brouter.de/brouter?lonlats=${start.lng},${start.lat}|${end.lng},${end.lat}&profile=hiking-mountain&alternativeidx=0&format=geojson`;
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error("Routing error");
-        const data = await resp.json();
-        
-        if (data.features && data.features.length > 0) {
-            // Zmieniono: Pobieramy c[1] (lat), c[0] (lng) ORAZ c[2] (wysokość)
-            const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0], Math.round(c[2] || 0)]);
-            const dist = data.features[0].properties['track-length'] || 0;
-            return { coords, distance: parseFloat(dist) };
+    let lastError = null;
+
+    // Próbujemy po kolei każdego serwera. Jeśli jeden leży, idziemy do następnego.
+    for (const baseUrl of BROUTER_ENDPOINTS) {
+        try {
+            const url = `${baseUrl}?lonlats=${start.lng},${start.lat}|${end.lng},${end.lat}&profile=hiking-mountain&alternativeidx=0&format=geojson`;
+            
+            // Dodajemy krótki timeout, żeby nie czekać w nieskończoność na padnięty serwer
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 sekund na odpowiedź
+            
+            const resp = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (!resp.ok) throw new Error(`Błąd serwera: ${resp.status}`);
+            
+            const data = await resp.json();
+            
+            if (data.features && data.features.length > 0) {
+                // Sukces! Mamy trasę, przerywamy pętlę i oddajemy dane
+                const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0], Math.round(c[2] || 0)]);
+                const dist = data.features[0].properties['track-length'] || 0;
+                return { coords, distance: parseFloat(dist) };
+            }
+            throw new Error("Brak logicznej ścieżki (No path)");
+
+        } catch (e) {
+            console.warn(`[Awaria serwera] Omijanie ${baseUrl}:`, e.message);
+            lastError = e;
+            // Pętla przejdzie do następnego serwera na liście
         }
-        throw new Error("No path");
-    } catch (e) {
-        // Fallback w razie braku trasy - po prostu prosta linia (z wysokością 0)
-        return { 
-            coords: [[start.lat, start.lng, 0], [end.lat, end.lng, 0]], 
-            distance: L.latLng(start).distanceTo(L.latLng(end)) 
-        }; 
     }
+
+    // Fallback: Jeśli wszystkie serwery na świecie padły (bardzo rzadkie), połączy w linii prostej
+    console.error("Wszystkie serwery BRouter są niedostępne!", lastError);
+    return { 
+        coords: [[start.lat, start.lng, 0], [end.lat, end.lng, 0]], 
+        distance: L.latLng(start).distanceTo(L.latLng(end)) 
+    }; 
 }
 
 map.on('click', async e => {
