@@ -459,6 +459,11 @@ select.style-select {
     animation: pulse 1s infinite; margin-bottom: 10px;
 }
 @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(255, 0, 0, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); } }
+        /* --- INTERAKTYWNY PROFIL TERENU --- */
+canvas#elevation {
+    cursor: crosshair;
+    touch-action: none; /* Zapobiega przewijaniu strony na telefonie podczas "jeżdżenia" palcem po wykresie */
+}
     </style>
 </head>
 <body class="dark">
@@ -1164,34 +1169,211 @@ function generateRouteDescription() {
     container.innerHTML = text;
 }
 
-/* ================= WYSOKOŚĆ ================= */
+/* ================= WYSOKOŚĆ I INTERAKTYWNY PROFIL TERENU ================= */
+let globalElevationData = [];
+let globalElevationDist = []; // Przechowuje dystans dla każdego punktu na osi X
+
 async function fetchFullElevationProfile() {
-    if (routeGeometry.length < 2) { clearElevation(); return; }
+    if (routeGeometry.length < 2) { 
+        globalElevationData = []; 
+        clearElevation(); 
+        return; 
+    }
     
-    const step = Math.max(1, Math.floor(routeGeometry.length / 80));
+    // Próbkujemy max ok. 80-100 punktów z geometrii dla optymalizacji
+    const step = Math.max(1, Math.floor(routeGeometry.length / 90));
     const lats = [];
     const lngs = [];
+    globalElevationDist = [];
+    let cumDist = 0;
     
-    for(let i=0; i<routeGeometry.length; i+=step) {
+    // Zbieramy współrzędne i na bieżąco obliczamy ich precyzyjny dystans od startu
+    for(let i = 0; i < routeGeometry.length; i += step) {
         lats.push(routeGeometry[i][0]);
         lngs.push(routeGeometry[i][1]);
+        
+        if(i > 0) {
+            cumDist += L.latLng(routeGeometry[i-step]).distanceTo(L.latLng(routeGeometry[i]));
+        } else if (i === 0 && lats.length > 1) {
+            // Dla pierwszego kroku po starcie
+            cumDist += L.latLng(routeGeometry[0]).distanceTo(L.latLng(routeGeometry[i]));
+        }
+        globalElevationDist.push(cumDist);
     }
     
     try {
         const url = `https://api.open-meteo.com/v1/elevation?latitude=${lats.join(',')}&longitude=${lngs.join(',')}`;
         const res = await fetch(url);
+        if (!res.ok) throw new Error("API Limit");
+        
         const data = await res.json();
-        const elevations = data.elevation;
+        globalElevationData = data.elevation;
         
         totalAscent = 0;
-        for(let i=1; i<elevations.length; i++) {
-            if(elevations[i] > elevations[i-1]) totalAscent += (elevations[i] - elevations[i-1]);
+        for(let i = 1; i < globalElevationData.length; i++) {
+            if(globalElevationData[i] > globalElevationData[i-1]) {
+                totalAscent += (globalElevationData[i] - globalElevationData[i-1]);
+            }
         }
         totalAscent = Math.round(totalAscent);
         
-        drawElevation(elevations);
+        drawElevation(); // Rysuje bazowy wykres bez interakcji
         updateStats(calculateTotalDist());
-    } catch (e) { clearElevation(); }
+        
+    } catch (e) { 
+        console.warn("Błąd pobierania wysokości (możliwy limit API). Trzymam stare dane na wykresie.");
+        // Zamiast czyścić, rysujemy na starych danych żeby nic nie migało
+        if(globalElevationData.length > 0) drawElevation();
+    }
+}
+
+function clearElevation() {
+    const c = document.getElementById('elevation');
+    c.getContext('2d').clearRect(0, 0, c.width, c.height);
+}
+
+// Główna funkcja rysująca - przyjmuje opcjonalny parametr hoverIdx (indeks najechanego punktu)
+function drawElevation(hoverIdx = -1) {
+    if (!globalElevationData || globalElevationData.length === 0) return;
+    
+    const c = document.getElementById('elevation');
+    const ctx = c.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    
+    // Dopasowanie do wysokiej rozdzielczości ekranów
+    const displayWidth = c.offsetWidth;
+    const displayHeight = c.offsetHeight;
+    c.width = displayWidth * dpr;
+    c.height = displayHeight * dpr;
+    ctx.scale(dpr, dpr);
+    
+    // Marginesy na wartości liczbowe
+    const padL = 35; // Miejsce na liczby z lewej
+    const padR = 10;
+    const padT = 15;
+    const padB = 15;
+    
+    const innerW = displayWidth - padL - padR;
+    const innerH = displayHeight - padT - padB;
+    
+    const minRaw = Math.min(...globalElevationData);
+    const maxRaw = Math.max(...globalElevationData);
+    
+    // Dodajemy "oddech" do skali (zaokrąglanie do dziesiątek)
+    const min = Math.max(0, Math.floor(minRaw / 10) * 10 - 10);
+    const max = Math.ceil(maxRaw / 10) * 10 + 10;
+    const range = (max - min) < 10 ? 10 : (max - min);
+
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+    // 1. RYSOWANIE SIATKI I OSI (W TLE)
+    ctx.fillStyle = document.body.classList.contains('light') ? '#64748b' : '#94a3b8';
+    ctx.font = '10px "Segoe UI", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    const gridLines = 3; // Dolna, środkowa, górna linia
+    for(let i = 0; i < gridLines; i++) {
+        const val = max - (range / (gridLines - 1)) * i;
+        const y = padT + (i / (gridLines - 1)) * innerH;
+
+        // Linia pozioma
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(displayWidth - padR, y);
+        ctx.strokeStyle = document.body.classList.contains('light') ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)';
+        ctx.stroke();
+
+        // Tekst (np. "120 m")
+        ctx.fillText(`${Math.round(val)}m`, padL - 5, y);
+    }
+
+    // 2. RYSOWANIE GEOMETRII WYKRESU (Wypełnienie)
+    const grad = ctx.createLinearGradient(0, padT, 0, displayHeight - padB);
+    grad.addColorStop(0, 'rgba(34, 197, 94, 0.4)'); // --accent color
+    grad.addColorStop(1, 'rgba(34, 197, 94, 0.0)');
+    
+    ctx.beginPath();
+    ctx.moveTo(padL, displayHeight - padB);
+    
+    globalElevationData.forEach((v, i) => {
+        const x = padL + (i / (globalElevationData.length - 1)) * innerW;
+        const y = padT + innerH - ((v - min) / range) * innerH;
+        ctx.lineTo(x, y);
+    });
+    
+    ctx.lineTo(padL + innerW, displayHeight - padB);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // 3. RYSOWANIE LINII GŁÓWNEJ (Stroke)
+    ctx.beginPath();
+    globalElevationData.forEach((v, i) => {
+        const x = padL + (i / (globalElevationData.length - 1)) * innerW;
+        const y = padT + innerH - ((v - min) / range) * innerH;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 4. EFEKT INTERAKTYWNY (Najechanie myszką/palcem)
+    if(hoverIdx >= 0 && hoverIdx < globalElevationData.length) {
+        const x = padL + (hoverIdx / (globalElevationData.length - 1)) * innerW;
+        const val = globalElevationData[hoverIdx];
+        const y = padT + innerH - ((val - min) / range) * innerH;
+        const distKm = (globalElevationDist[hoverIdx] / 1000).toFixed(2);
+
+        // Pionowa linia
+        ctx.beginPath();
+        ctx.moveTo(x, padT);
+        ctx.lineTo(x, displayHeight - padB);
+        ctx.strokeStyle = document.body.classList.contains('light') ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]); // Reset dash
+
+        // Kropka na linii
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Rysowanie boxa z Tooltipem
+        const text1 = `${val.toFixed(0)} m n.p.m.`;
+        const text2 = `${distKm} km`;
+        ctx.font = 'bold 11px sans-serif';
+        const w1 = ctx.measureText(text1).width;
+        const w2 = ctx.measureText(text2).width;
+        const boxW = Math.max(w1, w2) + 16;
+        const boxH = 34;
+        
+        // Logika żeby tooltip nie uciekł poza ekran
+        let boxX = x + 10;
+        if(boxX + boxW > displayWidth) boxX = x - boxW - 10;
+        let boxY = y - boxH / 2;
+        if(boxY < 5) boxY = 5;
+
+        // Tło tooltipa
+        ctx.fillStyle = document.body.classList.contains('light') ? 'rgba(255,255,255,0.95)' : 'rgba(30,41,59,0.95)';
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, boxW, boxH, 4);
+        ctx.fill();
+        ctx.strokeStyle = document.body.classList.contains('light') ? '#cbd5e1' : '#475569';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Tekst tooltipa
+        ctx.textAlign = 'left';
+        ctx.fillStyle = document.body.classList.contains('light') ? '#0f172a' : '#f1f5f9';
+        ctx.fillText(text1, boxX + 8, boxY + 11);
+        ctx.fillStyle = '#22c55e';
+        ctx.fillText(text2, boxX + 8, boxY + 25);
+    }
 }
 
 function updateStats(distMeters) {
@@ -1237,44 +1419,6 @@ function exportGPX() {
     a.href = URL.createObjectURL(blob);
     a.download = `trasa_puszcza_${new Date().toLocaleDateString()}.gpx`;
     a.click();
-}
-
-function clearElevation() {
-    const c = document.getElementById('elevation');
-    c.getContext('2d').clearRect(0,0,c.width,c.height);
-}
-
-function drawElevation(data) {
-    const c = document.getElementById('elevation');
-    const ctx = c.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    c.width = c.offsetWidth * dpr;
-    c.height = c.offsetHeight * dpr;
-    ctx.scale(dpr, dpr);
-    const w = c.offsetWidth;
-    const h = c.offsetHeight;
-    if(data.length === 0) return;
-    const min = Math.min(...data);
-    const max = Math.max(...data);
-    const range = (max - min) < 10 ? 10 : (max - min);
-    ctx.clearRect(0,0,w,h);
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, 'rgba(34, 197, 94, 0.4)');
-    grad.addColorStop(1, 'transparent');
-    ctx.beginPath(); ctx.moveTo(0, h);
-    data.forEach((v, i) => {
-        const x = (i / (data.length - 1)) * w;
-        const y = h - ((v - min) / range) * (h - 20) - 10;
-        ctx.lineTo(x, y);
-    });
-    ctx.lineTo(w, h); ctx.fillStyle = grad; ctx.fill();
-    ctx.beginPath();
-    data.forEach((v, i) => {
-        const x = (i / (data.length - 1)) * w;
-        const y = h - ((v - min) / range) * (h - 20) - 10;
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2; ctx.stroke();
 }
 
 function removePointById(id) {
@@ -2456,6 +2600,41 @@ async function recordRouteGIF() {
 
     gif.render();
 }
+    /* --- LISTENERY DLA INTERAKTYWNEGO WYKRESU --- */
+document.addEventListener('DOMContentLoaded', () => {
+    const canvas = document.getElementById('elevation');
+    
+    function handleChartInteraction(e) {
+        if (!globalElevationData || globalElevationData.length === 0) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        // Pobieranie współrzędnych dla myszki LUB palca (touch)
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const x = clientX - rect.left;
+        
+        const padL = 35;
+        const padR = 10;
+        const innerW = rect.width - padL - padR;
+
+        // Obliczanie proporcji (0.0 do 1.0)
+        let ratio = (x - padL) / innerW;
+        ratio = Math.max(0, Math.min(1, ratio)); // Blokowanie wychodzenia poza obszar
+        
+        // Znalezienie indeksu w tablicy odpowiadającego pozycji kursora
+        const idx = Math.round(ratio * (globalElevationData.length - 1));
+        
+        // Rysuj ponownie z podświetlonym punktem
+        drawElevation(idx);
+    }
+
+    // Eventy dla myszki
+    canvas.addEventListener('mousemove', handleChartInteraction);
+    canvas.addEventListener('mouseleave', () => drawElevation(-1));
+    
+    // Eventy dla ekranów dotykowych
+    canvas.addEventListener('touchmove', handleChartInteraction, {passive: true});
+    canvas.addEventListener('touchend', () => drawElevation(-1));
+});
 
 </script>
 
