@@ -691,7 +691,13 @@ canvas#elevation {
     <div class="modal-body" style="padding:0; position:relative;">
         
         <!-- Warstwa tła i mapy (do screenshota) -->
-        <div id="exportWrapper">
+            <div id="exportWrapper">
+            <!-- NOWY ELEMENT: Ładny komunikat o braku trasy -->
+            <div id="exportEmptyState" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.9); z-index:4000; display:none; flex-direction:column; justify-content:center; align-items:center; color:white;">
+                <h2 style="color:#f59e0b; margin-bottom: 10px; font-size: 2rem;">Brak wyznaczonej trasy 🗺️</h2>
+                <p style="color: #cbd5e1; margin-bottom: 20px;">Aby wyeksportować mapę, najpierw narysuj trasę w oknie głównym.</p>
+                <button onclick="closeModal('mapExportModal')" style="background: #3b82f6; padding: 10px 20px; font-size: 1.1rem;">Wróc do mapy głównej</button>
+            </div>
             <div id="mapExport"></div>
             
             <!-- Uporządkowany panel informacyjny na mapie -->
@@ -1054,12 +1060,20 @@ makeDraggable(document.getElementById('pointsModal'));
 makeDraggable(document.getElementById('descModal'));
 makeDraggable(document.getElementById('styleModal'));
 
+function openCenteredModal(id) {
+    const modal = document.getElementById(id);
+    modal.style.display = 'flex';
+    modal.style.top = '50%';
+    modal.style.left = '50%';
+    modal.style.transform = 'translate(-50%, -50%)'; // Zawsze wraca na idealny środek
+}
+
 function openPointsModal() {
-    document.getElementById('pointsModal').style.display = 'flex';
+    openCenteredModal('pointsModal');
     renderPointsList();
 }
 function openDescModal() {
-    document.getElementById('descModal').style.display = 'flex';
+    openCenteredModal('descModal');
     generateRouteDescription();
 }
 function closeModal(id) {
@@ -1923,7 +1937,7 @@ async function loadOSMData(externalData = null) {
             });
         });
 
-        // Rysowanie ikon (POI)
+       // Rysowanie ikon (POI) - NOWA WERSJA PODPIĘTA POD MODAL
         data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
             if (typeof isBlacklistedOSM === 'function' && isBlacklistedOSM(e)) return;
 
@@ -1933,17 +1947,28 @@ async function loadOSMData(externalData = null) {
             else if (e.tags.amenity === 'parking') icon = '🅿️';
             else if (e.tags.tourism === 'information') icon = 'ℹ️';
             else if (e.tags.amenity === 'drinking_water' || e.tags.tourism === 'drinking_water') icon = '💧';
-            // Zapisujemy punkt OSM do logiki nawigacji
-            globalOsmPois.push({ latlng: L.latLng(e.lat, e.lon), name: e.tags.name || translateOSM(e.tags.amenity || e.tags.tourism || 'Punkt') });
+            
+            const osmName = e.tags.name || translateOSM(e.tags.amenity || e.tags.tourism || 'Punkt');
+            globalOsmPois.push({ latlng: L.latLng(e.lat, e.lon), name: osmName });
 
-            L.marker([e.lat, e.lon], {
+            const marker = L.marker([e.lat, e.lon], {
                 icon: L.divIcon({
                     html: `<div style="font-size:18px">${icon}</div>`,
                     className: 'poi-icon'
                 })
-            })
-            .bindPopup(typeof buildOSMPopup === 'function' ? buildOSMPopup(e) : "Miejsce")
-            .addTo(poiLayer);
+            }).addTo(poiLayer);
+
+            // ZAMIAST bindPopup - OTWIERAMY TWÓJ WŁASNY MODAL
+            marker.on('click', () => {
+                const osmData = {
+                    name: osmName,
+                    icon: icon,
+                    category: "Baza OpenStreetMap",
+                    description: formatOSMDescription(e.tags, e.id),
+                    photos: "" // OSM nie ma tu zdjęć, zapobiegnie błędom
+                };
+                openCustomPoiModal(osmData);
+            });
         });
 
     } catch (err) {
@@ -2154,6 +2179,14 @@ function initExportMap() {
         container.clientWidth,
         container.clientHeight
     );
+        // SPRAWDZANIE CZY JEST TRASA
+    const emptyState = document.getElementById('exportEmptyState');
+    if (routeGeometry.length < 2) {
+        emptyState.style.display = 'flex';
+        return; // Zatrzymujemy ładowanie mapy eksportu
+    } else {
+        emptyState.style.display = 'none';
+    }
 
     if (exportMap) {
         console.log('[EXPORT] Map exists → invalidateSize');
@@ -2551,16 +2584,31 @@ async function printExportMap() {
     `);
 }
     /* --- AKTUALIZACJA WIDOCZNOŚCI PANELU (z uwzględnieniem statystyk) --- */
+/* --- AKTUALIZACJA WIDOCZNOŚCI PANELU (z uwzględnieniem statystyk) --- */
 function updatePanelVisibility() {
     const panel = document.getElementById('mapInfoPanel');
     const hasText = document.getElementById('miTitle').style.display === 'block' || 
                     document.getElementById('miDate').style.display === 'block' || 
                     document.getElementById('miDesc').style.display === 'block' ||
-                    document.getElementById('miStats').style.display === 'flex'; // Zmieniono na FLEX
+                    document.getElementById('miStats').style.display === 'flex'; 
     const hasLegend = document.getElementById('exportLegendList').children.length > 0;
     
-    if(hasText || hasLegend) panel.style.display = 'block';
-    else panel.style.display = 'none';
+    const btnDrag = document.getElementById('btnDragPanel');
+    const btnResize = document.getElementById('btnResizePanel');
+    
+    if(hasText || hasLegend) {
+        panel.style.display = 'block';
+        btnDrag.disabled = false;
+        btnResize.disabled = false;
+    } else {
+        panel.style.display = 'none';
+        btnDrag.disabled = true;
+        btnResize.disabled = true;
+        
+        // Automatycznie wyłącza tryby przesuwania/kadrowania, jeśli panel znika
+        if(isPanelDraggable) togglePanelDrag();
+        if(isPanelResizable) togglePanelResize();
+    }
 }
 
 /* --- STATYSTYKI --- */
@@ -2722,7 +2770,7 @@ function openStyleModal() {
     document.getElementById('stylePointsColorHex').innerText = routePrefPointsColor;
     togglePointsColorInput(routePrefPointsEnabled);
 
-    document.getElementById('styleModal').style.display = 'flex';
+    openCenteredModal('styleModal');
 }
 
 function togglePointsColorInput(isChecked) {
@@ -3048,12 +3096,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // Upewniamy się, że modale dadzą się przesuwać
     makeDraggable(document.getElementById('customPoiModal'));
 });
-
+// Nowa funkcja do estetycznego formatowania danych z OSM
+function formatOSMDescription(tags, id) {
+    let html = `<ul style="margin:0; padding-left:20px; line-height: 1.8;">`;
+    for (const k in tags) {
+        if(k !== 'name' && k !== 'amenity' && k !== 'tourism') { // Ukrywamy oczywiste tagi
+            html += `<li><b>${k}:</b> ${tags[k]}</li>`;
+        }
+    }
+    html += `</ul>`;
+    html += `<div style="margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 10px;">
+                <a href="https://www.openstreetmap.org/node/${id}" target="_blank" style="color: #3b82f6; text-decoration: none;">🔗 Zobacz obiekt w OpenStreetMap</a>
+             </div>`;
+    return html;
+}
 // Funkcja wypełniająca i otwierająca Modal
 function openCustomPoiModal(poiData) {
     document.getElementById('cpoiTitle').innerText = `${poiData.icon || '📍'} ${poiData.name}`;
     document.getElementById('cpoiCategory').innerText = poiData.category || "Inne";
-    document.getElementById('cpoiDesc').innerText = poiData.description || "Brak opisu.";
+    document.getElementById('cpoiDesc').innerHTML = poiData.description || "Brak opisu.";
+
 
     // Renderowanie Galerii
     const galleryContainer = document.getElementById('cpoiGallery');
@@ -3074,7 +3136,7 @@ function openCustomPoiModal(poiData) {
         }
     }
 
-    document.getElementById('customPoiModal').style.display = 'flex';
+    openCenteredModal('customPoiModal');
 }
 
 /* --- LIGHTBOX (PEŁNY EKRAN DLA ZDJĘĆ) --- */
