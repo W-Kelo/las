@@ -464,6 +464,63 @@ canvas#elevation {
     cursor: crosshair;
     touch-action: none; /* Zapobiega przewijaniu strony na telefonie podczas "jeżdżenia" palcem po wykresie */
 }
+        /* --- MOJE PUNKTY (Z ARKUSZA GOOGLE) --- */
+.cpoi-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+    margin-top: 15px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 15px;
+}
+.light .cpoi-gallery { border-top-color: rgba(0,0,0,0.1); }
+
+.cpoi-gallery img {
+    width: 100%;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: zoom-in;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+.cpoi-gallery img:hover {
+    transform: scale(1.05);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+}
+
+/* --- LIGHTBOX DLA ZDJĘĆ --- */
+.lightbox-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.9);
+    z-index: 9999; /* Musi być na samym wierzchu! */
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+}
+.lightbox-overlay img {
+    max-width: 90%;
+    max-height: 90vh;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    object-fit: contain;
+}
+.lightbox-close {
+    position: absolute;
+    top: 20px; right: 20px;
+    background: rgba(255,255,255,0.2);
+    color: white;
+    border: none;
+    font-size: 24px;
+    width: 45px; height: 45px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+    display: flex; align-items: center; justify-content: center;
+}
+.lightbox-close:hover { background: #ef4444; }
     </style>
 </head>
 <body class="dark">
@@ -513,6 +570,7 @@ canvas#elevation {
     <div class="controls">
         <label><input type="checkbox" checked onchange="toggleLayer(hikingLayer, this)"> Szlaki turystyczne</label><br>
         <label><input type="checkbox" checked onchange="toggleLayer(poiLayer, this)"> Punkty z OSM</label>
+        <label><input type="checkbox" checked onchange="toggleLayer(customPoiLayer, this)"> Dodatkowe punkty (Beta)</label>
     </div>
 
     <div class="stat-card">
@@ -785,7 +843,27 @@ canvas#elevation {
                 </div>
             </div>
         </div>
+<!-- MODAL SZCZEGÓŁÓW MOJEGO PUNKTU (Z ARKUSZA) -->
+<div id="customPoiModal" class="floating-modal" style="width: 450px; max-height: 85vh; display: none;">
+    <div class="modal-header">
+        <span id="cpoiTitle">📍 Tytuł Miejsca</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('customPoiModal')">X</button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+        <span id="cpoiCategory" style="display:inline-block; background: var(--accent); color: white; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; margin-bottom: 10px;">Kategoria</span>
+        <p id="cpoiDesc" style="font-size: 0.95rem; line-height: 1.6; margin-top: 0;"></p>
+        
+        <div id="cpoiGallery" class="cpoi-gallery">
+            <!-- Tutaj wpadną zdjęcia -->
+        </div>
+    </div>
+</div>
 
+<!-- NAKŁADKA DO ZDJĘĆ NA PEŁNYM EKRANIE (LIGHTBOX) -->
+<div id="lightboxOverlay" class="lightbox-overlay" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="closeLightbox()">✖</button>
+    <img id="lightboxImage" src="" alt="Pełny ekran">
+</div>
 
 <script>
     const OSM_BLACKLIST = {
@@ -846,6 +924,7 @@ document.getElementById('stylePointsColor').addEventListener('input', e => docum
 document.getElementById('expStyleColor').addEventListener('input', e => document.getElementById('expStyleColorHex').innerText = e.target.value);
 const hikingLayer = L.layerGroup().addTo(map);
 const poiLayer = L.layerGroup().addTo(map);
+const customPoiLayer = L.layerGroup().addTo(map); 
 const OVERPASS_SERVERS = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
@@ -2655,7 +2734,115 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('touchmove', handleChartInteraction, {passive: true});
     canvas.addEventListener('touchend', () => drawElevation(-1));
 });
+/* ================= PUNKTY Z BAZY DANYCH (GOOGLE SHEETS) ================= */
 
+
+const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
+
+async function loadGoogleSheetsPOIs() {
+    try {
+        const response = await fetch(GAS_WEBAPP_URL);
+        if (!response.ok) throw new Error("Błąd sieci przy pobieraniu punktów z GS");
+        const data = await response.json();
+        
+        if (data.error) {
+            console.warn("Błąd po stronie serwera GAS:", data.error);
+            return;
+        }
+
+        data.forEach(item => {
+            // Czyszczenie koordynatów (usunięcie ew. znaków spacji czy zbędnych kropek z końca)
+            const cleanCoordsStr = item.coords.replace(/[^0-9.,-]/g, '');
+            const coordsSplit = cleanCoordsStr.split(',');
+            
+            if (coordsSplit.length !== 2) return; // Jeśli zły format - omiń punkt
+            
+            const lat = parseFloat(coordsSplit[0]);
+            const lng = parseFloat(coordsSplit[1]);
+            
+            if (isNaN(lat) || isNaN(lng)) return;
+
+            // Tworzenie ikonki (emoji z kolumny D lub domyślna pinezka)
+            const iconEmoji = item.icon || '📍';
+            
+            const marker = L.marker([lat, lng], {
+                icon: L.divIcon({
+                    html: `<div style="font-size:26px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.6)); transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${iconEmoji}</div>`,
+                    className: 'poi-icon custom-db-poi'
+                }),
+                zIndexOffset: 500 // Były trochę wyżej niż zwykłe drzewka z OSM
+            }).addTo(customPoiLayer);
+
+            // Po kliknięciu otwieramy piękny modal
+            marker.on('click', () => openCustomPoiModal(item));
+        });
+
+    } catch (error) {
+        console.error("Nie udało się załadować punktów z Arkusza Google:", error);
+    }
+}
+
+// Inicjalizacja pobierania danych przy starcie strony
+document.addEventListener('DOMContentLoaded', () => {
+    loadGoogleSheetsPOIs();
+    // Upewniamy się, że modale dadzą się przesuwać
+    makeDraggable(document.getElementById('customPoiModal'));
+});
+
+// Funkcja wypełniająca i otwierająca Modal
+function openCustomPoiModal(poiData) {
+    document.getElementById('cpoiTitle').innerText = `${poiData.icon || '📍'} ${poiData.name}`;
+    document.getElementById('cpoiCategory').innerText = poiData.category || "Inne";
+    document.getElementById('cpoiDesc').innerText = poiData.description || "Brak opisu.";
+
+    // Renderowanie Galerii
+    const galleryContainer = document.getElementById('cpoiGallery');
+    galleryContainer.innerHTML = ''; // czyszczenie poprzednich zdjęć
+
+    if (poiData.photos) {
+        // Dzielimy po średnikach, czyścimy spacje i ignorujemy puste linki
+        const photoUrls = poiData.photos.split(';').map(u => u.trim()).filter(u => u.length > 0);
+        
+        if (photoUrls.length > 0) {
+            photoUrls.forEach(url => {
+                const img = document.createElement('img');
+                img.src = url;
+                img.alt = poiData.name;
+                img.onclick = () => openLightbox(url); // Kliknięcie powiększa
+                galleryContainer.appendChild(img);
+            });
+        }
+    }
+
+    document.getElementById('customPoiModal').style.display = 'flex';
+}
+
+/* --- LIGHTBOX (PEŁNY EKRAN DLA ZDJĘĆ) --- */
+function openLightbox(imageUrl) {
+    const overlay = document.getElementById('lightboxOverlay');
+    const imgElement = document.getElementById('lightboxImage');
+    
+    imgElement.src = imageUrl;
+    overlay.style.display = 'flex';
+}
+
+function closeLightbox() {
+    const overlay = document.getElementById('lightboxOverlay');
+    const imgElement = document.getElementById('lightboxImage');
+    
+    overlay.style.display = 'none';
+    imgElement.src = ''; // zwalnia pamięć
+}
+
+// Obsługa klawisza ESC do zamykania Lightboxa i innych modali
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const lightbox = document.getElementById('lightboxOverlay');
+        if (lightbox.style.display === 'flex') {
+            closeLightbox();
+        }
+    }
+});
 </script>
 
 </body>
