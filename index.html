@@ -592,6 +592,7 @@ select.style-select {
             <button onclick="toggleExportTheme()" title="Zmień motyw samej mapy eksportowej">🌓 Motyw Mapy</button>
             <button onclick="openExportMetaModal()" title="Edytuj tytuł, datę i opis">📝 Edytuj Info</button>
             <button onclick="toggleScale()">📏 Skala</button>
+            <button onclick="openExportStyleModal()" title="Zmień kolor i grubość trasy w eksporcie">🎨 Styl Linii</button>
             <button onclick="toggleLegendMode()" id="btnLegend" style="background: #a855f7" title="Zaznacz na mapie obiekty do legendy">📍 Legenda</button>
                         
             <button onclick="exportZoomIn()" title="Przybliż mapę">➕</button>
@@ -667,7 +668,7 @@ select.style-select {
 
     </div>
 </div>
-    <!-- MODAL STYLU TRASY -->
+   <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) -->
 <div id="styleModal" class="inner-modal-overlay" data-html2canvas-ignore>
     <div class="inner-modal" style="width: 320px;">
         <h3 style="margin: 0; color: #f59e0b;">🎨 Styl i Animacja Trasy</h3>
@@ -684,6 +685,18 @@ select.style-select {
             <label>Grubość linii: <span id="styleWeightVal">6</span> px</label>
             <input type="range" id="styleWeight" class="thick-slider" min="2" max="15" value="6" oninput="document.getElementById('styleWeightVal').innerText=this.value">
         </div>
+        
+        <!-- NOWE: Opcja i kolor kropek -->
+        <div class="style-control-group" style="padding-top: 5px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="stylePointsToggle" onchange="togglePointsColorInput(this.checked)">
+                Zmień kolor kropek trasy (GPX)
+            </label>
+            <div id="stylePointsColorWrap" class="color-picker-wrap" style="display:none; margin-top:5px;">
+                <input type="color" id="stylePointsColor" value="#22c55e">
+                <span id="stylePointsColorHex" style="font-family: monospace; font-size: 0.9em;">#22c55e</span>
+            </div>
+        </div>
 
         <div class="style-control-group">
             <label>Szybkość animacji:</label>
@@ -698,6 +711,32 @@ select.style-select {
             <button onclick="saveStyle(false)" style="background: #22c55e;">Zastosuj w tej sesji</button>
             <button onclick="saveStyle(true)" style="background: #3b82f6;">Zapisz jako domyślne (Zawsze)</button>
             <button onclick="document.getElementById('styleModal').style.display='none'" class="secondary">Anuluj</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL STYLU LINI (TYLKO DLA EKSPORTU) -->
+<div id="exportStyleModal" class="inner-modal-overlay" data-html2canvas-ignore>
+    <div class="inner-modal" style="width: 300px;">
+        <h3 style="margin: 0; color: #a855f7;">🎨 Styl Linii (Eksport)</h3>
+        <p style="font-size:0.8rem; color:#94a3b8; margin-top:-5px;">Zmienia wygląd tylko na poniższej mapie, nie ruszając mapy głównej.</p>
+        
+        <div class="style-control-group">
+            <label>Kolor linii:</label>
+            <div class="color-picker-wrap">
+                <input type="color" id="expStyleColor" value="#22c55e">
+                <span id="expStyleColorHex" style="font-family: monospace; font-size: 0.9em;">#22c55e</span>
+            </div>
+        </div>
+
+        <div class="style-control-group">
+            <label>Grubość linii: <span id="expStyleWeightVal">6</span> px</label>
+            <input type="range" id="expStyleWeight" class="thick-slider" min="2" max="15" value="6" oninput="document.getElementById('expStyleWeightVal').innerText=this.value">
+        </div>
+
+        <div style="display:flex; gap: 8px; margin-top: 10px;">
+            <button onclick="applyExportStyle()" style="flex:1; background: #a855f7;">Zastosuj</button>
+            <button onclick="document.getElementById('exportStyleModal').style.display='none'" style="flex:1;" class="secondary">Anuluj</button>
         </div>
     </div>
 </div>
@@ -787,7 +826,9 @@ let isRouting = false;
 let routePrefColor = localStorage.getItem('gpx_color') || '#22c55e';
 let routePrefWeight = parseInt(localStorage.getItem('gpx_weight')) || 6;
 let routePrefSpeed = localStorage.getItem('gpx_speed') || 'medium';
-
+// NOWE ZMIENNE DLA KROPEK
+let routePrefPointsEnabled = localStorage.getItem('gpx_points_enabled') === 'true';
+let routePrefPointsColor = localStorage.getItem('gpx_points_color') || '#22c55e';
 const polyline = L.polyline([], {
     color: routePrefColor, 
     weight: routePrefWeight, 
@@ -795,9 +836,10 @@ const polyline = L.polyline([], {
     lineJoin: 'round'
 }).addTo(map);
 
-// Nasłuchiwacz na aktualizację podglądu hex
-document.getElementById('styleColor').addEventListener('input', function(e) {
-    document.getElementById('styleColorHex').innerText = e.target.value;
+// Nasłuchiwacze na aktualizację podglądu hex
+document.getElementById('styleColor').addEventListener('input', e => document.getElementById('styleColorHex').innerText = e.target.value);
+document.getElementById('stylePointsColor').addEventListener('input', e => document.getElementById('stylePointsColorHex').innerText = e.target.value);
+document.getElementById('expStyleColor').addEventListener('input', e => document.getElementById('expStyleColorHex').innerText = e.target.value);
 });
 const hikingLayer = L.layerGroup().addTo(map);
 const poiLayer = L.layerGroup().addTo(map);
@@ -972,8 +1014,9 @@ map.on('click', async e => {
 
 async function addRoutePoint(latlng, recalc = true) {
     const pointId = Date.now() + Math.random();
+   const dotColor = routePrefPointsEnabled ? routePrefPointsColor : '#22c55e';
     const m = L.circleMarker(latlng, { 
-        radius: 8, color: '#fff', weight: 3, fillColor: '#22c55e', fillOpacity: 1, zIndexOffset: 1000 
+        radius: 8, color: '#fff', weight: 3, fillColor: dotColor, fillOpacity: 1, zIndexOffset: 1000 
     }).addTo(map);
     
     m.on('contextmenu', (ev) => {
@@ -1798,7 +1841,7 @@ function initExportMap() {
     exportTileLayer = getExportTileLayer();
     exportTileLayer.addTo(exportMap);
 
-    exportPolyline = L.polyline(routeGeometry, { color: '#22c55e', weight: 6, opacity: 1 }).addTo(exportMap);
+    exportPolyline = L.polyline(routeGeometry, { color: exportLineColor, weight: exportLineWeight, opacity: 1 }).addTo(exportMap);
     scaleControl = L.control.scale({ imperial: false, position: 'bottomright' });
 
     if (routeGeometry.length > 1) {
@@ -2168,30 +2211,66 @@ function openStyleModal() {
     document.getElementById('styleWeight').value = routePrefWeight;
     document.getElementById('styleWeightVal').innerText = routePrefWeight;
     document.getElementById('styleSpeed').value = routePrefSpeed;
+    
+    document.getElementById('stylePointsToggle').checked = routePrefPointsEnabled;
+    document.getElementById('stylePointsColor').value = routePrefPointsColor;
+    document.getElementById('stylePointsColorHex').innerText = routePrefPointsColor;
+    togglePointsColorInput(routePrefPointsEnabled);
+
     document.getElementById('styleModal').style.display = 'flex';
+}
+
+function togglePointsColorInput(isChecked) {
+    document.getElementById('stylePointsColorWrap').style.display = isChecked ? 'flex' : 'none';
 }
 
 function saveStyle(saveToLocal) {
     routePrefColor = document.getElementById('styleColor').value;
     routePrefWeight = parseInt(document.getElementById('styleWeight').value);
     routePrefSpeed = document.getElementById('styleSpeed').value;
+    
+    routePrefPointsEnabled = document.getElementById('stylePointsToggle').checked;
+    routePrefPointsColor = document.getElementById('stylePointsColor').value;
 
     if (saveToLocal) {
         localStorage.setItem('gpx_color', routePrefColor);
         localStorage.setItem('gpx_weight', routePrefWeight);
         localStorage.setItem('gpx_speed', routePrefSpeed);
-        alert("Zapisano ustawienia domyślne!");
+        localStorage.setItem('gpx_points_enabled', routePrefPointsEnabled);
+        localStorage.setItem('gpx_points_color', routePrefPointsColor);
     }
 
     // Aktualizuj główną linię
     polyline.setStyle({ color: routePrefColor, weight: routePrefWeight });
     
-    // Zaktualizuj też linię w modalu eksportu, jeśli istnieje
-    if (typeof exportPolyline !== 'undefined' && exportPolyline != null) {
-        exportPolyline.setStyle({ color: routePrefColor, weight: routePrefWeight });
-    }
+    // Aktualizuj wszystkie kropki na mapie głównej w locie!
+    const dotColor = routePrefPointsEnabled ? routePrefPointsColor : '#22c55e';
+    routePoints.forEach(p => p.marker.setStyle({ fillColor: dotColor }));
 
     document.getElementById('styleModal').style.display = 'none';
+}
+/* ================= STYLIZACJA TYLKO W EKSPORCIE ================= */
+// Ustawiamy domyślnie takie same jak na mapie głównej, ale przechowujemy osobno
+let exportLineColor = routePrefColor;
+let exportLineWeight = routePrefWeight;
+
+function openExportStyleModal() {
+    document.getElementById('expStyleColor').value = exportLineColor;
+    document.getElementById('expStyleColorHex').innerText = exportLineColor;
+    document.getElementById('expStyleWeight').value = exportLineWeight;
+    document.getElementById('expStyleWeightVal').innerText = exportLineWeight;
+    document.getElementById('exportStyleModal').style.display = 'flex';
+}
+
+function applyExportStyle() {
+    exportLineColor = document.getElementById('expStyleColor').value;
+    exportLineWeight = parseInt(document.getElementById('expStyleWeight').value);
+    
+    if (exportPolyline) {
+        exportPolyline.setStyle({ color: exportLineColor, weight: exportLineWeight });
+    }
+    
+    document.getElementById('exportStyleModal').style.display = 'none';
 }
 
 
