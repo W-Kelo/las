@@ -1159,17 +1159,29 @@ const BROUTER_ENDPOINTS = [
     'https://brouter.damsy.net/brouter' // Francuski mirror
 ];
 
+// Lista głównych i zapasowych serwerów BRoutera
+const BROUTER_ENDPOINTS = [
+    'https://brouter.de/brouter',       // Główny
+    'https://brouter.m11n.de/brouter',  // Niezawodny niemiecki mirror
+    'https://brouter.damsy.net/brouter' // Francuski mirror (wymaga obejścia CORS)
+];
+
 async function getRouteSegment(start, end) {
     let lastError = null;
 
-    // Próbujemy po kolei każdego serwera. Jeśli jeden leży, idziemy do następnego.
     for (const baseUrl of BROUTER_ENDPOINTS) {
         try {
-            const url = `${baseUrl}?lonlats=${start.lng},${start.lat}|${end.lng},${end.lat}&profile=hiking-mountain&alternativeidx=0&format=geojson`;
+            // Zbudowanie standardowego linku do wyznaczenia trasy
+            let url = `${baseUrl}?lonlats=${start.lng},${start.lat}|${end.lng},${end.lat}&profile=hiking-mountain&alternativeidx=0&format=geojson`;
             
-            // Dodajemy krótki timeout, żeby nie czekać w nieskończoność na padnięty serwer
+            // OBEJŚCIE CORS: Jeśli wiemy, że serwer ma blokadę (jak damsy.net), przepuszczamy go przez serwer pośredniczący proxy
+            if (baseUrl.includes('damsy.net')) {
+                // Używamy darmowej bramki proxy, która omija blokady w przeglądarkach
+                url = 'https://corsproxy.io/?' + encodeURIComponent(url);
+            }
+            
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 sekund na odpowiedź
+            const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 sekund na odpowiedź
             
             const resp = await fetch(url, { signal: controller.signal });
             clearTimeout(timeoutId);
@@ -1179,7 +1191,7 @@ async function getRouteSegment(start, end) {
             const data = await resp.json();
             
             if (data.features && data.features.length > 0) {
-                // Sukces! Mamy trasę, przerywamy pętlę i oddajemy dane
+                // Sukces!
                 const coords = data.features[0].geometry.coordinates.map(c => [c[1], c[0], Math.round(c[2] || 0)]);
                 const dist = data.features[0].properties['track-length'] || 0;
                 return { coords, distance: parseFloat(dist) };
@@ -1189,16 +1201,19 @@ async function getRouteSegment(start, end) {
         } catch (e) {
             console.warn(`[Awaria serwera] Omijanie ${baseUrl}:`, e.message);
             lastError = e;
-            // Pętla przejdzie do następnego serwera na liście
         }
     }
 
+    // Fallback: Jeśli wszystkie serwery na świecie padły
     console.error("Wszystkie serwery BRouter są niedostępne!", lastError);
     
-    // NOWE: Wyświetl elegancki modal klientowi (tylko raz)
-    if (!brouterOutageNotified) {
-        document.getElementById('brouterErrorModal').style.display = 'flex';
-        brouterOutageNotified = true;
+    // Modal powiadamiający użytkownika o linii prostej
+    if (typeof brouterOutageNotified !== 'undefined' && !brouterOutageNotified) {
+        const errorModal = document.getElementById('brouterErrorModal');
+        if(errorModal) {
+            errorModal.style.display = 'flex';
+            brouterOutageNotified = true;
+        }
     }
 
     return { 
