@@ -1269,11 +1269,28 @@ function getNearbyFeatures(latlng, radius = 45) {
     return { pois: [...new Set(foundPois)], trail: foundTrail };
 }
 
-function getAngleDiff(brng1, brng2) {
-    let diff = brng2 - brng1;
-    while (diff < -180) diff += 360;
-    while (diff > 180) diff -= 360;
-    return diff;
+// Oblicza relatywny kąt skrętu z perspektywy pieszego (eliminując błędy kulistości Ziemi)
+function getTurnAngle(p1, p2, p3) {
+    // Rzutowanie na płaskie metry (dokładnie jak na mapie na ekranie)
+    const v1 = L.CRS.EPSG3857.project(L.latLng(p1[0], p1[1]));
+    const v2 = L.CRS.EPSG3857.project(L.latLng(p2[0], p2[1]));
+    const v3 = L.CRS.EPSG3857.project(L.latLng(p3[0], p3[1]));
+
+    const Ax = v2.x - v1.x;
+    const Ay = v2.y - v1.y;
+    const Bx = v3.x - v2.x;
+    const By = v3.y - v2.y;
+
+    const angleA = Math.atan2(Ay, Ax);
+    const angleB = Math.atan2(By, Bx);
+
+    let turn = (angleB - angleA) * (180 / Math.PI);
+
+    while (turn < -180) turn += 360;
+    while (turn > 180) turn -= 360;
+
+    // Odwracamy znak: na mapie Mercatora dodatni kąt oznacza prawo, ujemny lewo
+    return -turn; 
 }
 
 // Baza losowych sformułowań przewodnika
@@ -1345,10 +1362,14 @@ function generateRouteDescription() {
     routeStepsGeom = [];
     if(stepHighlightLayer) { map.removeLayer(stepHighlightLayer); stepHighlightLayer = null; }
 
-    // Wygładzanie mocne (Tolerancja ~50m) by zignorować wijące się drogi w lesie
-    const pointsXY = routeGeometry.map(p => L.point(p[0], p[1]));
-    const simplifiedXY = L.LineUtil.simplify(pointsXY, 0.0005); 
-    const keyPoints = simplifiedXY.map(p => [p.x, p.y]);
+    // Wygładzanie metryczne (eliminuje problem mylenia lewo/prawo na zakrętach)
+    const projectedPoints = routeGeometry.map(p => L.CRS.EPSG3857.project(L.latLng(p[0], p[1])));
+    // 35 metrów tolerancji wygładzania na ignorowanie leśnych wiraży
+    const simplifiedProj = L.LineUtil.simplify(projectedPoints, 35); 
+    const keyPoints = simplifiedProj.map(p => {
+        const ll = L.CRS.EPSG3857.unproject(p);
+        return [ll.lat, ll.lng];
+    });
 
     let text = `<div style="margin-bottom:15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom:10px;">
         <strong>🟢 Punkt Startowy</strong><br>
@@ -1384,9 +1405,8 @@ function generateRouteDescription() {
         // Zapobiega podawaniu instrukcji co 20 metrów
         if (currentDist < 25 && i !== keyPoints.length - 2) continue;
 
-        const brngIn = getBearing(prevP[0], prevP[1], currP[0], currP[1]);
-        const brngOut = getBearing(currP[0], currP[1], nextP[0], nextP[1]);
-        const turnAngle = getAngleDiff(brngIn, brngOut);
+        // Prawdziwy kąt z perspektywy oczu pieszego:
+        const turnAngle = getTurnAngle(prevP, currP, nextP);
 
         let instruction = "";
         let icon = "⬆️";
