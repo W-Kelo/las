@@ -1215,7 +1215,35 @@ function getCompassDirection(brng) {
 
 /* ================= OPIS TRASY (LUDZKA NAWIGACJA Z POI) ================= */
 
-// Funkcja pomocnicza: Różnica między dwoma azymutami (-180 do 180)
+/* ================= INTELIGENTNY OPIS TRASY (LUDZKA NAWIGACJA) ================= */
+
+function getNearbyFeatures(latlng, radius = 45) {
+    let foundPois = [];
+    let foundTrail = null;
+    const checkPoint = L.latLng(latlng);
+    
+    // Szukaj w punktach użytkownika (dodanych ręcznie na mapie)
+    pois.forEach(p => { if (checkPoint.distanceTo(p.latlng) <= radius) foundPois.push(`${p.name || 'Wybrany punkt'}`); });
+    
+    // Szukaj w Moich Punktach (Arkusz Google)
+    if(typeof globalCustomPois !== 'undefined') {
+        globalCustomPois.forEach(p => { if (checkPoint.distanceTo(p.latlng) <= radius) foundPois.push(`${p.icon} ${p.name}`); });
+    }
+
+    // Szukaj w punktach z OpenStreetMap
+    globalOsmPois.forEach(p => { if (checkPoint.distanceTo(p.latlng) <= radius) foundPois.push(`📌 ${p.name}`); });
+    
+    // Sprawdzanie czy idziemy po szlaku (w promieniu 30m)
+    for (let t of globalTrails) {
+        for (let c of t.coords) {
+            if (c.distanceTo(checkPoint) < 30) { foundTrail = t.name; break; }
+        }
+        if(foundTrail) break;
+    }
+
+    return { pois: [...new Set(foundPois)], trail: foundTrail };
+}
+
 function getAngleDiff(brng1, brng2) {
     let diff = brng2 - brng1;
     while (diff < -180) diff += 360;
@@ -1223,67 +1251,114 @@ function getAngleDiff(brng1, brng2) {
     return diff;
 }
 
-// Funkcja pomocnicza: Znajdywanie obiektów w pobliżu
-function getNearbyLandmarks(latlng, radius = 40) {
-    let found = [];
-    const checkPoint = L.latLng(latlng);
-    
-    // Szukaj w punktach OSM
-    pois.forEach(p => {
-        if (checkPoint.distanceTo(p.latlng) <= radius) found.push(`${p.name || 'Punkt orientacyjny'}`);
-    });
-    
-    // Szukaj w Moich Punktach (Arkusz Google)
-    globalCustomPois.forEach(p => {
-        if (checkPoint.distanceTo(p.latlng) <= radius) found.push(`${p.icon} ${p.name}`);
-    });
-    
-    return [...new Set(found)]; // Usunięcie duplikatów
-}
+// Baza losowych sformułowań przewodnika
+const phrases = {
+    straight: [
+        "Idź przed siebie przez", "Trzymaj się wyznaczonej drogi przez", "Kontynuuj marsz prosto przez",
+        "Podążaj pewnie tą ścieżką przez", "Nie zbaczaj z kursu na dystansie", "Czeka cię odcinek na wprost o długości",
+        "Masz przed sobą prostą drogę przez", "Spacerkiem na wprost przez kolejne", "Kieruj się cały czas prosto przez",
+        "Twoja droga prowadzi stąd prosto przez", "Zrelaksuj się, idziesz prosto przez", "Utrzymaj kierunek przez"
+    ],
+    softRight: [
+        "Skręć łagodnie w prawo i kontynuuj przez", "Trzymaj się prawej strony i idź przez", "Ścieżka lekko odbija w prawo, podążaj nią przez",
+        "Delikatnie w prawo, czeka cię odcinek", "Zabierz się na prawą odnogę i idź", "Podążaj łagodnym łukiem w prawo przez",
+        "Wybierz prawą stronę ścieżki i maszeruj przez", "Kieruj się lekko na prawo na dystansie", "Płynnie przejdź na prawą stronę przez",
+        "Zaraz ścieżka odchyli się w prawo, trzymaj się jej przez", "Skieruj kroki delikatnie wprawo przez"
+    ],
+    right: [
+        "Na skrzyżowaniu skręć w prawo i idź przez", "Skręć w prawo i kontynuuj przez", "Wybierz drogę w prawo, czeka cię",
+        "Odbij zdecydowanie w prawo i maszeruj przez", "Tu musisz skręcić w prawo, idź przez", "Twoja trasa wiedzie w prawo przez",
+        "Kieruj się w prawą odnogę przez kolejne", "Zakręt w prawo. Kontynuuj przez", "Po skręcie w prawo masz do przejścia",
+        "W prawo! Trzymaj kurs przez", "Zmiana kierunku: skręć w prawo i pokonaj"
+    ],
+    sharpRight: [
+        "Skręć ostro w prawo (prawie zawracając) i idź przez", "Wykonaj ostry skręt w prawo, następnie", "Złam trasę ostro w prawo i idź",
+        "Nawrót w prawo! Czeka cię odcinek", "Bardzo ostro w prawo, kieruj się tak przez", "Zwróć uwagę - ostry zakręt w prawo! Następnie",
+        "Ścieżka gwałtownie skręca w prawo. Idź nią przez", "Ostro na prawo, po czym maszeruj przez", "Uważaj, ostry skręt w prawo, a potem",
+        "Skieruj się niemal za siebie w prawo przez", "Wykonaj mocny zwrot w prawo i kontynuuj przez"
+    ],
+    softLeft: [
+        "Skręć łagodnie w lewo i kontynuuj przez", "Trzymaj się lewej strony i idź przez", "Ścieżka lekko odbija w lewo, podążaj nią przez",
+        "Delikatnie w lewo, czeka cię odcinek", "Zabierz się na lewą odnogę i idź", "Podążaj łagodnym łukiem w lewo przez",
+        "Wybierz lewą stronę ścieżki i maszeruj przez", "Kieruj się lekko na lewo na dystansie", "Płynnie przejdź na lewą stronę przez",
+        "Zaraz ścieżka odchyli się w lewo, trzymaj się jej przez", "Skieruj kroki delikatnie w lewo przez"
+    ],
+    left: [
+        "Na skrzyżowaniu skręć w lewo i idź przez", "Skręć w lewo i kontynuuj przez", "Wybierz drogę w lewo, czeka cię",
+        "Odbij zdecydowanie w lewo i maszeruj przez", "Tu musisz skręcić w lewo, idź przez", "Twoja trasa wiedzie w lewo przez",
+        "Kieruj się w lewą odnogę przez kolejne", "Zakręt w lewo. Kontynuuj przez", "Po skręcie w lewo masz do przejścia",
+        "W lewo! Trzymaj kurs przez", "Zmiana kierunku: skręć w lewo i pokonaj"
+    ],
+    sharpLeft: [
+        "Skręć ostro w lewo (prawie zawracając) i idź przez", "Wykonaj ostry skręt w lewo, następnie", "Złam trasę ostro w lewo i idź",
+        "Nawrót w lewo! Czeka cię odcinek", "Bardzo ostro w lewo, kieruj się tak przez", "Zwróć uwagę - ostry zakręt w lewo! Następnie",
+        "Ścieżka gwałtownie skręca w lewo. Idź nią przez", "Ostro na lewo, po czym maszeruj przez", "Uważaj, ostry skręt w lewo, a potem",
+        "Skieruj się niemal za siebie w lewo przez", "Wykonaj mocny zwrot w lewo i kontynuuj przez"
+    ],
+    poiPrefix: [
+        "Będziesz przechodzić obok", "Mijasz po drodze", "Zwróć uwagę na", "W pobliżu znajduje się",
+        "Na tym odcinku powita cię", "Przejdziesz tuż obok", "Niedaleko znajdziesz", "Trasa wiedzie obok",
+        "Na twojej drodze pojawi się", "Zaraz miniesz obiekt:", "Twoją uwagę zwróci", "Twoim punktem odniesienia będzie"
+    ],
+    trailPrefix: [
+        "Twój przewodnik to", "Idziesz teraz wzdłuż", "Twoja trasa pokrywa się z", "Znalazłeś się na szlaku:",
+        "Prowadzić cię będzie", "Kieruj się za znakami szlaku:", "Teraz podążasz traktem:", "Ścieżka to oficjalnie",
+        "Zgodnie z oznaczeniami to", "Maszerujesz aktualnie odcinkiem:"
+    ]
+};
+
+function getRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 function generateRouteDescription() {
     const container = document.getElementById('routeDescText');
     if (routeGeometry.length < 2) {
-        container.innerHTML = "<em>Zaznacz więcej punktów na mapie, by wygenerować przewodnik.</em>";
+        container.innerHTML = "<em>Zaznacz punkty na mapie, by wygenerować przewodnik.</em>";
         return;
     }
 
-    // 1. Wygładzanie trasy (Algorytm Douglas-Peucker)
-    // Zamieniamy routeGeometry na format XY dla silnika Leafleta
+    // Resetowanie pamięci kształtów do podświetlania i warstw
+    routeStepsGeom = [];
+    if(stepHighlightLayer) { map.removeLayer(stepHighlightLayer); stepHighlightLayer = null; }
+
+    // Wygładzanie mocne (Tolerancja ~50m) by zignorować wijące się drogi w lesie
     const pointsXY = routeGeometry.map(p => L.point(p[0], p[1]));
-    // Tolerancja ok. 0.0003 stopnia (ok 30 metrów). Usuwa "szum" i zostawia tylko kluczowe zakręty.
-    const simplifiedXY = L.LineUtil.simplify(pointsXY, 0.0003); 
+    const simplifiedXY = L.LineUtil.simplify(pointsXY, 0.0005); 
     const keyPoints = simplifiedXY.map(p => [p.x, p.y]);
 
-    let text = `<div style="margin-bottom:15px;"><strong>🟢 Start wycieczki</strong> (${routePoints[0].elevation.toFixed(0)} m n.p.m.)</div>`;
+    let text = `<div style="margin-bottom:15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom:10px;">
+        <strong>🟢 Punkt Startowy</strong><br>
+        <small>Wysokość: ${routePoints[0].elevation.toFixed(0)} m n.p.m.</small>
+    </div>`;
     
     let currentDist = 0;
-    let initialBearing = getBearing(keyPoints[0][0], keyPoints[0][1], keyPoints[1][0], keyPoints[1][1]);
-    const startDirection = getCompassDirection(initialBearing);
+    let stepCoordsBuffer = []; // Przechowuje koordynaty do narysowania linii podświetlenia
     
-    // Zbieramy POI na starcie
-    let startPois = getNearbyLandmarks(keyPoints[0], 50);
-    let startPoiText = startPois.length > 0 ? `<br><span class="route-step-poi">Zaczynasz w pobliżu: <b>${startPois.join(', ')}</b>.</span>` : '';
+    // Szukanie danych dla punktu 0
+    let startFeatures = getNearbyFeatures(keyPoints[0]);
+    let startDirection = getCompassDirection(getBearing(keyPoints[0][0], keyPoints[0][1], keyPoints[1][0], keyPoints[1][1]));
+    
+    let startTxt = `Ruszaj na <strong>${startDirection}</strong>.`;
+    if(startFeatures.trail) startTxt += ` ${getRandom(phrases.trailPrefix)} <b>${startFeatures.trail}</b>.`;
+    if(startFeatures.pois.length > 0) startTxt += ` ${getRandom(phrases.poiPrefix)}: <b>${startFeatures.pois.join(', ')}</b>.`;
 
-    text += `
-        <div class="route-step">
-            <span class="route-step-icon">🧭</span> 
-            Ruszaj przed siebie w kierunku <strong>${startDirection}</strong>.${startPoiText}
-        </div>`;
+    text += `<div class="route-step" onmouseenter="highlightStep(0)" onmouseleave="unhighlightStep()">
+                <span class="route-step-icon">🧭</span> ${startTxt}
+             </div>`;
+             
+    routeStepsGeom.push([keyPoints[0], keyPoints[1]]);
 
     for (let i = 1; i < keyPoints.length - 1; i++) {
         const prevP = keyPoints[i-1];
         const currP = keyPoints[i];
         const nextP = keyPoints[i+1];
 
-        // Dystans odcinka
         const segDist = L.latLng(prevP).distanceTo(L.latLng(currP));
         currentDist += segDist;
+        stepCoordsBuffer.push(prevP, currP);
 
-        // Jeśli odcinek był bardzo krótki, ignorujemy to jako "mikro-krok"
-        if (currentDist < 15) continue;
+        // Zapobiega podawaniu instrukcji co 20 metrów
+        if (currentDist < 25 && i !== keyPoints.length - 2) continue;
 
-        // Kąty by ustalić rodzaj zakrętu
         const brngIn = getBearing(prevP[0], prevP[1], currP[0], currP[1]);
         const brngOut = getBearing(currP[0], currP[1], nextP[0], nextP[1]);
         const turnAngle = getAngleDiff(brngIn, brngOut);
@@ -1291,77 +1366,84 @@ function generateRouteDescription() {
         let instruction = "";
         let icon = "⬆️";
 
-        // Analiza typu skrętu
-        if (Math.abs(turnAngle) < 15) {
-            instruction = "Idź prosto przez"; 
-            icon = "⬆️"; 
-        } else if (turnAngle >= 15 && turnAngle <= 45) {
-            instruction = "Skręć łagodnie w prawo, idź przez"; 
-            icon = "↗️"; 
-        } else if (turnAngle > 45 && turnAngle <= 120) {
-            instruction = "Skręć w prawo i kontynuuj przez"; 
-            icon = "➡️"; 
-        } else if (turnAngle > 120) {
-            instruction = "Ostro w prawo (zawróć), idź przez"; 
-            icon = "⤵️"; 
-        } else if (turnAngle <= -15 && turnAngle >= -45) {
-            instruction = "Skręć łagodnie w lewo, idź przez"; 
-            icon = "↖️"; 
-        } else if (turnAngle < -45 && turnAngle >= -120) {
-            instruction = "Skręć w lewo i kontynuuj przez"; 
-            icon = "⬅️"; 
-        } else if (turnAngle < -120) {
-            instruction = "Ostro w lewo (zawróć), idź przez"; 
-            icon = "⤴️"; 
-        }
+        if (Math.abs(turnAngle) < 20) { instruction = getRandom(phrases.straight); icon = "⬆️"; }
+        else if (turnAngle >= 20 && turnAngle <= 60) { instruction = getRandom(phrases.softRight); icon = "↗️"; }
+        else if (turnAngle > 60 && turnAngle <= 130) { instruction = getRandom(phrases.right); icon = "➡️"; }
+        else if (turnAngle > 130) { instruction = getRandom(phrases.sharpRight); icon = "⤵️"; }
+        else if (turnAngle <= -20 && turnAngle >= -60) { instruction = getRandom(phrases.softLeft); icon = "↖️"; }
+        else if (turnAngle < -60 && turnAngle >= -130) { instruction = getRandom(phrases.left); icon = "⬅️"; }
+        else if (turnAngle < -130) { instruction = getRandom(phrases.sharpLeft); icon = "⤴️"; }
 
-        // Szukanie obiektów POI na tym skrzyżowaniu / zakręcie
-        let landmarks = getNearbyLandmarks(currP, 40);
-        let landmarkText = "";
+        // Czas przejścia (zakładamy średnio 4.5 km/h -> ok 75m/minutę)
+        const timeMins = currentDist / 75;
+        let timeTxt = timeMins < 1 ? "< 1 min" : `~${Math.round(timeMins)} min`;
+
+        let features = getNearbyFeatures(currP);
+        let extraInfo = "";
         
-        if (landmarks.length > 0) {
-            // Dodajemy kontekst ludzki
-            const phrases = ["Mijasz: ", "Obok: ", "Przy obiekcie: ", "Przejdziesz koło: "];
-            const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
-            landmarkText = `<span class="route-step-poi">${randomPhrase} <b>${landmarks.join(', ')}</b>.</span>`;
-            
-            // Jeśli to skrzyżowanie ma obiekt, zmieniamy lekko ton instrukcji
-            if (Math.abs(turnAngle) > 45) {
-                instruction = instruction.replace('Skręć', 'Na wysokości obiektu skręć');
-            }
-        } else if (Math.abs(turnAngle) > 45) {
-            // Jeśli nie ma obiektu, a jest skręt - dodajemy sugestię rozwidlenia
-            landmarkText = `<span class="route-step-poi">Szukaj ścieżki odchodzącej w tę stronę.</span>`;
-        }
+        if (features.trail) extraInfo += `<span class="route-step-poi">🥾 ${getRandom(phrases.trailPrefix)} <b>${features.trail}</b>.</span>`;
+        if (features.pois.length > 0) extraInfo += `<span class="route-step-poi">📍 ${getRandom(phrases.poiPrefix)}: <b>${features.pois.join(', ')}</b>.</span>`;
 
-        // Generujemy kafelek HTML
+        const stepIdx = routeStepsGeom.length;
         text += `
-            <div class="route-step">
-                <span class="route-step-icon">${icon}</span> 
-                ${instruction} <span class="route-step-dist">${currentDist.toFixed(0)} m</span>.
-                ${landmarkText}
+            <div class="route-step" onmouseenter="highlightStep(${stepIdx})" onmouseleave="unhighlightStep()" style="cursor:pointer;">
+                <div style="display:flex; align-items:center;">
+                    <span class="route-step-icon">${icon}</span> 
+                    <div>
+                        ${instruction} <span class="route-step-dist">${currentDist.toFixed(0)} m</span>.
+                        <small style="opacity:0.7; margin-left: 5px;">(⏱️ ${timeTxt})</small>
+                    </div>
+                </div>
+                ${extraInfo}
             </div>`;
         
-        currentDist = 0; // Reset dystansu do następnego ważnego kroku
+        routeStepsGeom.push([...stepCoordsBuffer]);
+        stepCoordsBuffer = [];
+        currentDist = 0;
     }
 
-    // Dodanie końcówki
+    // Odcinek końcowy
     const lastP = keyPoints[keyPoints.length - 1];
     const finalDist = L.latLng(keyPoints[keyPoints.length - 2]).distanceTo(L.latLng(lastP));
+    const finalTime = Math.round(finalDist / 75);
     
-    let endPois = getNearbyLandmarks(lastP, 50);
-    let endPoiText = endPois.length > 0 ? `<br><span class="route-step-poi">Cel znajduje się tuż obok: <b>${endPois.join(', ')}</b>.</span>` : '';
+    let endFeatures = getNearbyFeatures(lastP);
+    let endPoiText = endFeatures.pois.length > 0 ? `<br><span class="route-step-poi">U celu powita cię: <b>${endFeatures.pois.join(', ')}</b>.</span>` : '';
+
+    const lastStepIdx = routeStepsGeom.length;
+    routeStepsGeom.push([keyPoints[keyPoints.length - 2], lastP]);
 
     text += `
-        <div class="route-step" style="border-left-color: #ef4444;">
+        <div class="route-step" onmouseenter="highlightStep(${lastStepIdx})" onmouseleave="unhighlightStep()" style="border-left-color: #ef4444; cursor:pointer;">
             <span class="route-step-icon">🏁</span> 
-            Ostatnia prosta! Za <span class="route-step-dist">${finalDist.toFixed(0)} m</span> dotrzesz do celu.
+            Ostatnia prosta! Za <span class="route-step-dist">${finalDist.toFixed(0)} m</span> (⏱️ ~${finalTime} min) dotrzesz do celu.
             ${endPoiText}
         </div>
-        <div style="margin-top:15px; font-weight:bold;">📍 Meta (${routePoints[routePoints.length-1].elevation.toFixed(0)} m n.p.m.)</div>
+        <div style="margin-top:15px; font-weight:bold; border-top: 1px solid rgba(255,255,255,0.1); padding-top:10px;">
+            📍 Meta wycieczki <small>(${routePoints[routePoints.length-1].elevation.toFixed(0)} m n.p.m.)</small>
+        </div>
     `;
 
     container.innerHTML = text;
+}
+
+/* --- INTERAKTYWNE PODŚWIETLANIE TRASY --- */
+function highlightStep(idx) {
+    if(!routeStepsGeom[idx]) return;
+    
+    if(stepHighlightLayer) map.removeLayer(stepHighlightLayer);
+    
+    // Rysuje grubą, niebieską linię nad konkretnym odcinkiem
+    stepHighlightLayer = L.polyline(routeStepsGeom[idx], {
+        color: '#3b82f6', weight: 12, opacity: 0.6, lineCap: 'round', zIndexOffset: 2000
+    }).addTo(map);
+}
+
+function unhighlightStep() {
+    if(stepHighlightLayer) {
+        map.removeLayer(stepHighlightLayer);
+        stepHighlightLayer = null;
+    }
 }
 /* ================= WYSOKOŚĆ I INTERAKTYWNY PROFIL TERENU ================= */
 let globalElevationData = [];
@@ -1709,7 +1791,10 @@ async function fetchFromAnyOverpass(query) {
     }
     throw new Error("All Overpass servers failed");
 }
-
+let globalOsmPois = [];   // Przechowuje punkty z OpenStreetMap
+let globalTrails = [];    // Przechowuje szlaki z OpenStreetMap
+let routeStepsGeom = [];  // Przechowuje geometrię poszczególnych kroków (do podświetlania na mapie)
+let stepHighlightLayer = null; // Warstwa podświetlenia
 // Dodajemy parametr 'externalData', żeby funkcja mogła przyjąć dane z .then()
 async function loadOSMData(externalData = null) {
     const query = `[out:json][timeout:25];(relation["route"="hiking"](53.4,14.3,53.6,14.7);node["amenity"~"shelter|drinking_water|parking"](53.4,14.3,53.6,14.7);node["tourism"~"viewpoint|picnic_site|information"](53.4,14.3,53.6,14.7););out body;>;out skel qt;`;
@@ -1741,8 +1826,12 @@ async function loadOSMData(externalData = null) {
             else if (sym.includes('yellow')) color = '#eab308'; 
             else if (sym.includes('black')) color = '#000';
             
-            rel.members.forEach(m => { 
+     rel.members.forEach(m => { 
                 if (m.type === "way" && ways[m.ref]) {
+                    // Zapisujemy szlak do logiki nawigacji
+                    const wayCoords = ways[m.ref].map(c => L.latLng(c[0], c[1]));
+                    globalTrails.push({ name: rel.tags.name || "Szlak turystyczny", coords: wayCoords });
+                    
                     L.polyline(ways[m.ref], {color: color, weight: 4, opacity: 0.7, dashArray: '8, 8'})
                      .bindTooltip(rel.tags.name || "Szlak")
                      .addTo(hikingLayer); 
@@ -1760,6 +1849,8 @@ async function loadOSMData(externalData = null) {
             else if (e.tags.amenity === 'parking') icon = '🅿️';
             else if (e.tags.tourism === 'information') icon = 'ℹ️';
             else if (e.tags.amenity === 'drinking_water' || e.tags.tourism === 'drinking_water') icon = '💧';
+            // Zapisujemy punkt OSM do logiki nawigacji
+            globalOsmPois.push({ latlng: L.latLng(e.lat, e.lon), name: e.tags.name || translateOSM(e.tags.amenity || e.tags.tourism || 'Punkt') });
 
             L.marker([e.lat, e.lon], {
                 icon: L.divIcon({
