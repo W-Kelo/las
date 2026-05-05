@@ -1267,41 +1267,56 @@ function getNearbyFeatures(latlng, radius = 45) {
 
     return { pois: [...new Set(foundPois)], trail: foundTrail };
 }
+// Funkcja poruszająca niewidzialną kropkę po kuli ziemskiej (zwraca nowe współrzędne)
+function moveVirtualDot(latlng, bearing, distMeters) {
+    const R = 6378137; // Promień Ziemi w metrach
+    const lat1 = latlng[0] * Math.PI / 180;
+    const lon1 = latlng[1] * Math.PI / 180;
+    const brng = bearing * Math.PI / 180;
+    const dR = distMeters / R;
 
+    const lat2 = Math.asin(Math.sin(lat1)*Math.cos(dR) + Math.cos(lat1)*Math.sin(dR)*Math.cos(brng));
+    const lon2 = lon1 + Math.atan2(Math.sin(brng)*Math.sin(dR)*Math.cos(lat1), Math.cos(dR)-Math.sin(lat1)*Math.sin(lat2));
+
+    return [lat2 * 180 / Math.PI, lon2 * 180 / Math.PI];
+}
 // Oblicza relatywny kąt skrętu z perspektywy pieszego (eliminując błędy kulistości Ziemi)
 // CAŁKOWICIE NOWA FUNKCJA - Niezawodne obliczanie kąta na podstawie azymutu
 // Całkowicie nowy algorytm oparty na wektorach płaskich (odporny na błędy osi)
+// Niezawodny algorytm oparty na fizycznym symulowaniu kropek na mapie
 function getTurnAngle(p1, p2, p3) {
-    // 1. Zamieniamy punkty geograficzne na płaskie metry dokładnie tak, jak widzi to Leaflet na ekranie
-    const v1 = L.CRS.EPSG3857.project(L.latLng(p1[0], p1[1]));
-    const v2 = L.CRS.EPSG3857.project(L.latLng(p2[0], p2[1]));
-    const v3 = L.CRS.EPSG3857.project(L.latLng(p3[0], p3[1]));
+    // 1. Obliczamy fizyczne dystanse między punktami w metrach
+    const a = L.latLng(p1).distanceTo(L.latLng(p2));
+    const b = L.latLng(p2).distanceTo(L.latLng(p3));
+    const c = L.latLng(p1).distanceTo(L.latLng(p3));
 
-    // 2. Tworzymy dwa wektory ruchu: A (wchodzący w zakręt) i B (wychodzący z zakrętu)
-    const ax = v2.x - v1.x;
-    const ay = v2.y - v1.y;
-    
-    const bx = v3.x - v2.x;
-    const by = v3.y - v2.y;
+    if (a === 0 || b === 0) return 0;
 
-    // 3. Liczymy Iloczyn Skalarny (Dot Product) - to da nam dokładny kąt zgięcia (0-180 stopni)
-    const magA = Math.sqrt(ax * ax + ay * ay);
-    const magB = Math.sqrt(bx * bx + by * by);
-    if (magA === 0 || magB === 0) return 0;
+    // 2. Twierdzenie Cosinusów - daje nam IDEALNY kąt wygięcia trasy (0 to prosta, 90 to kąt prosty, 180 to zawracanie)
+    let cosC = (a*a + b*b - c*c) / (2 * a * b);
+    cosC = Math.max(-1, Math.min(1, cosC)); // Zabezpieczenie przed usterkami zaokrągleń
+    const turnMagnitude = 180 - (Math.acos(cosC) * (180 / Math.PI));
 
-    let cosTheta = (ax * bx + ay * by) / (magA * magB);
-    cosTheta = Math.max(-1, Math.min(1, cosTheta)); // Zabezpieczenie przed błędem zmiennoprzecinkowym
-    const angleDeg = Math.acos(cosTheta) * (180 / Math.PI);
+    // 3. SYMULACJA NIEWIDZIALNYCH KROPEK (Zwiadowców)
+    // Sprawdzamy z jakim azymutem weszliśmy w zakręt
+    const headingIn = getBearing(p1[0], p1[1], p2[0], p2[1]);
 
-    // 4. Liczymy Iloczyn Wektorowy (Cross Product 2D) - to BEZBŁĘDNIE mówi nam: LEWO czy PRAWO
-    // W matematyce przeglądarki (gdzie Y rośnie w dół):
-    // Jeśli wynik > 0 to skręt jest w prawo. Jeśli < 0 to w lewo.
-    const cross = ax * by - ay * bx;
+    // Wypuszczamy dwie kropki: jedna skręca 90 stopni w lewo, druga 90 w prawo
+    const leftScout = moveVirtualDot(p2, (headingIn - 90 + 360) % 360, 20);
+    const rightScout = moveVirtualDot(p2, (headingIn + 90) % 360, 20);
 
-    // Zwracamy kąt ze znakiem (dodatni = prawo, ujemny = lewo)
-    return cross >= 0 ? angleDeg : -angleDeg;
+    // 4. Mierzymy odległość zwiadowców do następnego punktu trasy (p3)
+    const distFromLeftScout = L.latLng(leftScout).distanceTo(L.latLng(p3));
+    const distFromRightScout = L.latLng(rightScout).distanceTo(L.latLng(p3));
+
+    // 5. Werdykt: Jeśli Prawa kropka ma bliżej do p3, to skręt jest w Prawo (dodatni)
+    // W przeciwnym razie skręt jest w Lewo (ujemny)
+    if (distFromRightScout < distFromLeftScout) {
+        return turnMagnitude;  // Prawo
+    } else {
+        return -turnMagnitude; // Lewo
+    }
 }
-
 // Baza losowych sformułowań przewodnika
 const phrases = {
     straight: [
