@@ -521,6 +521,26 @@ canvas#elevation {
     display: flex; align-items: center; justify-content: center;
 }
 .lightbox-close:hover { background: #ef4444; }
+        /* --- LUDZKI OPIS TRASY --- */
+.route-step {
+    padding: 10px;
+    margin-bottom: 8px;
+    background: rgba(0,0,0,0.05);
+    border-left: 4px solid var(--accent);
+    border-radius: 4px;
+}
+.light .route-step { background: #f1f5f9; }
+.route-step-icon { font-size: 1.2rem; margin-right: 8px; }
+.route-step-dist { font-weight: bold; color: var(--accent); }
+.route-step-poi {
+    display: block;
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px dashed rgba(0,0,0,0.1);
+}
+.dark-theme .route-step-poi { border-top-color: rgba(255,255,255,0.1); color: #cbd5e1; }
     </style>
 </head>
 <body class="dark">
@@ -569,7 +589,7 @@ canvas#elevation {
 
     <div class="controls">
         <label><input type="checkbox" checked onchange="toggleLayer(hikingLayer, this)"> Szlaki turystyczne</label><br>
-        <label><input type="checkbox" checked onchange="toggleLayer(poiLayer, this)"> Punkty z OSM</label>
+        <label><input type="checkbox" checked onchange="toggleLayer(poiLayer, this)"> Punkty z OSM</label><br>
         <label><input type="checkbox" checked onchange="toggleLayer(customPoiLayer, this)"> Dodatkowe punkty (Beta)</label>
     </div>
 
@@ -1193,76 +1213,156 @@ function getCompassDirection(brng) {
     return "";
 }
 
+/* ================= OPIS TRASY (LUDZKA NAWIGACJA Z POI) ================= */
+
+// Funkcja pomocnicza: Różnica między dwoma azymutami (-180 do 180)
+function getAngleDiff(brng1, brng2) {
+    let diff = brng2 - brng1;
+    while (diff < -180) diff += 360;
+    while (diff > 180) diff -= 360;
+    return diff;
+}
+
+// Funkcja pomocnicza: Znajdywanie obiektów w pobliżu
+function getNearbyLandmarks(latlng, radius = 40) {
+    let found = [];
+    const checkPoint = L.latLng(latlng);
+    
+    // Szukaj w punktach OSM
+    pois.forEach(p => {
+        if (checkPoint.distanceTo(p.latlng) <= radius) found.push(`${p.name || 'Punkt orientacyjny'}`);
+    });
+    
+    // Szukaj w Moich Punktach (Arkusz Google)
+    globalCustomPois.forEach(p => {
+        if (checkPoint.distanceTo(p.latlng) <= radius) found.push(`${p.icon} ${p.name}`);
+    });
+    
+    return [...new Set(found)]; // Usunięcie duplikatów
+}
+
 function generateRouteDescription() {
     const container = document.getElementById('routeDescText');
     if (routeGeometry.length < 2) {
-        container.innerHTML = "<em>Brak trasy do analizy.</em>";
+        container.innerHTML = "<em>Zaznacz więcej punktów na mapie, by wygenerować przewodnik.</em>";
         return;
     }
 
-    let text = `<strong>Start:</strong> ${routePoints[0].elevation.toFixed(0)} m n.p.m.<br><br>`;
+    // 1. Wygładzanie trasy (Algorytm Douglas-Peucker)
+    // Zamieniamy routeGeometry na format XY dla silnika Leafleta
+    const pointsXY = routeGeometry.map(p => L.point(p[0], p[1]));
+    // Tolerancja ok. 0.0003 stopnia (ok 30 metrów). Usuwa "szum" i zostawia tylko kluczowe zakręty.
+    const simplifiedXY = L.LineUtil.simplify(pointsXY, 0.0003); 
+    const keyPoints = simplifiedXY.map(p => [p.x, p.y]);
+
+    let text = `<div style="margin-bottom:15px;"><strong>🟢 Start wycieczki</strong> (${routePoints[0].elevation.toFixed(0)} m n.p.m.)</div>`;
     
-    // Algorytm spacerujący po GEOMETRII trasy (nie tylko po punktach kontrolnych)
-    // Grupujemy odcinki o podobnym azymucie.
+    let currentDist = 0;
+    let initialBearing = getBearing(keyPoints[0][0], keyPoints[0][1], keyPoints[1][0], keyPoints[1][1]);
+    const startDirection = getCompassDirection(initialBearing);
     
-    let steps = [];
-    let currentStep = { direction: "", dist: 0 };
-    
-    // Próbkowanie co ~15 punktów geometrii (ok. 20-50m w terenie), żeby uniknąć szumów
-    // Jeśli trasa jest krótka, próbkujemy częściej.
-    let sampleRate = Math.max(1, Math.floor(routeGeometry.length / 200)); 
-    if (routeGeometry.length < 50) sampleRate = 1;
+    // Zbieramy POI na starcie
+    let startPois = getNearbyLandmarks(keyPoints[0], 50);
+    let startPoiText = startPois.length > 0 ? `<br><span class="route-step-poi">Zaczynasz w pobliżu: <b>${startPois.join(', ')}</b>.</span>` : '';
 
-    for (let i = 0; i < routeGeometry.length - sampleRate; i += sampleRate) {
-        const p1 = routeGeometry[i];
-        // Patrzymy trochę w przód, żeby ustalić ogólny kierunek
-        const targetIdx = Math.min(i + sampleRate, routeGeometry.length - 1);
-        const p2 = routeGeometry[targetIdx];
-        
-        const dist = L.latLng(p1).distanceTo(L.latLng(p2));
-        if (dist < 5) continue; // Ignoruj mikroruchy
+    text += `
+        <div class="route-step">
+            <span class="route-step-icon">🧭</span> 
+            Ruszaj przed siebie w kierunku <strong>${startDirection}</strong>.${startPoiText}
+        </div>`;
 
-        const brng = getBearing(p1[0], p1[1], p2[0], p2[1]);
-        const direction = getCompassDirection(brng);
+    for (let i = 1; i < keyPoints.length - 1; i++) {
+        const prevP = keyPoints[i-1];
+        const currP = keyPoints[i];
+        const nextP = keyPoints[i+1];
 
-        if (currentStep.direction === "") {
-            currentStep.direction = direction;
-            currentStep.dist = dist;
-        } else if (currentStep.direction === direction) {
-            currentStep.dist += dist;
-        } else {
-            // Zmiana kierunku - zapisz stary krok, zacznij nowy
-            if (currentStep.dist > 20) { // Zapisz tylko jeśli odcinek miał sensowną długość
-                steps.push({...currentStep});
-            }
-            currentStep = { direction: direction, dist: dist };
-        }
-    }
-    // Dodaj ostatni krok
-    if (currentStep.dist > 0) steps.push(currentStep);
+        // Dystans odcinka
+        const segDist = L.latLng(prevP).distanceTo(L.latLng(currP));
+        currentDist += segDist;
 
-    // Renderowanie tekstu
-    // Scalamy bardzo krótkie odcinki (zakręty), jeśli są szumem, 
-    // ale tutaj prosta logika jest często najlepsza dla pieszego.
-    steps.forEach((step, index) => {
-        // Ignoruj bardzo małe korekty (<30m) chyba że to początek/koniec
-        if (step.dist < 30 && index > 0 && index < steps.length - 1) return;
-        
+        // Jeśli odcinek był bardzo krótki, ignorujemy to jako "mikro-krok"
+        if (currentDist < 15) continue;
+
+        // Kąty by ustalić rodzaj zakrętu
+        const brngIn = getBearing(prevP[0], prevP[1], currP[0], currP[1]);
+        const brngOut = getBearing(currP[0], currP[1], nextP[0], nextP[1]);
+        const turnAngle = getAngleDiff(brngIn, brngOut);
+
+        let instruction = "";
         let icon = "⬆️";
-        if (step.direction.includes("wschód")) icon = "➡️";
-        if (step.direction.includes("zachód")) icon = "⬅️";
-        if (step.direction.includes("południe")) icon = "⬇️";
-        
-        text += `<strong>${icon}</strong> Idź <strong>${step.direction}</strong> przez ${(step.dist).toFixed(0)}m.<br>`;
-        // Dodaj separator co kilka kroków dla czytelności
-        if ((index + 1) % 5 === 0) text += "<hr style='margin:5px 0; opacity:0.3'>";
-    });
 
-    text += `<br>🏁 <strong>Meta:</strong> ${routePoints[routePoints.length-1].elevation.toFixed(0)} m n.p.m.`;
+        // Analiza typu skrętu
+        if (Math.abs(turnAngle) < 15) {
+            instruction = "Idź prosto przez"; 
+            icon = "⬆️"; 
+        } else if (turnAngle >= 15 && turnAngle <= 45) {
+            instruction = "Skręć łagodnie w prawo, idź przez"; 
+            icon = "↗️"; 
+        } else if (turnAngle > 45 && turnAngle <= 120) {
+            instruction = "Skręć w prawo i kontynuuj przez"; 
+            icon = "➡️"; 
+        } else if (turnAngle > 120) {
+            instruction = "Ostro w prawo (zawróć), idź przez"; 
+            icon = "⤵️"; 
+        } else if (turnAngle <= -15 && turnAngle >= -45) {
+            instruction = "Skręć łagodnie w lewo, idź przez"; 
+            icon = "↖️"; 
+        } else if (turnAngle < -45 && turnAngle >= -120) {
+            instruction = "Skręć w lewo i kontynuuj przez"; 
+            icon = "⬅️"; 
+        } else if (turnAngle < -120) {
+            instruction = "Ostro w lewo (zawróć), idź przez"; 
+            icon = "⤴️"; 
+        }
+
+        // Szukanie obiektów POI na tym skrzyżowaniu / zakręcie
+        let landmarks = getNearbyLandmarks(currP, 40);
+        let landmarkText = "";
+        
+        if (landmarks.length > 0) {
+            // Dodajemy kontekst ludzki
+            const phrases = ["Mijasz: ", "Obok: ", "Przy obiekcie: ", "Przejdziesz koło: "];
+            const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+            landmarkText = `<span class="route-step-poi">${randomPhrase} <b>${landmarks.join(', ')}</b>.</span>`;
+            
+            // Jeśli to skrzyżowanie ma obiekt, zmieniamy lekko ton instrukcji
+            if (Math.abs(turnAngle) > 45) {
+                instruction = instruction.replace('Skręć', 'Na wysokości obiektu skręć');
+            }
+        } else if (Math.abs(turnAngle) > 45) {
+            // Jeśli nie ma obiektu, a jest skręt - dodajemy sugestię rozwidlenia
+            landmarkText = `<span class="route-step-poi">Szukaj ścieżki odchodzącej w tę stronę.</span>`;
+        }
+
+        // Generujemy kafelek HTML
+        text += `
+            <div class="route-step">
+                <span class="route-step-icon">${icon}</span> 
+                ${instruction} <span class="route-step-dist">${currentDist.toFixed(0)} m</span>.
+                ${landmarkText}
+            </div>`;
+        
+        currentDist = 0; // Reset dystansu do następnego ważnego kroku
+    }
+
+    // Dodanie końcówki
+    const lastP = keyPoints[keyPoints.length - 1];
+    const finalDist = L.latLng(keyPoints[keyPoints.length - 2]).distanceTo(L.latLng(lastP));
+    
+    let endPois = getNearbyLandmarks(lastP, 50);
+    let endPoiText = endPois.length > 0 ? `<br><span class="route-step-poi">Cel znajduje się tuż obok: <b>${endPois.join(', ')}</b>.</span>` : '';
+
+    text += `
+        <div class="route-step" style="border-left-color: #ef4444;">
+            <span class="route-step-icon">🏁</span> 
+            Ostatnia prosta! Za <span class="route-step-dist">${finalDist.toFixed(0)} m</span> dotrzesz do celu.
+            ${endPoiText}
+        </div>
+        <div style="margin-top:15px; font-weight:bold;">📍 Meta (${routePoints[routePoints.length-1].elevation.toFixed(0)} m n.p.m.)</div>
+    `;
+
     container.innerHTML = text;
 }
-
-/* ================= WYSOKOŚĆ I INTERAKTYWNY PROFIL TERENU ================= */
 /* ================= WYSOKOŚĆ I INTERAKTYWNY PROFIL TERENU ================= */
 let globalElevationData = [];
 let globalElevationDist = []; // Przechowuje dystans dla każdego punktu na osi X
@@ -2736,7 +2836,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 /* ================= PUNKTY Z BAZY DANYCH (GOOGLE SHEETS) ================= */
 
-
+let globalCustomPois = []; // <--- NOWA TABLICA NA POTRZEBY OPISU TRASY
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
 
 async function loadGoogleSheetsPOIs() {
@@ -2764,6 +2864,8 @@ async function loadGoogleSheetsPOIs() {
 
             // Tworzenie ikonki (emoji z kolumny D lub domyślna pinezka)
             const iconEmoji = item.icon || '📍';
+            globalCustomPois.push({ latlng: L.latLng(lat, lng), name: item.name, icon: iconEmoji });
+
             
             const marker = L.marker([lat, lng], {
                 icon: L.divIcon({
