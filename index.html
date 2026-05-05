@@ -573,7 +573,6 @@ canvas#elevation {
 
     <button onclick="openPointsModal()">📑 Edytuj Punkty</button>
     <button onclick="openDescModal()">📜 Opis Trasy</button>
-     <!-- NOWE PRZYCISKI DO ANIMACJI I STYLU -->
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
         <button onclick="openStyleModal()" style="background: #f59e0b;">🎨 Styl trasy</button>
         <button onclick="playRouteAnimation()" style="background: #ec4899;">▶️ Animuj</button>
@@ -1270,27 +1269,21 @@ function getNearbyFeatures(latlng, radius = 45) {
 }
 
 // Oblicza relatywny kąt skrętu z perspektywy pieszego (eliminując błędy kulistości Ziemi)
+// CAŁKOWICIE NOWA FUNKCJA - Niezawodne obliczanie kąta na podstawie azymutu
 function getTurnAngle(p1, p2, p3) {
-    // Rzutowanie na płaskie metry (dokładnie jak na mapie na ekranie)
-    const v1 = L.CRS.EPSG3857.project(L.latLng(p1[0], p1[1]));
-    const v2 = L.CRS.EPSG3857.project(L.latLng(p2[0], p2[1]));
-    const v3 = L.CRS.EPSG3857.project(L.latLng(p3[0], p3[1]));
+    // Pobieramy prawdziwy azymut wejścia w zakręt i wyjścia z zakrętu
+    const bearingIn = getBearing(p1[0], p1[1], p2[0], p2[1]);
+    const bearingOut = getBearing(p2[0], p2[1], p3[0], p3[1]);
 
-    const Ax = v2.x - v1.x;
-    const Ay = v2.y - v1.y;
-    const Bx = v3.x - v2.x;
-    const By = v3.y - v2.y;
+    // Różnica kątów (zmiana kierunku)
+    let turn = bearingOut - bearingIn;
 
-    const angleA = Math.atan2(Ay, Ax);
-    const angleB = Math.atan2(By, Bx);
+    // Normalizacja do przedziału -180 do 180 stopni (żeby skręt o 270 w prawo był widziany jako 90 w lewo)
+    if (turn > 180) turn -= 360;
+    if (turn < -180) turn += 360;
 
-    let turn = (angleB - angleA) * (180 / Math.PI);
-
-    while (turn < -180) turn += 360;
-    while (turn > 180) turn -= 360;
-
-    // Odwracamy znak: na mapie Mercatora dodatni kąt oznacza prawo, ujemny lewo
-    return -turn; 
+    // ZWRACA: Dodatni = Skręt w PRAWO | Ujemny = Skręt w LEWO
+    return turn;
 }
 
 // Baza losowych sformułowań przewodnika
@@ -1305,7 +1298,7 @@ const phrases = {
         "Skręć łagodnie w prawo i kontynuuj przez", "Trzymaj się prawej strony i idź przez", "Ścieżka lekko odbija w prawo, podążaj nią przez",
         "Delikatnie w prawo, czeka cię odcinek", "Zabierz się na prawą odnogę i idź", "Podążaj łagodnym łukiem w prawo przez",
         "Wybierz prawą stronę ścieżki i maszeruj przez", "Kieruj się lekko na prawo na dystansie", "Płynnie przejdź na prawą stronę przez",
-        "Zaraz ścieżka odchyli się w prawo, trzymaj się jej przez", "Skieruj kroki delikatnie wprawo przez"
+        "Zaraz ścieżka odchyli się w prawo, trzymaj się jej przez", "Skieruj kroki delikatnie w prawo przez"
     ],
     right: [
         "Na skrzyżowaniu skręć w prawo i idź przez", "Skręć w prawo i kontynuuj przez", "Wybierz drogę w prawo, czeka cię",
@@ -1362,11 +1355,14 @@ function generateRouteDescription() {
     routeStepsGeom = [];
     if(stepHighlightLayer) { map.removeLayer(stepHighlightLayer); stepHighlightLayer = null; }
 
-    // Wygładzanie metryczne (eliminuje problem mylenia lewo/prawo na zakrętach)
+    // Wygładzanie metryczne - IGNORUJEMY leśne szumy i mikro-zygzaki poniżej 45 metrów
     const projectedPoints = routeGeometry.map(p => L.CRS.EPSG3857.project(L.latLng(p[0], p[1])));
-    // 35 metrów tolerancji wygładzania na ignorowanie leśnych wiraży
-    const simplifiedProj = L.LineUtil.simplify(projectedPoints, 35); 
-    const keyPoints = simplifiedProj.map(p => {
+    const simplifiedProj = L.LineUtil.simplify(projectedPoints, 45); 
+    
+    // Zabezpieczenie: jeśli po wygładzeniu trasa zniknęła (bo była super krótka), użyj oryginału
+    const pointsToUse = simplifiedProj.length > 2 ? simplifiedProj : projectedPoints;
+    
+    const keyPoints = pointsToUse.map(p => {
         const ll = L.CRS.EPSG3857.unproject(p);
         return [ll.lat, ll.lng];
     });
@@ -1377,7 +1373,7 @@ function generateRouteDescription() {
     </div>`;
     
     let currentDist = 0;
-    let stepCoordsBuffer = []; // Przechowuje koordynaty do narysowania linii podświetlenia
+    let stepCoordsBuffer = []; 
     
     // Szukanie danych dla punktu 0
     let startFeatures = getNearbyFeatures(keyPoints[0]);
