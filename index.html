@@ -544,6 +544,16 @@ canvas#elevation {
     </style>
 </head>
 <body class="dark">
+    <!-- BANER AWARII (Pokazuje się na górze ekranu) -->
+<div id="outageBanner" style="display:none; position:fixed; top:0; left:0; width:100%; background: linear-gradient(90deg, #f59e0b, #ea580c); color:#fff; z-index:9999; padding:12px 20px; box-sizing:border-box; box-shadow:0 4px 15px rgba(0,0,0,0.5); align-items:center; justify-content:space-between; font-family: sans-serif;">
+    <div style="flex-grow: 1;">
+        <strong style="font-size: 1.1rem;">⚠️ Awaria Głównego Serwera Nawigacji</strong><br>
+        <span style="font-size: 0.85rem; opacity: 0.9;">
+            Tymczasowo przełączono na serwer zapasowy. Trasa może pomijać wąskie leśne ścieżki i nie zawierać profilu wysokości. Przepraszamy za utrudnienia!
+        </span>
+    </div>
+    <button onclick="document.getElementById('outageBanner').style.display='none'" style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.4); color:white; font-weight:bold; cursor:pointer; padding:8px 15px; border-radius:6px; white-space: nowrap; margin-left: 15px; transition: 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.4)'" onmouseout="this.style.background='rgba(0,0,0,0.2)'">✖ Ukryj</button>
+</div>
 
 <button id="mobile-toggle" onclick="toggleSidebar()">☰</button>
 
@@ -1183,6 +1193,13 @@ async function getRouteSegment(start, end) {
         } catch (e) {
             console.warn(`[BRouter Awaria] Omijanie ${baseUrl}:`, e.message);
             lastError = e;
+        }
+    }
+        if (typeof brouterOutageNotified !== 'undefined' && !brouterOutageNotified) {
+        const banner = document.getElementById('outageBanner');
+        if(banner) {
+            banner.style.display = 'flex';
+            brouterOutageNotified = true;
         }
     }
 
