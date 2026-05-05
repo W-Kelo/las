@@ -751,10 +751,18 @@ canvas#elevation {
     </div>
 </div>
 
-   <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) -->
-<div id="styleModal" class="floating-modal" style="width: 350px;">
+  <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) - PŁYWAJĄCY -->
+<div id="styleModal" class="floating-modal" style="width: 340px;" data-html2canvas-ignore>
     <div class="modal-header">
-        <span">🎨 Styl i Animacja Trasy</span>
+        <span style="color: #f59e0b; font-weight: bold;">🎨 Styl i Animacja</span>
+        <div style="display:flex; align-items:center">
+            <div class="opacity-control" title="Przezroczystość">
+                👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
+            </div>
+            <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('styleModal')">X</button>
+        </div>
+    </div>
+    <div class="modal-body">
         
         <div class="style-control-group">
             <label>Kolor linii:</label>
@@ -792,7 +800,6 @@ canvas#elevation {
         <div style="display:flex; flex-direction: column; gap: 8px; margin-top: 5px;">
             <button onclick="saveStyle(false)" style="background: #22c55e;">Zastosuj w tej sesji</button>
             <button onclick="saveStyle(true)" style="background: #3b82f6;">Zapisz jako domyślne (Zawsze)</button>
-            <button onclick="document.getElementById('styleModal').style.display='none'" class="secondary">Anuluj</button>
         </div>
     </div>
 </div>
@@ -1045,6 +1052,7 @@ function makeDraggable(el) {
 // Inicjalizacja drag
 makeDraggable(document.getElementById('pointsModal'));
 makeDraggable(document.getElementById('descModal'));
+makeDraggable(document.getElementById('styleModal'));
 
 function openPointsModal() {
     document.getElementById('pointsModal').style.display = 'flex';
