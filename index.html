@@ -1051,6 +1051,8 @@ async function recalculateRoute() {
         if (routePoints.length === 0) {
             polyline.setLatLngs([]);
             updateStats(0);
+            // NOWE: Wywołujemy tę funkcję, by natychmiastowo zresetowała wykres!
+            fetchFullElevationProfile(); 
             return;
         }
 
@@ -1059,29 +1061,25 @@ async function recalculateRoute() {
             const res = await getRouteSegment(routePoints[i-1].latlng, routePoints[i].latlng);
             routePoints[i].distFromPrev = res.distance;
             
-            // Uaktualnij wysokość obecnego punktu wg BRoutera
             if(res.coords.length > 0) {
                 routePoints[i].elevation = res.coords[res.coords.length - 1][2];
             }
 
             if (i === 1) {
                 routeGeometry = res.coords;
-                // Uaktualnij wysokość punktu startowego
                 routePoints[0].elevation = res.coords[0][2];
             } else {
-                // Doklejamy omijając dublujący się punkt styku segmentów
                 routeGeometry = routeGeometry.concat(res.coords.slice(1));
             }
         }
         
-        // Jeśli jest tylko 1 punkt, inicjujemy go na mapie bez linii
         if (routePoints.length === 1) {
             routeGeometry = [[routePoints[0].latlng.lat, routePoints[0].latlng.lng, 0]];
         }
 
         polyline.setLatLngs(routeGeometry);
         
-        await fetchFullElevationProfile(); // Teraz to zadziała od razu z pamięci!
+        await fetchFullElevationProfile();
         generateRouteDescription(); 
         renderPointsList();
     } catch(e) {
@@ -1186,28 +1184,35 @@ function generateRouteDescription() {
 }
 
 /* ================= WYSOKOŚĆ I INTERAKTYWNY PROFIL TERENU ================= */
+/* ================= WYSOKOŚĆ I INTERAKTYWNY PROFIL TERENU ================= */
 let globalElevationData = [];
 let globalElevationDist = []; // Przechowuje dystans dla każdego punktu na osi X
+let globalElevationLatLng = []; // NOWE: Przechowuje koordynaty [lat, lng] dla wykresu
+let chartHoverMarker = null;    // NOWE: Marker latający po mapie
 
 async function fetchFullElevationProfile() {
     if (routeGeometry.length < 2) { 
         globalElevationData = []; 
+        globalElevationDist = [];
+        globalElevationLatLng = [];
         clearElevation(); 
+        if (chartHoverMarker) { map.removeLayer(chartHoverMarker); chartHoverMarker = null; }
         return; 
     }
     
     const step = Math.max(1, Math.floor(routeGeometry.length / 90));
     globalElevationData = [];
     globalElevationDist = [];
+    globalElevationLatLng = []; // Reset
     let cumDist = 0;
     
-    // Zamiast wysyłać zapytania, po prostu czytamy 3-ci element z koordynatów BRoutera!
     for(let i = 0; i < routeGeometry.length; i += step) {
-        const elevation = routeGeometry[i][2] || 0; // Odczyt z zapisanego z [lat, lng, elev]
+        const elevation = routeGeometry[i][2] || 0; 
         globalElevationData.push(elevation);
+        // Zapisujemy współrzędne żeby móc je wskazać na mapie głównej
+        globalElevationLatLng.push([routeGeometry[i][0], routeGeometry[i][1]]);
         
         if(i > 0) {
-            // Leaflet ignoruje 3 argument (wysokość) przy obliczaniu distanceTo, więc to jest bezpieczne
             cumDist += L.latLng(routeGeometry[i-step]).distanceTo(L.latLng(routeGeometry[i]));
         } else if (i === 0 && routeGeometry.length > 1) {
             cumDist += L.latLng(routeGeometry[0]).distanceTo(L.latLng(routeGeometry[i]));
@@ -1215,7 +1220,6 @@ async function fetchFullElevationProfile() {
         globalElevationDist.push(cumDist);
     }
     
-    // Obliczanie przewyższeń bezpośrednio z danych lokalnych
     totalAscent = 0;
     for(let i = 1; i < globalElevationData.length; i++) {
         if(globalElevationData[i] > globalElevationData[i-1]) {
@@ -1318,14 +1322,14 @@ function drawElevation(hoverIdx = -1) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 4. EFEKT INTERAKTYWNY (Najechanie myszką/palcem)
+   // 4. EFEKT INTERAKTYWNY (Najechanie myszką/palcem)
     if(hoverIdx >= 0 && hoverIdx < globalElevationData.length) {
         const x = padL + (hoverIdx / (globalElevationData.length - 1)) * innerW;
         const val = globalElevationData[hoverIdx];
         const y = padT + innerH - ((val - min) / range) * innerH;
         const distKm = (globalElevationDist[hoverIdx] / 1000).toFixed(2);
 
-        // Pionowa linia
+        // Pionowa linia na wykresie
         ctx.beginPath();
         ctx.moveTo(x, padT);
         ctx.lineTo(x, displayHeight - padB);
@@ -1333,9 +1337,9 @@ function drawElevation(hoverIdx = -1) {
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.stroke();
-        ctx.setLineDash([]); // Reset dash
+        ctx.setLineDash([]); 
 
-        // Kropka na linii
+        // Kropka na wykresie
         ctx.beginPath();
         ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.fillStyle = '#fff';
@@ -1353,13 +1357,11 @@ function drawElevation(hoverIdx = -1) {
         const boxW = Math.max(w1, w2) + 16;
         const boxH = 34;
         
-        // Logika żeby tooltip nie uciekł poza ekran
         let boxX = x + 10;
         if(boxX + boxW > displayWidth) boxX = x - boxW - 10;
         let boxY = y - boxH / 2;
         if(boxY < 5) boxY = 5;
 
-        // Tło tooltipa
         ctx.fillStyle = document.body.classList.contains('light') ? 'rgba(255,255,255,0.95)' : 'rgba(30,41,59,0.95)';
         ctx.beginPath();
         ctx.roundRect(boxX, boxY, boxW, boxH, 4);
@@ -1368,12 +1370,29 @@ function drawElevation(hoverIdx = -1) {
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Tekst tooltipa
         ctx.textAlign = 'left';
         ctx.fillStyle = document.body.classList.contains('light') ? '#0f172a' : '#f1f5f9';
         ctx.fillText(text1, boxX + 8, boxY + 11);
         ctx.fillStyle = '#22c55e';
         ctx.fillText(text2, boxX + 8, boxY + 25);
+
+        // --- NOWE: Rysowanie kropki na GŁÓWNEJ MAPIE ---
+        const mapLatLng = globalElevationLatLng[hoverIdx];
+        if (!chartHoverMarker) {
+            // Używamy niebieskiego koloru, żeby wyróżniał się na zielonej linii trasy
+            chartHoverMarker = L.circleMarker(mapLatLng, {
+                radius: 7, color: '#fff', weight: 2, fillColor: '#3b82f6', fillOpacity: 1, zIndexOffset: 2000
+            }).addTo(map);
+        } else {
+            chartHoverMarker.setLatLng(mapLatLng);
+        }
+        
+    } else {
+        // --- NOWE: Ukrywamy kropkę z mapy, gdy zdejmiemy kursor z wykresu ---
+        if (chartHoverMarker) {
+            map.removeLayer(chartHoverMarker);
+            chartHoverMarker = null;
+        }
     }
 }
 
@@ -1557,7 +1576,7 @@ async function loadOSMData(externalData = null) {
             if (typeof isBlacklistedOSM === 'function' && isBlacklistedOSM(e)) return;
 
             let icon = '📍';
-            if (e.tags.amenity === 'shelter') icon = '🛖';
+            if (e.tags.amenity === 'shelter') icon = '🏠';
             else if (e.tags.tourism === 'viewpoint') icon = '🔭';
             else if (e.tags.amenity === 'parking') icon = '🅿️';
             else if (e.tags.tourism === 'information') icon = 'ℹ️';
