@@ -607,7 +607,22 @@ canvas#elevation {
     <div id="loader" class="loading-overlay">⏳ Przeliczanie trasy...</div>
 </div>
 <button id="gps-btn" onclick="locateUser()" title="Zlokalizuj mnie">🎯</button>
-
+<!-- MODAL AWARII BROUTER -->
+<div id="brouterErrorModal" class="inner-modal-overlay" data-html2canvas-ignore style="z-index: 5000;">
+    <div class="inner-modal" style="width: 350px; text-align: center;">
+        <h3 style="color: #ef4444; margin-top:0;">⚠️ Awaria Nawigacji</h3>
+        <p style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">
+            Nasz zewnętrzny dostawca usługi wyznaczania tras ma obecnie awarię serwerów.
+            <br><br>
+            Część funkcji (np. dopasowywanie do leśnych ścieżek i profil wysokości) może być chwilowo niedostępna. Do czasu naprawy usterki trasy będą łączone <strong>w linii prostej</strong>.
+            <br><br>
+            Przepraszamy za utrudnienia!
+        </p>
+        <div style="display:flex; justify-content: center; margin-top: 15px;">
+            <button onclick="document.getElementById('brouterErrorModal').style.display='none'" style="background: #ef4444; width: 100%;">Zrozumiałem</button>
+        </div>
+    </div>
+</div>
 <!-- MODAL EDYCJI PUNKTÓW -->
 <div id="pointsModal" class="floating-modal">
     <div class="modal-header">
@@ -927,6 +942,7 @@ const tiles = {
     light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', crossOrigin: true })
 };
 tiles.dark.addTo(map);
+let brouterOutageNotified = false; 
 let routePoints = []; 
 let routeGeometry = []; 
 let pois = [];
@@ -1177,14 +1193,19 @@ async function getRouteSegment(start, end) {
         }
     }
 
-    // Fallback: Jeśli wszystkie serwery na świecie padły (bardzo rzadkie), połączy w linii prostej
     console.error("Wszystkie serwery BRouter są niedostępne!", lastError);
+    
+    // NOWE: Wyświetl elegancki modal klientowi (tylko raz)
+    if (!brouterOutageNotified) {
+        document.getElementById('brouterErrorModal').style.display = 'flex';
+        brouterOutageNotified = true;
+    }
+
     return { 
         coords: [[start.lat, start.lng, 0], [end.lat, end.lng, 0]], 
         distance: L.latLng(start).distanceTo(L.latLng(end)) 
     }; 
 }
-
 map.on('click', async e => {
     if (poiMode) { addPOI(e.latlng); poiMode = false; return; }
     if (isRouting) return; 
