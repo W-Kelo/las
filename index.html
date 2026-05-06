@@ -590,7 +590,6 @@ canvas#elevation {
     <button onclick="recordRouteGIF()" style="width: 100%; margin-top: 4px; background: #8b5cf6;">🎞️ Zapisz jako GIF</button>
     
     <div style="display:grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px;">
-        <button class="secondary" onclick="enablePOI()">📍 Dodaj Własny Punkt</button>
         <button class="danger" onclick="clearAll()">🗑️ Nowa Trasa</button>
     </div>
 
@@ -946,12 +945,13 @@ const map = L.map('map', {
 
 L.control.zoom({ position: 'topright' }).addTo(map);
 
-let dark = true;
+let dark = false;
 const tiles = {
     dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OSM', crossOrigin: true }),
     light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', crossOrigin: true })
 };
 tiles.dark.addTo(map);
+let dark = false;
 let brouterOutageNotified = false; 
 let routePoints = []; 
 let routeGeometry = []; 
@@ -991,10 +991,10 @@ let tempLegendClickLatLng = null;
 let selectedEmoji = "📍";
 let exportMapDark = dark; 
 let exportTileLayer = null;
-const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆"];
+let isPanelDraggable = false;
+let isPanelResizable = false;
+const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
-
-
 const polyline = L.polyline([], {
     color: routePrefColor, 
     weight: routePrefWeight, 
@@ -1164,10 +1164,6 @@ function importGPX(e) {
 
 async function getRouteSegment(start, end) {
     let lastError = null;
-
-    // ---------------------------------------------------------
-    // SYSTEM 1: BRouter (Główny - wyznacza ścieżki + profil wysokości)
-    // ---------------------------------------------------------
     const BROUTER_ENDPOINTS = [
         'https://brouter.de/brouter',
         'https://brouter.m11n.de/brouter'
@@ -1202,10 +1198,6 @@ async function getRouteSegment(start, end) {
             brouterOutageNotified = true;
         }
     }
-
-    // ---------------------------------------------------------
-    // SYSTEM 2: OSRM (Niezawodny serwer zapasowy - rysuje trasy, ale bez wysokości)
-    // ---------------------------------------------------------
     try {
         console.log("Przełączam na niezawodny serwer zapasowy (OSRM)...");
         // OSRM dla pieszych (foot)
@@ -1233,12 +1225,8 @@ async function getRouteSegment(start, end) {
         lastError = e;
     }
 
-    // ---------------------------------------------------------
-    // SYSTEM 3: OSTATECZNY RATUNEK (Gdy nie ma w ogóle internetu - Linia prosta)
-    // ---------------------------------------------------------
     console.error("Wszystkie silniki nawigacji są niedostępne!", lastError);
     
-    // Uruchomienie Twojego modala informacyjnego
     if (typeof brouterOutageNotified !== 'undefined' && !brouterOutageNotified) {
         const errorModal = document.getElementById('brouterErrorModal');
         if(errorModal) {
@@ -1270,7 +1258,6 @@ async function addRoutePoint(latlng, recalc = true) {
         removePointById(pointId);
     });
 
-    // Wstawiamy wstępnie 0, prawdziwą wysokość uzupełni nam silnik trasy (BRouter) za ułamek sekundy
     routePoints.push({ id: pointId, latlng: latlng, marker: m, elevation: 0, distFromPrev: 0 });
     renderPointsList();
     if (recalc) await recalculateRoute();
@@ -1352,37 +1339,30 @@ function getCompassDirection(brng) {
     return "";
 }
 
-/* ================= OPIS TRASY (LUDZKA NAWIGACJA Z POI) ================= */
-
-/* ================= INTELIGENTNY OPIS TRASY (LUDZKA NAWIGACJA) ================= */
-
+/* ================= OPIS TRASY  ================= */
 function getNearbyFeatures(latlng, radius = 45) {
     let foundPois = [];
     let foundTrail = null;
     const checkPoint = L.latLng(latlng);
     
-    // Szukaj w punktach użytkownika (dodanych ręcznie na mapie)
     pois.forEach(p => { if (checkPoint.distanceTo(p.latlng) <= radius) foundPois.push(`${p.name || 'Wybrany punkt'}`); });
     
-    // Szukaj w Moich Punktach (Arkusz Google)
     if(typeof globalCustomPois !== 'undefined') {
         globalCustomPois.forEach(p => { if (checkPoint.distanceTo(p.latlng) <= radius) foundPois.push(`${p.icon} ${p.name}`); });
     }
 
-    // Szukaj w punktach z OpenStreetMap
     globalOsmPois.forEach(p => { if (checkPoint.distanceTo(p.latlng) <= radius) foundPois.push(`📌 ${p.name}`); });
     
-    // Sprawdzanie czy idziemy po szlaku (w promieniu 30m)
     for (let t of globalTrails) {
         for (let c of t.coords) {
-            if (c.distanceTo(checkPoint) < 30) { foundTrail = t.name; break; }
+            if (c.distanceTo(checkPoint) < 20) { foundTrail = t.name; break; }
         }
         if(foundTrail) break;
     }
 
     return { pois: [...new Set(foundPois)], trail: foundTrail };
 }
-// Funkcja poruszająca niewidzialną kropkę po kuli ziemskiej (zwraca nowe współrzędne)
+
 function moveVirtualDot(latlng, bearing, distMeters) {
     const R = 6378137; // Promień Ziemi w metrach
     const lat1 = latlng[0] * Math.PI / 180;
@@ -1395,44 +1375,32 @@ function moveVirtualDot(latlng, bearing, distMeters) {
 
     return [lat2 * 180 / Math.PI, lon2 * 180 / Math.PI];
 }
-// Oblicza relatywny kąt skrętu z perspektywy pieszego (eliminując błędy kulistości Ziemi)
-// CAŁKOWICIE NOWA FUNKCJA - Niezawodne obliczanie kąta na podstawie azymutu
-// Całkowicie nowy algorytm oparty na wektorach płaskich (odporny na błędy osi)
-// Niezawodny algorytm oparty na fizycznym symulowaniu kropek na mapie
+
 function getTurnAngle(p1, p2, p3) {
-    // 1. Obliczamy fizyczne dystanse między punktami w metrach
     const a = L.latLng(p1).distanceTo(L.latLng(p2));
     const b = L.latLng(p2).distanceTo(L.latLng(p3));
     const c = L.latLng(p1).distanceTo(L.latLng(p3));
 
     if (a === 0 || b === 0) return 0;
 
-    // 2. Twierdzenie Cosinusów - daje nam IDEALNY kąt wygięcia trasy (0 to prosta, 90 to kąt prosty, 180 to zawracanie)
     let cosC = (a*a + b*b - c*c) / (2 * a * b);
     cosC = Math.max(-1, Math.min(1, cosC)); // Zabezpieczenie przed usterkami zaokrągleń
     const turnMagnitude = 180 - (Math.acos(cosC) * (180 / Math.PI));
-
-    // 3. SYMULACJA NIEWIDZIALNYCH KROPEK (Zwiadowców)
     // Sprawdzamy z jakim azymutem weszliśmy w zakręt
     const headingIn = getBearing(p1[0], p1[1], p2[0], p2[1]);
 
-    // Wypuszczamy dwie kropki: jedna skręca 90 stopni w lewo, druga 90 w prawo
     const leftScout = moveVirtualDot(p2, (headingIn - 90 + 360) % 360, 20);
     const rightScout = moveVirtualDot(p2, (headingIn + 90) % 360, 20);
-
-    // 4. Mierzymy odległość zwiadowców do następnego punktu trasy (p3)
     const distFromLeftScout = L.latLng(leftScout).distanceTo(L.latLng(p3));
     const distFromRightScout = L.latLng(rightScout).distanceTo(L.latLng(p3));
 
-    // 5. Werdykt: Jeśli Prawa kropka ma bliżej do p3, to skręt jest w Prawo (dodatni)
-    // W przeciwnym razie skręt jest w Lewo (ujemny)
     if (distFromRightScout < distFromLeftScout) {
         return turnMagnitude;  // Prawo
     } else {
         return -turnMagnitude; // Lewo
     }
 }
-// Baza losowych sformułowań przewodnika
+
 const phrases = {
     straight: [
         "Idź przed siebie przez", "Trzymaj się wyznaczonej drogi przez", "Kontynuuj marsz prosto przez",
@@ -1441,10 +1409,9 @@ const phrases = {
         "Twoja droga prowadzi stąd prosto przez", "Zrelaksuj się, idziesz prosto przez", "Utrzymaj kierunek przez"
     ],
     softRight: [
-        "Skręć łagodnie w prawo i kontynuuj przez", "Trzymaj się prawej strony i idź przez", "Ścieżka lekko odbija w prawo, podążaj nią przez",
-        "Delikatnie w prawo, czeka cię odcinek", "Zabierz się na prawą odnogę i idź", "Podążaj łagodnym łukiem w prawo przez",
-        "Wybierz prawą stronę ścieżki i maszeruj przez", "Kieruj się lekko na prawo na dystansie", "Płynnie przejdź na prawą stronę przez",
-        "Zaraz ścieżka odchyli się w prawo, trzymaj się jej przez", "Skieruj kroki delikatnie w prawo przez"
+        "Skręć łagodnie w prawo i kontynuuj przez", "Ścieżka lekko odbija w prawo, podążaj nią przez",
+        "Delikatnie w prawo, czeka cię odcinek", "Kieruj się lekko na prawo na dystansie", "Zaraz ścieżka odchyli się w prawo, trzymaj się jej przez", 
+        "Skieruj kroki delikatnie w prawo. Idź tą ścieżką"
     ],
     right: [
         "Na skrzyżowaniu skręć w prawo i idź przez", "Skręć w prawo i kontynuuj przez", "Wybierz drogę w prawo, czeka cię",
@@ -1453,15 +1420,14 @@ const phrases = {
         "W prawo! Trzymaj kurs przez", "Zmiana kierunku: skręć w prawo i pokonaj"
     ],
     sharpRight: [
-        "Skręć ostro w prawo (prawie zawracając) i idź przez", "Wykonaj ostry skręt w prawo, następnie", "Złam trasę ostro w prawo i idź",
+        "Skręć ostro w prawo (prawie zawracając) i idź przez", "Wykonaj ostry skręt w prawo, następnie",
         "Nawrót w prawo! Czeka cię odcinek", "Bardzo ostro w prawo, kieruj się tak przez", "Zwróć uwagę - ostry zakręt w prawo! Następnie",
         "Ścieżka gwałtownie skręca w prawo. Idź nią przez", "Ostro na prawo, po czym maszeruj przez", "Uważaj, ostry skręt w prawo, a potem",
         "Skieruj się niemal za siebie w prawo przez", "Wykonaj mocny zwrot w prawo i kontynuuj przez"
     ],
     softLeft: [
         "Skręć łagodnie w lewo i kontynuuj przez", "Trzymaj się lewej strony i idź przez", "Ścieżka lekko odbija w lewo, podążaj nią przez",
-        "Delikatnie w lewo, czeka cię odcinek", "Zabierz się na lewą odnogę i idź", "Podążaj łagodnym łukiem w lewo przez",
-        "Wybierz lewą stronę ścieżki i maszeruj przez", "Kieruj się lekko na lewo na dystansie", "Płynnie przejdź na lewą stronę przez",
+        "Delikatnie w lewo, czeka cię odcinek", "Wybierz lewą stronę ścieżki i maszeruj przez", "Kieruj się lekko na lewo na dystansie",
         "Zaraz ścieżka odchyli się w lewo, trzymaj się jej przez", "Skieruj kroki delikatnie w lewo przez"
     ],
     left: [
@@ -1471,7 +1437,7 @@ const phrases = {
         "W lewo! Trzymaj kurs przez", "Zmiana kierunku: skręć w lewo i pokonaj"
     ],
     sharpLeft: [
-        "Skręć ostro w lewo (prawie zawracając) i idź przez", "Wykonaj ostry skręt w lewo, następnie", "Złam trasę ostro w lewo i idź",
+        "Skręć ostro w lewo (prawie zawracając) i idź przez", "Wykonaj ostry skręt w lewo, następnie",
         "Nawrót w lewo! Czeka cię odcinek", "Bardzo ostro w lewo, kieruj się tak przez", "Zwróć uwagę - ostry zakręt w lewo! Następnie",
         "Ścieżka gwałtownie skręca w lewo. Idź nią przez", "Ostro na lewo, po czym maszeruj przez", "Uważaj, ostry skręt w lewo, a potem",
         "Skieruj się niemal za siebie w lewo przez", "Wykonaj mocny zwrot w lewo i kontynuuj przez"
@@ -1497,15 +1463,12 @@ function generateRouteDescription() {
         return;
     }
 
-    // Resetowanie pamięci kształtów do podświetlania i warstw
     routeStepsGeom = [];
     if(stepHighlightLayer) { map.removeLayer(stepHighlightLayer); stepHighlightLayer = null; }
 
-    // Wygładzanie metryczne - IGNORUJEMY leśne szumy i mikro-zygzaki poniżej 45 metrów
     const projectedPoints = routeGeometry.map(p => L.CRS.EPSG3857.project(L.latLng(p[0], p[1])));
     const simplifiedProj = L.LineUtil.simplify(projectedPoints, 45); 
     
-    // Zabezpieczenie: jeśli po wygładzeniu trasa zniknęła (bo była super krótka), użyj oryginału
     const pointsToUse = simplifiedProj.length > 2 ? simplifiedProj : projectedPoints;
     
     const keyPoints = pointsToUse.map(p => {
@@ -1525,11 +1488,8 @@ function generateRouteDescription() {
     for (let i = 0; i < keyPoints.length - 1; i++) {
         const currP = keyPoints[i];
         const nextP = keyPoints[i+1];
-        
-        // Dystans tego konkretnego odcinka do przebycia PO skręcie
         const dist = L.latLng(currP).distanceTo(L.latLng(nextP));
         
-        // Kąt skrętu NA aktualnym węźle (jak wejść na ten odcinek)
         let turnAngle = 0;
         if (i > 0) {
             const prevP = keyPoints[i-1];
@@ -1541,7 +1501,6 @@ function generateRouteDescription() {
 
         const isLastSegment = (i === keyPoints.length - 2);
 
-        // Generujemy instrukcję jeśli: to pierwszy krok, ostatni krok, skręt jest wyraźny lub idziemy baaardzo długo prosto
         if (i === 0 || isLastSegment || Math.abs(turnAngle) >= 20 || accumulatedDist > 500) {
             
             let instruction = "";
@@ -1581,7 +1540,6 @@ function generateRouteDescription() {
                 icon = "🏁";
             }
 
-            // Obliczenia czasu i POI
             const timeMins = accumulatedDist / 75; // ok. 4.5 km/h
             let timeTxt = timeMins < 1 ? "< 1 min" : `~${Math.round(timeMins)} min`;
             
@@ -1590,13 +1548,11 @@ function generateRouteDescription() {
             if (features.trail) extraInfo += `<span class="route-step-poi">🥾 ${getRandom(phrases.trailPrefix)} <b>${features.trail}</b>.</span>`;
             if (features.pois.length > 0) extraInfo += `<span class="route-step-poi">📍 ${getRandom(phrases.poiPrefix)}: <b>${features.pois.join(', ')}</b>.</span>`;
 
-            // Zapis do narysowania podświetlenia na mapie
             const stepIdx = routeStepsGeom.length;
             routeStepsGeom.push([...accumulatedGeom]);
 
             let borderStyle = isLastSegment ? 'border-left-color: #ef4444;' : '';
             
-            // Renderowanie pojedynczego bloku etapu
             text += `
                 <div class="route-step" onmouseenter="highlightStep(${stepIdx})" onmouseleave="unhighlightStep()" style="cursor:pointer; ${borderStyle}">
                     <div style="display:flex; align-items:center;">
@@ -1610,7 +1566,6 @@ function generateRouteDescription() {
                     ${extraInfo}
                 </div>`;
 
-            // Zresetowanie "licznika" dla następnego etapu
             accumulatedGeom = [nextP];
             accumulatedDist = 0;
             stepNumber++;
@@ -1692,7 +1647,6 @@ function clearElevation() {
     c.getContext('2d').clearRect(0, 0, c.width, c.height);
 }
 
-// Główna funkcja rysująca - przyjmuje opcjonalny parametr hoverIdx (indeks najechanego punktu)
 function drawElevation(hoverIdx = -1) {
     if (!globalElevationData || globalElevationData.length === 0) return;
     
@@ -1843,7 +1797,6 @@ function drawElevation(hoverIdx = -1) {
         }
         
     } else {
-        // --- NOWE: Ukrywamy kropkę z mapy, gdy zdejmiemy kursor z wykresu ---
         if (chartHoverMarker) {
             map.removeLayer(chartHoverMarker);
             chartHoverMarker = null;
@@ -1867,7 +1820,6 @@ function calculateTotalDist() {
     return d;
 }
 
-/* ================= INNE ================= */
 function exportGPX() {
     if (routeGeometry.length < 2) return alert("Brak trasy");
     const startTime = new Date();
@@ -1939,13 +1891,6 @@ function clearAll() {
     if(userMarker) map.removeLayer(userMarker);
     recalculateRoute();
 }
-function enablePOI() { poiMode = true; alert("Kliknij na mapę, by dodać własny opis."); }
-function addPOI(latlng) {
-    const name = prompt("Nazwa punktu:");
-    if (!name) return;
-    const m = L.marker(latlng).addTo(map).bindPopup(`<b>📍 ${name}</b>`).openPopup();
-    pois.push({latlng, name, marker: m});
-}
 function toggleLayer(layer, cb) { if (cb.checked) map.addLayer(layer); else map.removeLayer(layer); }
 function toggleTheme() {
     dark = !dark; document.body.className = dark ? "dark" : "light";
@@ -2003,11 +1948,9 @@ async function loadOSMData(externalData = null) {
         }
 
         const nodes = {}, ways = {};
-        // Ważne: najpierw zbieramy wszystkie nody, potem budujemy drogi
         data.elements.forEach(e => { if (e.type === "node") nodes[e.id] = [e.lat, e.lon]; });
         data.elements.forEach(e => { if (e.type === "way") ways[e.id] = e.nodes.map(nid => nodes[nid]).filter(n => n); });
 
-        // Rysowanie relacji (szlaków)
         data.elements.filter(e => e.type === "relation").forEach(rel => {
             const sym = (rel.tags.osmc_symbol || rel.tags.color || "").toLowerCase();
             let color = '#888';
@@ -2030,7 +1973,6 @@ async function loadOSMData(externalData = null) {
             });
         });
 
-       // Rysowanie ikon (POI) - NOWA WERSJA PODPIĘTA POD MODAL
         data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
             if (typeof isBlacklistedOSM === 'function' && isBlacklistedOSM(e)) return;
 
@@ -2051,14 +1993,13 @@ async function loadOSMData(externalData = null) {
                 })
             }).addTo(poiLayer);
 
-            // ZAMIAST bindPopup - OTWIERAMY TWÓJ WŁASNY MODAL
             marker.on('click', () => {
                 const osmData = {
                     name: osmName,
                     icon: icon,
                     category: "Baza OpenStreetMap",
                     description: formatOSMDescription(e.tags, e.id),
-                    photos: "" // OSM nie ma tu zdjęć, zapobiegnie błędom
+                    photos: "" 
                 };
                 openCustomPoiModal(osmData);
             });
@@ -2079,7 +2020,6 @@ async function loadOSMData(externalData = null) {
     const t = e.tags || {};
     let html = '';
 
-    // Tytuł
     if (t.name) {
         html += `<b>${t.name}</b><br>`;
     } else if (t.amenity) {
@@ -2094,7 +2034,7 @@ async function loadOSMData(externalData = null) {
         html += `<b>Obiekt OSM</b><br>`;
     }
 
-    // Szczegóły
+
     html += `<hr style="margin:4px 0">`;
     for (const k in t) {
         html += `<small>${k}: ${t[k]}</small><br>`;
@@ -2252,8 +2192,6 @@ async function generatePDF() {
 
 function openMapExportModal() {
     const modal = document.getElementById('mapExportModal');
-
-    // 🔄 reset pozycji (po ewentualnym przeciąganiu)
     modal.style.left = '50%';
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
@@ -2272,11 +2210,10 @@ function initExportMap() {
         container.clientWidth,
         container.clientHeight
     );
-        // SPRAWDZANIE CZY JEST TRASA
     const emptyState = document.getElementById('exportEmptyState');
     if (routeGeometry.length < 2) {
         emptyState.style.display = 'flex';
-        return; // Zatrzymujemy ładowanie mapy eksportu
+        return; 
     } else {
         emptyState.style.display = 'none';
     }
@@ -2329,7 +2266,6 @@ function initExportMap() {
         console.warn('[EXPORT] routeGeometry empty');
     }
 
-    // 🔥 NAJWAŻNIEJSZA LINIA
     setTimeout(() => {
         console.log('[EXPORT] invalidateSize (delayed)');
         exportMap.invalidateSize(true);
@@ -2371,7 +2307,7 @@ async function exportMapPNG() {
         navigator.clipboard.write([
             new ClipboardItem({ 'image/png': blob })
         ]);
-        alert("Mapa skopiowana do schowka 👍");
+        alert("Mapa skopiowana do schowka.");
     });
 }
 
@@ -2394,7 +2330,7 @@ async function printExportMap() {
 
     return L.tileLayer(url, {
         maxZoom: 19,
-        crossOrigin: true,   // ⬅️ MUSI BYĆ
+        crossOrigin: true, 
         attribution: ''
     });
 }
@@ -2439,10 +2375,6 @@ function placeSearchMarker(lat, lon, title) {
 }
 
 
-/* ================= ULEPSZONY EKSPORT MAPY (SPOSPRZĄTANY) ================= */
-
-
-// UI Emoji Pickera
 document.getElementById('emojiGridList').innerHTML = EMOJIS.map(e => 
     `<div class="emoji-btn ${e==='📍'?'selected':''}" onclick="selectEmoji('${e}', this)">${e}</div>`
 ).join('');
@@ -2466,7 +2398,6 @@ function initExportMap() {
 
     const container = document.getElementById('mapExport');
     
-    // zoomControl: false ukrywa na stałe przyciski na samej mapie
     exportMap = L.map(container, { zoomControl: false, attributionControl: false, preferCanvas: true });
     
     exportTileLayer = getExportTileLayer();
@@ -2780,7 +2711,7 @@ function executeRefreshRoute() {
 }
 
 /* --- FUNKCJE PRZESUWANIA (DRAG & DROP) --- */
-let isPanelDraggable = false;
+
 
 function togglePanelDrag() {
     const panel = document.getElementById('mapInfoPanel');
@@ -2834,8 +2765,8 @@ function removePanelDraggable(el) {
     el.onmousedown = null;
 }
 
-/* --- FUNKCJE KADROWANIA (RESIZE) --- */
-let isPanelResizable = false;
+
+
 
 function togglePanelResize() {
     const panel = document.getElementById('mapInfoPanel');
@@ -2919,9 +2850,6 @@ function applyExportStyle() {
 
 
 /* ================= ANIMACJA TRASY ================= */
-
-
-// Oblicza punkt na linii dla danego dystansu (interpolacja matematyczna)
 function getPointAtDistance(geometry, targetDist) {
     let currentDist = 0;
     for (let i = 1; i < geometry.length; i++) {
@@ -3189,7 +3117,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Upewniamy się, że modale dadzą się przesuwać
     makeDraggable(document.getElementById('customPoiModal'));
 });
-// Nowa funkcja do estetycznego formatowania danych z OSM
+
 function formatOSMDescription(tags, id) {
     let html = `<ul style="margin:0; padding-left:20px; line-height: 1.8;">`;
     for (const k in tags) {
