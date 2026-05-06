@@ -2,10 +2,9 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>GPX Hiker - Planer Puszczy Wkrzańskiej</title>
+    <title>Planer tras w Puszczy Wkrzańskiej</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-
-    <!-- Leaflet & Plugins -->
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dom-to-image/2.6.0/dom-to-image.min.js"></script>
@@ -385,14 +384,14 @@
 .map-info-panel.draggable {
     cursor: grab;
     border: 2px dashed #3b82f6;
-    user-select: none; /* Zapobiega zaznaczaniu tekstu podczas przeciągania */
+    user-select: none; 
 }
 .map-info-panel.draggable:active {
     cursor: grabbing;
 }
 .map-info-panel.resizable {
     resize: both;
-    overflow: auto; /* Zapewnia, że tekst nie "wypadnie" poza okienko */
+    overflow: auto; 
     border: 2px dashed #a855f7;
     min-width: 150px;
     min-height: 80px;
@@ -541,10 +540,36 @@ canvas#elevation {
     border-top: 1px dashed rgba(0,0,0,0.1);
 }
 .dark-theme .route-step-poi { border-top-color: rgba(255,255,255,0.1); color: #cbd5e1; }
+        /* --- ULEPSZONY WYGLĄD LISTY PUNKTÓW --- */
+.point-item {
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between;
+    padding: 10px;
+    background: rgba(0,0,0,0.1); 
+    border-radius: 8px; 
+    margin-bottom: 8px;
+    transition: background 0.2s, transform 0.2s;
+    cursor: grab; /* Kursor chwytania */
+    border: 1px solid transparent;
+}
+.light .point-item { background: rgba(0,0,0,0.05); }
+.point-item:hover { background: rgba(255,255,255,0.05); }
+.point-item:active { cursor: grabbing; }
+.point-item.drag-over { border-top: 2px solid var(--accent); transform: translateY(2px); }
+
+.point-actions {
+    display: flex;
+    gap: 4px; /* Przyciski w JEDNEJ linii */
+}
+.point-actions button {
+    padding: 6px 10px;
+    font-size: 1rem;
+}
     </style>
+    
 </head>
 <body class="dark">
-    <!-- BANER AWARII (Pokazuje się na górze ekranu) -->
 <div id="outageBanner" style="display:none; position:fixed; top:0; left:0; width:100%; background: linear-gradient(90deg, #f59e0b, #ea580c); color:#fff; z-index:9999; padding:12px 20px; box-sizing:border-box; box-shadow:0 4px 15px rgba(0,0,0,0.5); align-items:center; justify-content:space-between; font-family: sans-serif;">
     <div style="flex-grow: 1;">
         <strong style="font-size: 1.1rem;">⚠️ Awaria Głównego Serwera Nawigacji</strong><br>
@@ -559,12 +584,11 @@ canvas#elevation {
 
 <aside id="sidebar">
     <div>
-        <h3>🌲 GPX Hiker</h3>
-        <span class="subtitle">Planer Puszczy Wkrzańskiej</span>
+        <h3>Planer tras</h3>
+        <span class="subtitle">W Puszczy Wkrzańskiej</span>
     </div>
-     <!-- NOWE: Wyszukiwarka -->
     <div class="search-box">
-        <input type="text" id="searchInput" placeholder="Szukaj: nazwa lub lat, lon" onkeypress="if(event.key === 'Enter') searchLocation()">
+        <input type="text" id="searchInput" placeholder="Szukaj po nazwie lub współ. geo." onkeypress="if(event.key === 'Enter') searchLocation()">
         <button onclick="searchLocation()" title="Szukaj">🔍</button>
     </div>
 
@@ -616,7 +640,6 @@ canvas#elevation {
     <div id="loader" class="loading-overlay">⏳ Przeliczanie trasy...</div>
 </div>
 <button id="gps-btn" onclick="locateUser()" title="Zlokalizuj mnie">🎯</button>
-<!-- MODAL AWARII BROUTER -->
 <div id="brouterErrorModal" class="inner-modal-overlay" data-html2canvas-ignore style="z-index: 5000;">
     <div class="inner-modal" style="width: 350px; text-align: center;">
         <h3 style="color: #ef4444; margin-top:0;">⚠️ Awaria Nawigacji</h3>
@@ -632,7 +655,7 @@ canvas#elevation {
         </div>
     </div>
 </div>
-<!-- MODAL EDYCJI PUNKTÓW -->
+
 <div id="pointsModal" class="floating-modal">
     <div class="modal-header">
         <span>📍 Edycja Punktów</span>
@@ -714,9 +737,7 @@ canvas#elevation {
     </div>
     <div class="modal-body" style="padding:0; position:relative;">
         
-        <!-- Warstwa tła i mapy (do screenshota) -->
             <div id="exportWrapper">
-            <!-- NOWY ELEMENT: Ładny komunikat o braku trasy -->
             <div id="exportEmptyState" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.9); z-index:4000; display:none; flex-direction:column; justify-content:center; align-items:center; color:white;">
                 <h2 style="color:#f59e0b; margin-bottom: 10px; font-size: 2rem;">Brak wyznaczonej trasy 🗺️</h2>
                 <p style="color: #cbd5e1; margin-bottom: 20px;">Aby wyeksportować mapę, najpierw narysuj trasę w oknie głównym.</p>
@@ -749,7 +770,6 @@ canvas#elevation {
             </div>
         </div>
 
-        <!-- Nowy, niestandardowy Modal do edycji informacji (Nie widać na zrzucie ekranu) -->
         <div id="exportMetaModal" class="inner-modal-overlay" data-html2canvas-ignore>
             <div class="inner-modal">
                 <h3 style="margin: 0; color: #22c55e;">📝 Informacje o mapie</h3>
@@ -992,6 +1012,7 @@ let exportMapDark = dark;
 let exportTileLayer = null;
 let isPanelDraggable = false;
 let isPanelResizable = false;
+let draggedPointIndex = null;
 const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
 const polyline = L.polyline([], {
@@ -1044,9 +1065,6 @@ const OVERPASS_SERVERS = [
 initOSM();
 
 
-
-
-
 /* ================= OBSŁUGA MODALI (Floating) ================= */
 function makeDraggable(el) {
     const header = el.querySelector('.modal-header');
@@ -1069,7 +1087,6 @@ function makeDraggable(el) {
         const dy = e.clientY - startY;
         el.style.left = (initialLeft + dx) + "px";
         el.style.top = (initialTop + dy) + "px";
-        // Reset transformacji centrującej, bo używamy left/top
         el.style.transform = "none"; 
     }
 
@@ -1865,21 +1882,114 @@ function movePoint(idx, direction) {
 }
 function renderPointsList() {
     const list = document.getElementById('pointsList');
-    list.innerHTML = routePoints.length === 0 ? "<p>Brak punktów na trasie.</p>" : "";
+    list.innerHTML = routePoints.length === 0 ? "<p style='text-align:center; opacity:0.7;'>Brak punktów na trasie.</p>" : "";
+    
     routePoints.forEach((p, i) => {
         const item = document.createElement('div');
         item.className = 'point-item';
+        
+        // Atrybuty Drag & Drop
+        item.draggable = true;
+        item.dataset.index = i;
+        item.addEventListener('dragstart', handleDragStart);
+        item.addEventListener('dragover', handleDragOver);
+        item.addEventListener('dragleave', handleDragLeave);
+        item.addEventListener('drop', handleDrop);
+        item.addEventListener('dragend', handleDragEnd);
+
+        // Zdarzenia podświetlania na mapie
+        item.onmouseenter = () => highlightPointOnMap(i);
+        item.onmouseleave = () => unhighlightPointOnMap(i);
+
         const distText = i === 0 ? "START" : `+${(p.distFromPrev).toFixed(0)} m`;
+        
+        // Obliczanie czasu (ok. 4.5 km/h)
+        let timeTxt = "";
+        if (i > 0) {
+            const timeMins = p.distFromPrev / 75;
+            timeTxt = timeMins < 1 ? "(< 1 min)" : `(~${Math.round(timeMins)} min)`;
+        }
+
         item.innerHTML = `
             <div class="point-info">
-                <strong>Punkt ${i + 1}</strong> <small>(${p.elevation ? p.elevation.toFixed(0) : '?'} m n.p.m.)</small><br><span>${distText}</span>
+                <strong>Punkt ${i + 1}</strong> <small>(${p.elevation ? p.elevation.toFixed(0) : '?'} m n.p.m.)</small><br>
+                <span style="color: var(--accent); font-weight: bold;">${distText}</span> <small style="opacity:0.7;">${timeTxt}</small>
             </div>
             <div class="point-actions">
-                <button class="secondary" onclick="movePoint(${i}, 'up')" ${i===0?'disabled':''}>↑</button>
-                <button class="secondary" onclick="movePoint(${i}, 'down')" ${i===routePoints.length-1?'disabled':''}>↓</button>
-                <button class="danger" onclick="removePointById(${p.id})">🗑️</button>
+                <button class="secondary" title="Przesuń w górę" onclick="movePoint(${i}, 'up')" ${i===0?'disabled':''}>↑</button>
+                <button class="secondary" title="Przesuń w dół" onclick="movePoint(${i}, 'down')" ${i===routePoints.length-1?'disabled':''}>↓</button>
+                <button class="danger" title="Usuń punkt" onclick="removePointById(${p.id})">🗑️</button>
             </div>`;
         list.appendChild(item);
+    });
+}
+    function handleDragStart(e) {
+    draggedPointIndex = parseInt(this.dataset.index);
+    e.dataTransfer.effectAllowed = 'move';
+    // Obejście dla Firefoxa
+    e.dataTransfer.setData('text/plain', this.dataset.index); 
+    this.style.opacity = '0.4';
+}
+
+function handleDragOver(e) {
+    e.preventDefault(); // Niezbędne by zezwolić na "Drop"
+    e.dataTransfer.dropEffect = 'move';
+    this.classList.add('drag-over');
+    return false;
+}
+
+function handleDragLeave(e) {
+    this.classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+    e.stopPropagation();
+    this.classList.remove('drag-over');
+
+    const targetIndex = parseInt(this.dataset.index);
+
+    if (draggedPointIndex !== null && draggedPointIndex !== targetIndex) {
+        // Zmiana kolejności w tablicy
+        const movedItem = routePoints.splice(draggedPointIndex, 1)[0];
+        routePoints.splice(targetIndex, 0, movedItem);
+
+        // Przeliczenie trasy po zamianie
+        recalculateRoute();
+    }
+    return false;
+}
+
+function handleDragEnd(e) {
+    this.style.opacity = '1';
+    document.querySelectorAll('.point-item').forEach(item => item.classList.remove('drag-over'));
+}
+
+/* ================= PODŚWIETLANIE PUNKTU NA MAPIE ================= */
+function highlightPointOnMap(idx) {
+    const pt = routePoints[idx];
+    if (!pt) return;
+    
+    // Zmieniamy rozmiar i kolor na pomarańczowy, aby mocno rzucał się w oczy
+    pt.marker.setStyle({
+        radius: 14,
+        fillColor: '#f59e0b',
+        color: '#fff',
+        weight: 4
+    });
+    pt.marker.bringToFront();
+}
+
+function unhighlightPointOnMap(idx) {
+    const pt = routePoints[idx];
+    if (!pt) return;
+    
+    // Przywracamy domyślny styl (zależny od preferencji użytkownika z panelu stylu)
+    const dotColor = routePrefPointsEnabled ? routePrefPointsColor : '#22c55e';
+    pt.marker.setStyle({
+        radius: 8,
+        fillColor: dotColor,
+        color: '#fff',
+        weight: 3
     });
 }
 function clearAll() {
