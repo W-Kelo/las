@@ -633,6 +633,45 @@ canvas#elevation {
     padding-top: 15px;
 }
 .light .modal-footer-actions { border-top-color: rgba(0,0,0,0.1); }
+        /* --- KREATOR WŁASNYCH PUNKTÓW --- */
+.search-save-form label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--accent);
+    margin: 10px 0 4px 0;
+    font-weight: bold;
+}
+.search-save-form input, .search-save-form textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(0,0,0,0.2);
+    color: var(--text);
+    font-family: inherit;
+}
+.light .search-save-form input, .light .search-save-form textarea {
+    background: #fff; border-color: #ccc; color: #000;
+}
+.mini-emoji-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    max-height: 80px;
+    overflow-y: auto;
+    background: rgba(0,0,0,0.1);
+    padding: 5px;
+    border-radius: 6px;
+}
+.light .mini-emoji-grid { background: rgba(0,0,0,0.05); }
+.emoji-btn-mini {
+    cursor: pointer; padding: 4px; border-radius: 4px; font-size: 1.2rem; transition: 0.2s;
+    background: transparent; border: 1px solid transparent;
+}
+.emoji-btn-mini:hover { transform: scale(1.15); }
+.emoji-btn-mini.selected { background: rgba(255,255,255,0.2); border-color: var(--accent); }
+.light .emoji-btn-mini.selected { background: #e2e8f0; }
     </style>
     
 </head>
@@ -690,6 +729,7 @@ canvas#elevation {
         <label><input type="checkbox" checked onchange="toggleLayer(hikingLayer, this)"> Szlaki turystyczne</label><br>
         <label><input type="checkbox" checked onchange="toggleLayer(poiLayer, this)"> Punkty z OSM</label><br>
         <label><input type="checkbox" checked onchange="toggleLayer(customPoiLayer, this)"> Dodatkowe punkty (Beta)</label>
+         <label><input type="checkbox" checked onchange="toggleLayer(userSavedLayer, this)">Moje zapisane punkty</label>
     </div>
 
     <div class="stat-card">
@@ -1080,6 +1120,8 @@ let exportTileLayer = null;
 let isPanelDraggable = false;
 let isPanelResizable = false;
 let draggedPointIndex = null;
+let userSavedPois = []; 
+const userSavedLayer = L.layerGroup().addTo(map);
 const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
 const polyline = L.polyline([], {
@@ -1095,6 +1137,9 @@ document.getElementById('expStyleColor').addEventListener('input', e => document
 const hikingLayer = L.layerGroup().addTo(map);
 const poiLayer = L.layerGroup().addTo(map);
 const customPoiLayer = L.layerGroup().addTo(map); 
+    document.addEventListener('DOMContentLoaded', () => {
+    loadUserSavedPois();
+});
 const OVERPASS_SERVERS = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
@@ -1130,7 +1175,13 @@ const OVERPASS_SERVERS = [
 }
 
 initOSM();
-
+function loadUserSavedPois() {
+    const saved = localStorage.getItem('gpx_user_pois');
+    if (saved) {
+        userSavedPois = JSON.parse(saved);
+        userSavedPois.forEach(poi => renderUserSavedPoi(poi, false)); // false = nie zapisuj ponownie do local
+    }
+}
 
 /* ================= OBSŁUGA MODALI (Floating) ================= */
 function makeDraggable(el) {
@@ -2580,17 +2631,26 @@ async function searchLocation() {
 }
 
 function placeSearchMarker(lat, lon, title) {
-    const ll = L.latLng(lat, lon);
+    const numericLat = parseFloat(lat);
+    const numericLon = parseFloat(lon);
+
+    const ll = L.latLng(numericLat, numericLon);
     map.setView(ll, 14);
     if(searchMarker) map.removeLayer(searchMarker);
     searchMarker = L.marker(ll).addTo(map);
 
+    // Wyciągnięcie pierwszej części nazwy z długiego stringa OSM
+    const shortName = title.split(',')[0];
+
     const searchObj = {
-        name: "Wynik wyszukiwania",
-        icon: "🔍",
-        category: "Baza OpenStreetMap / Współrzędne",
-        description: `<strong>Zlokalizowano obiekt:</strong><br>${title}<br><br>Współrzędne: <code>${lat.toFixed(5)}, ${lon.toFixed(5)}</code>`,
-        isSearchMarker: true // Flaga pozwalająca na wyświetlenie specyficznych przycisków w modalu
+        name: "Kreator własnego punktu",
+        icon: "✏️",
+        category: "Wynik wyszukiwania",
+        description: `<strong>Oryginalna nazwa:</strong><br><small>${title}</small><br>Współrzędne: <code>${numericLat.toFixed(5)}, ${numericLon.toFixed(5)}</code>`,
+        isSearchMarker: true,
+        rawLat: numericLat,
+        rawLng: numericLon,
+        rawTitle: shortName
     };
 
     openCustomPoiModal(searchObj);
@@ -3431,12 +3491,41 @@ function openCustomPoiModal(poiData) {
         extraHtml += `</div></div>`;
     }
 
-    // Moduł 2: Przyciski dla pinu z wyszukiwarki
+  // Moduł 2: KREATOR dla pinu z wyszukiwarki
     if (poiData.isSearchMarker) {
+        const emojisHtml = EMOJIS.map(e => 
+            `<span class="emoji-btn-mini ${e==='🔍'?'selected':''}" onclick="selectMiniEmoji('${e}', this)">${e}</span>`
+        ).join('');
+
+        extraHtml += `
+            <div class="search-save-form" style="margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 5px;">
+                <label>Wybierz ikonę:</label>
+                <div class="mini-emoji-grid" id="searchEmojiGrid" data-selected="🔍">
+                    ${emojisHtml}
+                </div>
+                
+                <label>Nazwa punktu:</label>
+                <input type="text" id="savePoiName" value="${poiData.rawTitle}">
+
+                <label>Opis / Twoje notatki:</label>
+                <textarea id="savePoiDesc" placeholder="Opcjonalny opis..."></textarea>
+
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px;">
+                    <div style="display:flex; gap:8px;">
+                        <button style="flex:1; background: #3b82f6; font-size: 0.85rem;" onclick="saveSearchPoi(${poiData.rawLat}, ${poiData.rawLng}, false)">💾 Zapisz (Ta sesja)</button>
+                        <button style="flex:1; background: #8b5cf6; font-size: 0.85rem;" onclick="saveSearchPoi(${poiData.rawLat}, ${poiData.rawLng}, true)">💾 Zapisz (Zawsze)</button>
+                    </div>
+                    <button class="danger" style="width:100%; font-size: 0.85rem;" onclick="removeSearchMarkerAndClose()">🗑️ Nie zapisuj i usuń pinezkę</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Moduł 3: Opcja usunięcia zapisanego punktu z LocalStorage
+    if (poiData.isUserSaved) {
         extraHtml += `
             <div class="modal-footer-actions">
-                <button class="danger" style="flex: 1; font-size: 0.85rem;" onclick="removeSearchMarkerAndClose()">🗑️ Usuń pinezkę</button>
-                <button class="secondary" style="flex: 1; font-size: 0.85rem;" onclick="closeModal('customPoiModal')">❌ Zostaw na mapie</button>
+                <button class="danger" style="width: 100%; font-size: 0.85rem;" onclick="deleteUserSavedPoi('${poiData.id}')">🗑️ Trwale usuń ten punkt</button>
             </div>
         `;
     }
@@ -3496,6 +3585,85 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
+    // --- FUNKCJE OBSŁUGI KREATORA PUNKTÓW ---
+function selectMiniEmoji(e, btn) {
+    document.getElementById('searchEmojiGrid').dataset.selected = e;
+    document.querySelectorAll('.emoji-btn-mini').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+}
+
+function saveSearchPoi(lat, lng, saveToLocal) {
+    const name = document.getElementById('savePoiName').value.trim() || "Własny punkt";
+    const desc = document.getElementById('savePoiDesc').value.trim();
+    const icon = document.getElementById('searchEmojiGrid').dataset.selected || "📍";
+
+    const newPoiObj = {
+        id: 'usr_' + Date.now(),
+        lat: lat,
+        lng: lng,
+        name: name,
+        desc: desc,
+        icon: icon
+    };
+
+    renderUserSavedPoi(newPoiObj, saveToLocal);
+    removeSearchMarkerAndClose(); // Zamyka modal i kasuje tymczasową pinezkę szukania
+}
+
+function renderUserSavedPoi(poi, saveToLocal) {
+    // Jeśli zapisujemy na stałe, aktualizujemy localStorage
+    if (saveToLocal) {
+        userSavedPois.push(poi);
+        localStorage.setItem('gpx_user_pois', JSON.stringify(userSavedPois));
+    }
+
+    // Konstruujemy pełny obiekt zgodny z naszą architekturą bazy danych GAS
+    const fullPoiObj = {
+        id: poi.id,
+        latlng: L.latLng(poi.lat, poi.lng),
+        name: poi.name,
+        icon: poi.icon,
+        category: saveToLocal ? "Zapisane w pamięci przeglądarki" : "Zapisane tylko na tę sesję",
+        description: poi.desc,
+        isUserSaved: saveToLocal // Flaga do pokazania przycisku "Usuń" w modalu
+    };
+
+    // Wstrzykujemy go do głównej bazy, żeby łapał się na Atrakcje W Pobliżu i Opis Trasy!
+    globalCustomPois.push(fullPoiObj);
+
+    // Renderujemy na mapie
+    const marker = L.marker([poi.lat, poi.lng], {
+        icon: L.divIcon({
+            html: `<div style="font-size:26px; filter: drop-shadow(0px 2px 4px rgba(236, 72, 153, 0.8)); transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${poi.icon}</div>`,
+            className: 'poi-icon'
+        }),
+        zIndexOffset: 450 // Nieco wyżej niż szlaki, ciut niżej niż GPS
+    }).addTo(userSavedLayer);
+
+    // Podpinamy otwieranie modalu
+    marker.on('click', () => openCustomPoiModal(fullPoiObj));
+    
+    // Zapisujemy referencję do usunięcia
+    poi._markerRef = marker;
+}
+
+function deleteUserSavedPoi(id) {
+    if (!confirm("Na pewno usunąć ten punkt?")) return;
+
+    // Usuwamy z mapy i z pamięci localStorage
+    const savedIndex = userSavedPois.findIndex(p => p.id === id);
+    if (savedIndex > -1) {
+        const poi = userSavedPois[savedIndex];
+        if (poi._markerRef) userSavedLayer.removeLayer(poi._markerRef);
+        userSavedPois.splice(savedIndex, 1);
+        localStorage.setItem('gpx_user_pois', JSON.stringify(userSavedPois));
+    }
+
+    // Usuwamy też z bazy globalnej, żeby nie pojawiał się w opisie trasy po usunięciu
+    globalCustomPois = globalCustomPois.filter(p => p.id !== id);
+
+    closeModal('customPoiModal');
+}
 </script>
 
 </body>
