@@ -3812,11 +3812,20 @@ function saveSearchPoi(lat, lng, storageType, existingId = null) {
 }
 
 function renderUserSavedPoi(poi, triggerStorageSave) {
-    // 1. Zapis do tablicy głównej User POI
-    if (triggerStorageSave) {
+    // Upewniamy się, że obiekt jest w tablicy (jeśli to nowy)
+    if (!userSavedPois.find(p => p.id === poi.id)) {
         userSavedPois.push(poi);
-        const locals = userSavedPois.filter(p => p.storage === 'local');
-        localStorage.setItem('gpx_user_pois', JSON.stringify(locals));
+    }
+
+    // 1. Bezpieczny zapis do LocalStorage (Tylko czyste dane, bez obiektów Leaflet!)
+    if (triggerStorageSave) {
+        const safeLocals = userSavedPois
+            .filter(p => p.storage === 'local')
+            .map(p => ({
+                id: p.id, lat: p.lat, lng: p.lng, name: p.name,
+                desc: p.desc, icon: p.icon, storage: p.storage, rawTitle: p.rawTitle
+            }));
+        localStorage.setItem('gpx_user_pois', JSON.stringify(safeLocals));
     }
 
     // 2. Formatowanie dla głównej bazy systemu
@@ -3834,6 +3843,8 @@ function renderUserSavedPoi(poi, triggerStorageSave) {
         rawTitle: poi.rawTitle || poi.name
     };
 
+    // Zabezpieczenie przed dublowaniem w bazie globalnej przy edycji
+    globalCustomPois = globalCustomPois.filter(p => p.id !== poi.id);
     globalCustomPois.push(fullPoiObj);
 
     // 3. Renderowanie Markera
@@ -3845,6 +3856,7 @@ function renderUserSavedPoi(poi, triggerStorageSave) {
         zIndexOffset: 450
     }).addTo(userSavedLayer);
 
+    // Dopisanie markerów TYLKO do działania w locie
     fullPoiObj._markerRef = marker;
     poi._markerRef = marker;
 
@@ -3859,9 +3871,14 @@ function deleteUserSavedPoi(id) {
             if (poi._markerRef) userSavedLayer.removeLayer(poi._markerRef);
             userSavedPois.splice(savedIndex, 1);
             
-            // Aktualizuj localStorage zostawiając tylko te 'local'
-            const locals = userSavedPois.filter(p => p.storage === 'local');
-            localStorage.setItem('gpx_user_pois', JSON.stringify(locals));
+            // Bezpieczny zapis do LocalStorage po usunięciu
+            const safeLocals = userSavedPois
+                .filter(p => p.storage === 'local')
+                .map(p => ({
+                    id: p.id, lat: p.lat, lng: p.lng, name: p.name,
+                    desc: p.desc, icon: p.icon, storage: p.storage, rawTitle: p.rawTitle
+                }));
+            localStorage.setItem('gpx_user_pois', JSON.stringify(safeLocals));
         }
 
         globalCustomPois = globalCustomPois.filter(p => p.id !== id);
