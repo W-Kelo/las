@@ -3929,6 +3929,72 @@ function deleteUserSavedPoi(id) {
     renderMyPointsList();
     makeDraggable(document.getElementById('myPointsModal'));
 }
+
+function renderMyPointsList() {
+    const query = document.getElementById('myPointsSearch').value.toLowerCase();
+    const filter = document.getElementById('myPointsFilter').value;
+    const container = document.getElementById('myPointsListContainer');
+    
+    container.innerHTML = '';
+    
+    const filtered = userSavedPois.filter(p => {
+        const matchText = p.name.toLowerCase().includes(query) || (p.desc && p.desc.toLowerCase().includes(query));
+        const matchFilter = (filter === 'all') || (p.storage === filter);
+        return matchText && matchFilter;
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = `<p style="text-align:center; opacity:0.6; font-size:0.9rem;">Brak punktów spełniających kryteria.</p>`;
+        return;
+    }
+
+    filtered.forEach(p => {
+        const globalRef = globalCustomPois.find(gp => gp.id === p.id);
+        const badge = p.storage === 'local' ? `<span class="badge badge-local">💾 Na stałe</span>` : `<span class="badge badge-session">⏳ Sesja</span>`;
+        
+        const item = document.createElement('div');
+        item.className = 'my-point-list-item';
+        item.innerHTML = `
+            <div>
+                <span style="font-size:1.4rem; margin-right:5px;">${p.icon}</span>
+                <div style="display:inline-block; vertical-align:middle;">
+                    <strong>${p.name}</strong><br>
+                    ${badge} <small style="opacity:0.7">${p.desc ? p.desc.substring(0, 20)+'...' : ''}</small>
+                </div>
+            </div>
+            <div style="display:flex; gap:5px;">
+                <button class="secondary icon-only" onclick="editPoiFromList('${p.id}')">✏️</button>
+                <button class="danger icon-only" onclick="deleteUserSavedPoi('${p.id}')">🗑️</button>
+            </div>
+        `;
+
+        // Event najechania myszką = Mignięcie markera na mapie
+        item.onmouseenter = () => { if(globalRef) { map.setView(globalRef.latlng, map.getZoom()); highlightAndShowMarker(globalRef); }};
+        
+        container.appendChild(item);
+    });
+}
+
+function editPoiFromList(id) {
+    const globalRef = globalCustomPois.find(gp => gp.id === id);
+    if(globalRef) {
+        map.setView(globalRef.latlng, 15);
+        openCustomPoiModal(globalRef);
+        highlightAndShowMarker(globalRef);
+    }
+}
+
+function deleteAllUserPois() {
+    showCustomConfirm("Uwaga! Czy na pewno chcesz usunąć WSZYSTKIE swoje punkty (z sesji i zapisane na stałe)?", () => {
+        userSavedPois.forEach(p => {
+            if(p._markerRef) userSavedLayer.removeLayer(p._markerRef);
+        });
+        userSavedPois = [];
+        localStorage.removeItem('gpx_user_pois');
+        globalCustomPois = globalCustomPois.filter(p => !p.isUserSaved);
+        renderMyPointsList();
+    });
+}
 </script>
 
 </body>
