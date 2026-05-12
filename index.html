@@ -3922,7 +3922,13 @@ function deleteUserSavedPoi(id) {
         document.body.style.cursor = 'default';
     }
 }
-   
+   function openMyPointsModal() {
+    document.getElementById('myPointsModal').style.display = 'flex';
+    document.getElementById('myPointsSearch').value = '';
+    document.getElementById('myPointsFilter').value = 'all';
+    renderMyPointsList();
+    makeDraggable(document.getElementById('myPointsModal'));
+}
 </script>
 
 </body>
