@@ -672,6 +672,49 @@ canvas#elevation {
 .emoji-btn-mini:hover { transform: scale(1.15); }
 .emoji-btn-mini.selected { background: rgba(255,255,255,0.2); border-color: var(--accent); }
 .light .emoji-btn-mini.selected { background: #e2e8f0; }
+        /* --- EFEKTY MIGANIA IKON --- */
+@keyframes blink3 {
+    0%, 100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+    50% { opacity: 0; transform: scale(1.6); filter: drop-shadow(0 0 10px #f59e0b) brightness(2); }
+}
+.blink-icon {
+    animation: blink3 0.6s ease-in-out 3;
+    z-index: 9999 !important; /* Żeby mrugało nad wszystkim */
+}
+
+/* --- ZARZĄDCA PUNKTÓW (MY POINTS MODAL) --- */
+.my-points-toolbar {
+    display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;
+}
+.my-points-toolbar input, .my-points-toolbar select {
+    padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(0,0,0,0.2); color: var(--text); flex-grow: 1; outline: none;
+}
+.light .my-points-toolbar input, .light .my-points-toolbar select { background: #fff; border-color: #ccc; color: #000; }
+.my-point-list-item {
+    background: rgba(0,0,0,0.15); padding: 10px; border-radius: 8px; margin-bottom: 8px;
+    display: flex; align-items: center; justify-content: space-between; transition: 0.2s;
+}
+.light .my-point-list-item { background: rgba(0,0,0,0.05); }
+.my-point-list-item:hover { background: rgba(0,0,0,0.3); transform: translateX(3px); border-left: 3px solid var(--accent); }
+.badge {
+    font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase;
+}
+.badge-local { background: #8b5cf6; color: white; }
+.badge-session { background: #3b82f6; color: white; }
+
+/* --- CUSTOM CONFIRM MODAL (Zamiast systemowego alert/confirm) --- */
+.custom-alert-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); z-index: 9999; display: none;
+    align-items: center; justify-content: center; backdrop-filter: blur(2px);
+}
+.custom-alert-box {
+    background: var(--panel); color: var(--text); padding: 20px; border-radius: 12px;
+    width: 320px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); text-align: center; border: 1px solid rgba(255,255,255,0.1);
+}
+.custom-alert-msg { margin-bottom: 20px; font-size: 1rem; line-height: 1.4; }
+.custom-alert-btns { display: flex; gap: 10px; justify-content: center; }
     </style>
     
 </head>
@@ -713,6 +756,7 @@ canvas#elevation {
 
     <button onclick="openPointsModal()">📑 Edytuj Punkty</button>
     <button onclick="openDescModal()">📜 Opis Trasy</button>
+    <button onclick="openMyPointsModal()" style="background: #10b981;">📋 Zarządzaj punktami</button>
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
         <button onclick="openStyleModal()" style="background: #f59e0b;">🎨 Styl trasy</button>
         <button onclick="playRouteAnimation()" style="background: #ec4899;">▶️ Animuj</button>
@@ -729,7 +773,7 @@ canvas#elevation {
         <label><input type="checkbox" checked onchange="toggleLayer(hikingLayer, this)"> Szlaki turystyczne</label><br>
         <label><input type="checkbox" checked onchange="toggleLayer(poiLayer, this)"> Punkty z OSM</label><br>
         <label><input type="checkbox" checked onchange="toggleLayer(customPoiLayer, this)"> Dodatkowe punkty (Beta)</label><br>
-         <label><input type="checkbox" checked onchange="toggleLayer(userSavedLayer, this)">Moje zapisane punkty (Beta)</label>
+         <label><input type="checkbox" checked onchange="toggleLayer(userSavedLayer, this)"> Moje zapisane punkty (Beta)</label>
     </div>
 
     <div class="stat-card">
@@ -907,7 +951,42 @@ canvas#elevation {
 
     </div>
 </div>
+<!-- MODAL: ZARZĄDZANIE MOIMI PUNKTAMI -->
+<div id="myPointsModal" class="floating-modal" style="width: 450px;">
+    <div class="modal-header">
+        <span>📋 Moje punkty na mapie</span>
+        <div style="display:flex; align-items:center">
+            <div class="opacity-control" title="Przezroczystość">
+                👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
+            </div>
+            <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('myPointsModal')">X</button>
+        </div>
+    </div>
+    <div class="modal-body">
+        <button style="width: 100%; margin-bottom: 15px; background: #f59e0b;" onclick="enableManualPoiAdd()">➕ Dodaj własny punkt bez OSM (Kliknij mapę)</button>
+        
+        <div class="my-points-toolbar">
+            <input type="text" id="myPointsSearch" placeholder="Szukaj na liście..." oninput="renderMyPointsList()">
+            <select id="myPointsFilter" onchange="renderMyPointsList()">
+                <option value="all">Wszystkie</option>
+                <option value="local">Zapisane na stałe</option>
+                <option value="session">Tylko w tej sesji</option>
+            </select>
+        </div>
+        
+        <div id="myPointsListContainer" style="max-height: 300px; overflow-y: auto; padding-right: 5px;"></div>
+        
+        <button class="danger" style="width: 100%; margin-top: 15px;" onclick="deleteAllUserPois()">🗑️ Usuń wszystkie moje punkty</button>
+    </div>
+</div>
 
+<!-- CUSTOM ALERT / CONFIRM MODAL -->
+<div id="customAlertOverlay" class="custom-alert-overlay">
+    <div class="custom-alert-box">
+        <div id="customAlertMsg" class="custom-alert-msg">Wiadomość</div>
+        <div class="custom-alert-btns" id="customAlertBtns"></div>
+    </div>
+</div>
   <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) - PŁYWAJĄCY -->
 <div id="styleModal" class="floating-modal" style="width: 340px;" data-html2canvas-ignore>
     <div class="modal-header">
@@ -1121,6 +1200,8 @@ let isPanelDraggable = false;
 let isPanelResizable = false;
 let draggedPointIndex = null;
 let userSavedPois = []; 
+let tempVisibleMarker = null; 
+let manualPointMode = false; 
 const userSavedLayer = L.layerGroup().addTo(map);
 const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
@@ -1175,12 +1256,41 @@ const OVERPASS_SERVERS = [
 }
 
 initOSM();
+    // --- SYSTEM WŁASNYCH KOMUNIKATÓW ---
+function showCustomAlert(msg) {
+    document.getElementById('customAlertMsg').innerHTML = msg;
+    document.getElementById('customAlertBtns').innerHTML = `<button style="background:var(--accent); width:100%;" onclick="document.getElementById('customAlertOverlay').style.display='none'">OK</button>`;
+    document.getElementById('customAlertOverlay').style.display = 'flex';
+}
+
+function showCustomConfirm(msg, onConfirm) {
+    document.getElementById('customAlertMsg').innerHTML = msg;
+    document.getElementById('customAlertBtns').innerHTML = `
+        <button class="danger" style="flex:1;" onclick="document.getElementById('customAlertOverlay').style.display='none'">Anuluj</button>
+        <button style="flex:1; background:var(--accent);" id="btnConfirmYes">Tak</button>
+    `;
+    document.getElementById('customAlertOverlay').style.display = 'flex';
+    document.getElementById('btnConfirmYes').onclick = () => {
+        document.getElementById('customAlertOverlay').style.display = 'none';
+        onConfirm();
+    };
+}
 function loadUserSavedPois() {
     const saved = localStorage.getItem('gpx_user_pois');
     if (saved) {
         userSavedPois = JSON.parse(saved);
-        userSavedPois.forEach(poi => renderUserSavedPoi(poi, false)); // false = nie zapisuj ponownie do local
+        userSavedPois.forEach(poi => {
+            poi.storage = 'local'; // Wymuszamy status
+            renderUserSavedPoi(poi, false);
+        });
     }
+}
+  
+    function enableManualPoiAdd() {
+    closeModal('myPointsModal');
+    manualPointMode = true;
+    map.getContainer().style.cursor = 'crosshair';
+    showCustomAlert("Kliknij w dowolne miejsce na mapie, aby dodać swój punkt.");
 }
 
 /* ================= OBSŁUGA MODALI (Floating) ================= */
@@ -1236,8 +1346,46 @@ function openDescModal() {
     openCenteredModal('descModal');
     generateRouteDescription();
 }
+let tempVisibleMarker = null; // Przechowuje marker, który musieliśmy sztucznie pokazać
+
+function highlightAndShowMarker(poiData) {
+    if (!poiData || !poiData._markerRef) return;
+    const marker = poiData._markerRef;
+    
+    // Ustalanie warstwy domyślnej
+    let layerGroup = null;
+    if (poiData.isGas) layerGroup = customPoiLayer;
+    else if (poiData.isUserSaved) layerGroup = userSavedLayer;
+
+    // Jeżeli warstwa jest wyłączona z panelu bocznego, wymuszamy dodanie markera do mapy
+    if (layerGroup && !map.hasLayer(layerGroup)) {
+        marker.addTo(map);
+        tempVisibleMarker = { marker: marker, originalLayer: layerGroup };
+    }
+
+    // Dodanie klasy CSS do animacji
+    const iconDiv = marker.getElement();
+    if (iconDiv) {
+        iconDiv.classList.remove('blink-icon'); // Reset
+        void iconDiv.offsetWidth; // Trigger reflow
+        iconDiv.classList.add('blink-icon');
+        
+        // Zdejmowanie klasy po zakończeniu animacji (3 * 0.6s = 1.8s)
+        setTimeout(() => { if (iconDiv) iconDiv.classList.remove('blink-icon'); }, 1800);
+    }
+}
+
+// Zmodyfikowana funkcja zamykania modalu (aby sprzątała markery wymuszone)
 function closeModal(id) {
     document.getElementById(id).style.display = 'none';
+    
+    // Jeśli zamykamy modal punktu i mieliśmy tymczasowo widoczny marker
+    if (id === 'customPoiModal' && tempVisibleMarker) {
+        if (!map.hasLayer(tempVisibleMarker.originalLayer)) {
+            map.removeLayer(tempVisibleMarker.marker);
+        }
+        tempVisibleMarker = null;
+    }
 }
 function setOpacity(input) {
     const val = input.value / 100;
@@ -1389,6 +1537,23 @@ async function getRouteSegment(start, end) {
     }; 
 }
 map.on('click', async e => {
+        if (manualPointMode) {
+        manualPointMode = false;
+        map.getContainer().style.cursor = '';
+        const mockSearchObj = {
+            name: "Nowy Własny Punkt",
+            icon: "📍",
+            category: "Dodane ręcznie",
+            description: `Współrzędne: <code>${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}</code>`,
+            isUserSaved: true, // Flaga otwierająca formę edycji/zapisu
+            isNewManual: true, // Flaga, że to całkiem nowy punkt
+            rawLat: e.latlng.lat,
+            rawLng: e.latlng.lng,
+            rawTitle: "Mój Punkt"
+        };
+        openCustomPoiModal(mockSearchObj);
+        return;
+    }
     if (poiMode) { addPOI(e.latlng); poiMode = false; return; }
     if (isRouting) return; 
     await addRoutePoint(e.latlng, true);
@@ -2589,30 +2754,40 @@ async function printExportMap() {
 async function searchLocation() {
     const val = document.getElementById('searchInput').value.trim();
     if(!val) return;
-
     const valLower = val.toLowerCase();
 
-    // 1. Priorytet: Szukaj w prywatnej bazie GAS (po ID, Nazwie lub Współrzędnych)
-    const foundInGas = globalCustomPois.find(p => 
-        (p.id && p.id.toLowerCase() === valLower) || 
-        p.name.toLowerCase().includes(valLower) ||
-        `${p.latlng.lat}, ${p.latlng.lng}`.includes(val) ||
-        `${p.latlng.lat},${p.latlng.lng}`.includes(val)
-    );
+    // Szukamy wg współrzędnych (Match regex)
+    const isCoords = val.match(/^([-+]?\d{1,2}(?:\.\d+)?)[,\s]+([-+]?\d{1,3}(?:\.\d+)?)$/);
 
-    if (foundInGas) {
-        map.setView(foundInGas.latlng, 15);
-        openCustomPoiModal(foundInGas);
-        return; // Zakończ, jeśli znaleziono w naszej bazie
+    // HIERARCHIA 1: Baza Google Sheets
+    let found = globalCustomPois.find(p => p.isGas && (
+        (p.id && p.id.toLowerCase() === valLower) || p.name.toLowerCase().includes(valLower) ||
+        (isCoords && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
+    ));
+
+    // HIERARCHIA 2: Własne punkty użytkownika (Szukamy po własnej nazwie LUB oryginalnej OSM)
+    if (!found) {
+        found = globalCustomPois.find(p => p.isUserSaved && (
+            p.name.toLowerCase().includes(valLower) || 
+            (p.rawTitle && p.rawTitle.toLowerCase().includes(valLower)) ||
+            (isCoords && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
+        ));
     }
 
-    // 2. Jeśli nie znaleziono w bazie, użyj OSM i czystych współrzędnych
-    const coordsMatch = val.match(/^([-+]?\d{1,2}(?:\.\d+)?)[,\s]+([-+]?\d{1,3}(?:\.\d+)?)$/);
-    if(coordsMatch) {
-        placeSearchMarker(parseFloat(coordsMatch[1]), parseFloat(coordsMatch[2]), "Wyszukane współrzędne: " + val);
+    if (found) {
+        map.setView(found.latlng, 15);
+        openCustomPoiModal(found);
+        highlightAndShowMarker(found); // Wywołanie migania i obejścia widoczności
+        return; 
+    }
+
+    // HIERARCHIA 3: Zwykłe OSM po współrzędnych (tworzy nowy obiekt poszukiwań)
+    if(isCoords) {
+        placeSearchMarker(parseFloat(isCoords[1]), parseFloat(isCoords[2]), "Wyszukane współrzędne: " + val);
         return;
     }
 
+    // HIERARCHIA 4: Zwykłe OSM (Nominatim API)
     document.body.style.cursor = 'wait';
     try {
         const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=1`);
@@ -2620,11 +2795,11 @@ async function searchLocation() {
         if(data && data.length > 0) {
             placeSearchMarker(data[0].lat, data[0].lon, data[0].display_name);
         } else {
-            alert("Nie znaleziono miejsca.");
+            showCustomAlert("Nie znaleziono miejsca.");
         }
     } catch(e) {
         console.error(e);
-        alert("Wystąpił błąd podczas wyszukiwania.");
+        showCustomAlert("Wystąpił błąd podczas wyszukiwania.");
     } finally {
         document.body.style.cursor = 'default';
     }
@@ -3382,7 +3557,8 @@ async function loadGoogleSheetsPOIs() {
                 icon: iconEmoji,
                 category: item.category || 'Atrakcja',
                 description: item.description || '',
-                photos: item.photos || ''
+                photos: item.photos || '',
+                isGas: true
             };
             
             globalCustomPois.push(poiObj);
@@ -3491,41 +3667,49 @@ function openCustomPoiModal(poiData) {
         extraHtml += `</div></div>`;
     }
 
-  // Moduł 2: KREATOR dla pinu z wyszukiwarki
-    if (poiData.isSearchMarker) {
+ // Wewnątrz openCustomPoiModal(poiData) zamień sekcje Moduł 2 i 3 na to:
+
+    if (poiData.isSearchMarker || poiData.isUserSaved) {
+        // Ustalanie domyślnych wartości do formularza (dla nowych lub istniejących)
+        const isEdit = !poiData.isSearchMarker && !poiData.isNewManual;
+        const currentIcon = poiData.icon || "📍";
+        const currentStorage = poiData.storage || 'session';
+        const currentDesc = poiData.description || '';
+        
         const emojisHtml = EMOJIS.map(e => 
-            `<span class="emoji-btn-mini ${e==='🔍'?'selected':''}" onclick="selectMiniEmoji('${e}', this)">${e}</span>`
+            `<span class="emoji-btn-mini ${e===currentIcon?'selected':''}" onclick="selectMiniEmoji('${e}', this)">${e}</span>`
         ).join('');
 
         extraHtml += `
             <div class="search-save-form" style="margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 5px;">
-                <label>Wybierz ikonę:</label>
-                <div class="mini-emoji-grid" id="searchEmojiGrid" data-selected="🔍">
+                <label>${isEdit ? 'Edytuj ikonę:' : 'Wybierz ikonę:'}</label>
+                <div class="mini-emoji-grid" id="searchEmojiGrid" data-selected="${currentIcon}">
                     ${emojisHtml}
                 </div>
                 
                 <label>Nazwa punktu:</label>
-                <input type="text" id="savePoiName" value="${poiData.rawTitle}">
+                <input type="text" id="savePoiName" value="${poiData.rawTitle || poiData.name || ''}">
 
                 <label>Opis / Twoje notatki:</label>
-                <textarea id="savePoiDesc" placeholder="Opcjonalny opis..."></textarea>
+                <textarea id="savePoiDesc" placeholder="Opcjonalny opis...">${isEdit ? currentDesc : ''}</textarea>
 
                 <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 15px;">
                     <div style="display:flex; gap:8px;">
-                        <button style="flex:1; background: #3b82f6; font-size: 0.85rem;" onclick="saveSearchPoi(${poiData.rawLat}, ${poiData.rawLng}, false)">💾 Zapisz (Ta sesja)</button>
-                        <button style="flex:1; background: #8b5cf6; font-size: 0.85rem;" onclick="saveSearchPoi(${poiData.rawLat}, ${poiData.rawLng}, true)">💾 Zapisz (Zawsze)</button>
+                        <button style="flex:1; background: ${currentStorage==='session'?'#22c55e':'#3b82f6'}; font-size: 0.85rem;" 
+                                onclick="saveSearchPoi(${poiData.rawLat}, ${poiData.rawLng}, 'session' ${isEdit ? `, '${poiData.id}'` : ''})">
+                            💾 ${isEdit ? 'Zapisz zmiany (Sesja)' : 'Zapisz (Ta sesja)'}
+                        </button>
+                        <button style="flex:1; background: ${currentStorage==='local'?'#22c55e':'#8b5cf6'}; font-size: 0.85rem;" 
+                                onclick="saveSearchPoi(${poiData.rawLat}, ${poiData.rawLng}, 'local' ${isEdit ? `, '${poiData.id}'` : ''})">
+                            💾 ${isEdit ? 'Zapisz zmiany (Na zawsze)' : 'Zapisz (Zawsze)'}
+                        </button>
                     </div>
-                    <button class="danger" style="width:100%; font-size: 0.85rem;" onclick="removeSearchMarkerAndClose()">🗑️ Nie zapisuj i usuń pinezkę</button>
+                    
+                    ${poiData.isSearchMarker ? 
+                        `<button class="danger" style="width:100%; font-size: 0.85rem;" onclick="removeSearchMarkerAndClose()">🗑️ Nie zapisuj i usuń pinezkę</button>` : 
+                        `<button class="danger" style="width: 100%; font-size: 0.85rem;" onclick="deleteUserSavedPoi('${poiData.id}')">🗑️ Trwale usuń ten punkt</button>`
+                    }
                 </div>
-            </div>
-        `;
-    }
-
-    // Moduł 3: Opcja usunięcia zapisanego punktu z LocalStorage
-    if (poiData.isUserSaved) {
-        extraHtml += `
-            <div class="modal-footer-actions">
-                <button class="danger" style="width: 100%; font-size: 0.85rem;" onclick="deleteUserSavedPoi('${poiData.id}')">🗑️ Trwale usuń ten punkt</button>
             </div>
         `;
     }
@@ -3592,78 +3776,153 @@ function selectMiniEmoji(e, btn) {
     btn.classList.add('selected');
 }
 
-function saveSearchPoi(lat, lng, saveToLocal) {
+function saveSearchPoi(lat, lng, storageType, existingId = null) {
     const name = document.getElementById('savePoiName').value.trim() || "Własny punkt";
     const desc = document.getElementById('savePoiDesc').value.trim();
     const icon = document.getElementById('searchEmojiGrid').dataset.selected || "📍";
 
-    const newPoiObj = {
-        id: 'usr_' + Date.now(),
-        lat: lat,
-        lng: lng,
-        name: name,
-        desc: desc,
-        icon: icon
-    };
+    const isLocal = (storageType === 'local');
 
-    renderUserSavedPoi(newPoiObj, saveToLocal);
-    removeSearchMarkerAndClose(); // Zamyka modal i kasuje tymczasową pinezkę szukania
+    if (existingId) {
+        // --- EDYCJA ISTNIEJĄCEGO ---
+        const idx = userSavedPois.findIndex(p => p.id === existingId);
+        if(idx > -1) {
+            const p = userSavedPois[idx];
+            p.name = name; p.desc = desc; p.icon = icon; p.storage = storageType;
+            
+            // Re-render
+            if (p._markerRef) userSavedLayer.removeLayer(p._markerRef);
+            userSavedPois.splice(idx, 1);
+            // Usuń stary wpis z bazy globalnej
+            globalCustomPois = globalCustomPois.filter(gp => gp.id !== existingId);
+            
+            renderUserSavedPoi(p, true); // True wyzwoli zapis struktury
+        }
+    } else {
+        // --- TWORZENIE NOWEGO ---
+        const newPoiObj = {
+            id: 'usr_' + Date.now(), lat: lat, lng: lng, name: name, desc: desc, icon: icon, storage: storageType, rawTitle: name
+        };
+        renderUserSavedPoi(newPoiObj, true);
+    }
+    
+    if(searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
+    closeModal('customPoiModal');
+    if(document.getElementById('myPointsModal').style.display === 'flex') renderMyPointsList();
 }
 
-function renderUserSavedPoi(poi, saveToLocal) {
-    // Jeśli zapisujemy na stałe, aktualizujemy localStorage
-    if (saveToLocal) {
+function renderUserSavedPoi(poi, triggerStorageSave) {
+    // 1. Zapis do tablicy głównej User POI
+    if (triggerStorageSave) {
         userSavedPois.push(poi);
-        localStorage.setItem('gpx_user_pois', JSON.stringify(userSavedPois));
+        const locals = userSavedPois.filter(p => p.storage === 'local');
+        localStorage.setItem('gpx_user_pois', JSON.stringify(locals));
     }
 
-    // Konstruujemy pełny obiekt zgodny z naszą architekturą bazy danych GAS
+    // 2. Formatowanie dla głównej bazy systemu
     const fullPoiObj = {
         id: poi.id,
         latlng: L.latLng(poi.lat, poi.lng),
         name: poi.name,
         icon: poi.icon,
-        category: saveToLocal ? "Zapisane w pamięci przeglądarki" : "Zapisane tylko na tę sesję",
+        category: poi.storage === 'local' ? "Zapisane w pamięci przeglądarki" : "Zapisane tylko na tę sesję",
         description: poi.desc,
-        isUserSaved: saveToLocal // Flaga do pokazania przycisku "Usuń" w modalu
+        isUserSaved: true,
+        storage: poi.storage,
+        rawLat: poi.lat,
+        rawLng: poi.lng,
+        rawTitle: poi.rawTitle || poi.name
     };
 
-    // Wstrzykujemy go do głównej bazy, żeby łapał się na Atrakcje W Pobliżu i Opis Trasy!
     globalCustomPois.push(fullPoiObj);
 
-    // Renderujemy na mapie
+    // 3. Renderowanie Markera
     const marker = L.marker([poi.lat, poi.lng], {
         icon: L.divIcon({
             html: `<div style="font-size:26px; filter: drop-shadow(0px 2px 4px rgba(236, 72, 153, 0.8)); transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${poi.icon}</div>`,
             className: 'poi-icon'
         }),
-        zIndexOffset: 450 // Nieco wyżej niż szlaki, ciut niżej niż GPS
+        zIndexOffset: 450
     }).addTo(userSavedLayer);
 
-    // Podpinamy otwieranie modalu
-    marker.on('click', () => openCustomPoiModal(fullPoiObj));
-    
-    // Zapisujemy referencję do usunięcia
+    fullPoiObj._markerRef = marker;
     poi._markerRef = marker;
+
+    marker.on('click', () => { openCustomPoiModal(fullPoiObj); highlightAndShowMarker(fullPoiObj); });
 }
 
 function deleteUserSavedPoi(id) {
-    if (!confirm("Na pewno usunąć ten punkt?")) return;
+    showCustomConfirm("Czy na pewno chcesz usunąć ten punkt?", () => {
+        const savedIndex = userSavedPois.findIndex(p => p.id === id);
+        if (savedIndex > -1) {
+            const poi = userSavedPois[savedIndex];
+            if (poi._markerRef) userSavedLayer.removeLayer(poi._markerRef);
+            userSavedPois.splice(savedIndex, 1);
+            
+            // Aktualizuj localStorage zostawiając tylko te 'local'
+            const locals = userSavedPois.filter(p => p.storage === 'local');
+            localStorage.setItem('gpx_user_pois', JSON.stringify(locals));
+        }
 
-    // Usuwamy z mapy i z pamięci localStorage
-    const savedIndex = userSavedPois.findIndex(p => p.id === id);
-    if (savedIndex > -1) {
-        const poi = userSavedPois[savedIndex];
-        if (poi._markerRef) userSavedLayer.removeLayer(poi._markerRef);
-        userSavedPois.splice(savedIndex, 1);
-        localStorage.setItem('gpx_user_pois', JSON.stringify(userSavedPois));
+        globalCustomPois = globalCustomPois.filter(p => p.id !== id);
+        closeModal('customPoiModal');
+        if(document.getElementById('myPointsModal').style.display === 'flex') renderMyPointsList();
+    });
+}
+    async function searchLocation() {
+    const val = document.getElementById('searchInput').value.trim();
+    if(!val) return;
+    const valLower = val.toLowerCase();
+
+    // Szukamy wg współrzędnych (Match regex)
+    const isCoords = val.match(/^([-+]?\d{1,2}(?:\.\d+)?)[,\s]+([-+]?\d{1,3}(?:\.\d+)?)$/);
+
+    // HIERARCHIA 1: Baza Google Sheets
+    let found = globalCustomPois.find(p => p.isGas && (
+        (p.id && p.id.toLowerCase() === valLower) || p.name.toLowerCase().includes(valLower) ||
+        (isCoords && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
+    ));
+
+    // HIERARCHIA 2: Własne punkty użytkownika (Szukamy po własnej nazwie LUB oryginalnej OSM)
+    if (!found) {
+        found = globalCustomPois.find(p => p.isUserSaved && (
+            p.name.toLowerCase().includes(valLower) || 
+            (p.rawTitle && p.rawTitle.toLowerCase().includes(valLower)) ||
+            (isCoords && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
+        ));
     }
 
-    // Usuwamy też z bazy globalnej, żeby nie pojawiał się w opisie trasy po usunięciu
-    globalCustomPois = globalCustomPois.filter(p => p.id !== id);
+    if (found) {
+        map.setView(found.latlng, 15);
+        openCustomPoiModal(found);
+        highlightAndShowMarker(found); // Wywołanie migania i obejścia widoczności
+        return; 
+    }
 
-    closeModal('customPoiModal');
+    // HIERARCHIA 3: Zwykłe OSM po współrzędnych (tworzy nowy obiekt poszukiwań)
+    if(isCoords) {
+        placeSearchMarker(parseFloat(isCoords[1]), parseFloat(isCoords[2]), "Wyszukane współrzędne: " + val);
+        return;
+    }
+
+    // HIERARCHIA 4: Zwykłe OSM (Nominatim API)
+    document.body.style.cursor = 'wait';
+    try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=1`);
+        const data = await res.json();
+        if(data && data.length > 0) {
+            placeSearchMarker(data[0].lat, data[0].lon, data[0].display_name);
+        } else {
+            showCustomAlert("Nie znaleziono miejsca.");
+        }
+    } catch(e) {
+        console.error(e);
+        showCustomAlert("Wystąpił błąd podczas wyszukiwania.");
+    } finally {
+        document.body.style.cursor = 'default';
+    }
 }
+   
 </script>
 
 </body>
