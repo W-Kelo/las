@@ -1409,6 +1409,8 @@ map.on('click', async e => {
     if (manualPointMode) {
         manualPointMode = false;
         map.getContainer().style.cursor = '';
+        
+        // Deklarujemy mockSearchObj tylko RAZ
         const mockSearchObj = {
             name: "Nowy Własny Punkt",
             icon: "📍",
@@ -1420,9 +1422,9 @@ map.on('click', async e => {
             rawLng: e.latlng.lng,
             rawTitle: "Mój Punkt"
         };
-        manualPointMode = false; map.getContainer().style.cursor = '';
-        const mockSearchObj = { name: "Nowy Punkt", icon: "📍", category: "Dodane ręcznie", description: "", isUserSaved: true, isNewManual: true, rawLat: e.latlng.lat, rawLng: e.latlng.lng, rawTitle: "Mój Punkt" };
-        openCustomPoiModal(mockSearchObj); return;
+        
+        openCustomPoiModal(mockSearchObj); 
+        return;
     }
     
     // Kluczowa blokada!
