@@ -715,10 +715,31 @@ canvas#elevation {
 }
 .custom-alert-msg { margin-bottom: 20px; font-size: 1rem; line-height: 1.4; }
 .custom-alert-btns { display: flex; gap: 10px; justify-content: center; }
+        /* --- ELEGANCKIE PASKI PRZEWIJANIA (SCROLLBARY) --- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,0.03); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; border: 1px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+.dark ::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
+.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
+.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+
+/* --- NOWE STYLE MODALU EKSPORTU --- */
+.export-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
+.export-table th, .export-table td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; }
+.light .export-table th, .light .export-table td { border-bottom-color: rgba(0,0,0,0.1); }
+.export-table button { padding: 5px 10px; font-size: 0.8rem; }
+.picker-list { max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; margin: 10px 0; border: 1px solid rgba(255,255,255,0.1); padding: 10px; border-radius: 6px; }
+.light .picker-list { border-color: rgba(0,0,0,0.1); }
+.picker-item { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+
+/* Przycisk aktywacji rysowania */
+.btn-draw-mode { background: #ec4899 !important; animation: pulseDraw 2s infinite; }
+@keyframes pulseDraw { 0% { box-shadow: 0 0 0 0 rgba(236,72,153,0.7); } 70% { box-shadow: 0 0 0 10px rgba(236,72,153,0); } 100% { box-shadow: 0 0 0 0 rgba(236,72,153,0); } }
     </style>
     
 </head>
-<body class="dark">
+<body class="light">
 <div id="outageBanner" style="display:none; position:fixed; top:0; left:0; width:100%; background: linear-gradient(90deg, #f59e0b, #ea580c); color:#fff; z-index:9999; padding:12px 20px; box-sizing:border-box; box-shadow:0 4px 15px rgba(0,0,0,0.5); align-items:center; justify-content:space-between; font-family: sans-serif;">
     <div style="flex-grow: 1;">
         <strong style="font-size: 1.1rem;">⚠️ Awaria Głównego Serwera Nawigacji</strong><br>
@@ -764,7 +785,8 @@ canvas#elevation {
     <button onclick="recordRouteGIF()" style="width: 100%; margin-top: 4px; background: #8b5cf6;">🎞️ Zapisz jako GIF</button>
     
     <div style="display:grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px;">
-        <button class="danger" onclick="clearAll()">🗑️ Nowa Trasa</button>
+        <button id="btnToggleDraw" onclick="toggleDrawMode()" style="background: #3b82f6;">✏️ Włącz rysowanie trasy</button>
+        <button class="danger" onclick="clearAll()">🗑️ Wyczyść mapę</button>
     </div>
 
     <hr>
@@ -874,6 +896,7 @@ canvas#elevation {
             <button onclick="toggleScale()">📏 Skala</button>
             <button onclick="openExportStyleModal()" title="Zmień kolor i grubość trasy w eksporcie">🎨 Styl Linii</button>
             <button onclick="toggleLegendMode()" id="btnLegend" style="background: #a855f7" title="Zaznacz na mapie obiekty do legendy">📍 Legenda</button>
+            <button onclick="openExportDataModal()" title="Dodaj punkty z bazy" style="background: #eab308;">📌 Punkty na mapie</button>
                         
             <button onclick="exportZoomIn()" title="Przybliż mapę">➕</button>
             <button onclick="exportZoomOut()" title="Oddal mapę">➖</button>
@@ -1041,27 +1064,83 @@ canvas#elevation {
 </div>
 
 <!-- MODAL STYLU LINI (TYLKO DLA EKSPORTU) -->
-<div id="exportStyleModal" class="inner-modal-overlay" data-html2canvas-ignore>
-    <div class="inner-modal" style="width: 300px;">
-        <h3 style="margin: 0; color: #a855f7;">🎨 Styl Linii (Eksport)</h3>
-        <p style="font-size:0.8rem; color:#94a3b8; margin-top:-5px;">Zmienia wygląd tylko na poniższej mapie, nie ruszając mapy głównej.</p>
+<!-- MODAL: USTAWIENIA PUNKTÓW W EKSPORCIE -->
+<div id="exportDataModal" class="inner-modal-overlay" data-html2canvas-ignore>
+    <div class="inner-modal" style="width: 450px;">
+        <h3 style="margin: 0; color: #eab308;">📌 Punkty i Legenda</h3>
+        <p style="font-size:0.8rem; color:#94a3b8; margin-top:-5px;">Wybierz, które zbiory punktów mają pojawić się na mapie.</p>
+        <table class="export-table">
+            <tr>
+                <td><strong>Baza GS</strong></td>
+                <td><label><input type="checkbox" id="chkExpGasLegend" onchange="syncExportPoints()"> W legendzie?</label></td>
+                <td><button onclick="openExportPicker('gas')">Wybierz punkty</button></td>
+            </tr>
+            <tr>
+                <td><strong>Moje punkty</strong></td>
+                <td><label><input type="checkbox" id="chkExpUserLegend" onchange="syncExportPoints()"> W legendzie?</label></td>
+                <td><button onclick="openExportPicker('user')">Wybierz punkty</button></td>
+            </tr>
+        </table>
+        <button onclick="document.getElementById('exportDataModal').style.display='none'" style="margin-top:15px; width:100%;" class="secondary">Zamknij</button>
+    </div>
+</div>
+
+<!-- MODAL: WYBÓR KONKRETNYCH PUNKTÓW -->
+<div id="exportPickerModal" class="inner-modal-overlay" data-html2canvas-ignore style="z-index: 3100;">
+    <div class="inner-modal" style="width: 350px;">
+        <h3 style="margin: 0; color: #3b82f6;" id="pickerTitle">Wybierz punkty</h3>
+        <input type="text" id="pickerSearch" placeholder="Szukaj..." oninput="filterPickerList()" style="margin-top:10px;">
         
-        <div class="style-control-group">
-            <label>Kolor linii:</label>
-            <div class="color-picker-wrap">
-                <input type="color" id="expStyleColor" value="#22c55e">
-                <span id="expStyleColorHex" style="font-family: monospace; font-size: 0.9em;">#22c55e</span>
-            </div>
+        <div style="display:flex; gap:10px; margin-top:5px;">
+            <button class="secondary" style="flex:1; padding:5px;" onclick="selectAllPicker(true)">Wszystkie</button>
+            <button class="secondary" style="flex:1; padding:5px;" onclick="selectAllPicker(false)">Żadne</button>
         </div>
 
-        <div class="style-control-group">
-            <label>Grubość linii: <span id="expStyleWeightVal">6</span> px</label>
-            <input type="range" id="expStyleWeight" class="thick-slider" min="2" max="15" value="6" oninput="document.getElementById('expStyleWeightVal').innerText=this.value">
+        <div class="picker-list" id="pickerListContainer"></div>
+
+        <div style="display:flex; gap: 10px;">
+            <button onclick="savePickerSelection()" style="flex:1; background: #22c55e;">Zastosuj</button>
+            <button onclick="document.getElementById('exportPickerModal').style.display='none'" style="flex:1;" class="danger">Anuluj</button>
+        </div>
+    </div>
+</div>
+    <!-- MODAL: USTAWIENIA PUNKTÓW W EKSPORCIE -->
+<div id="exportDataModal" class="inner-modal-overlay" data-html2canvas-ignore>
+    <div class="inner-modal" style="width: 450px;">
+        <h3 style="margin: 0; color: #eab308;">📌 Punkty i Legenda</h3>
+        <p style="font-size:0.8rem; color:#94a3b8; margin-top:-5px;">Wybierz, które zbiory punktów mają pojawić się na mapie.</p>
+        <table class="export-table">
+            <tr>
+                <td><strong>Baza GS</strong></td>
+                <td><label><input type="checkbox" id="chkExpGasLegend" onchange="syncExportPoints()"> W legendzie?</label></td>
+                <td><button onclick="openExportPicker('gas')">Wybierz punkty</button></td>
+            </tr>
+            <tr>
+                <td><strong>Moje punkty</strong></td>
+                <td><label><input type="checkbox" id="chkExpUserLegend" onchange="syncExportPoints()"> W legendzie?</label></td>
+                <td><button onclick="openExportPicker('user')">Wybierz punkty</button></td>
+            </tr>
+        </table>
+        <button onclick="document.getElementById('exportDataModal').style.display='none'" style="margin-top:15px; width:100%;" class="secondary">Zamknij</button>
+    </div>
+</div>
+
+<!-- MODAL: WYBÓR KONKRETNYCH PUNKTÓW -->
+<div id="exportPickerModal" class="inner-modal-overlay" data-html2canvas-ignore style="z-index: 3100;">
+    <div class="inner-modal" style="width: 350px;">
+        <h3 style="margin: 0; color: #3b82f6;" id="pickerTitle">Wybierz punkty</h3>
+        <input type="text" id="pickerSearch" placeholder="Szukaj..." oninput="filterPickerList()" style="margin-top:10px;">
+        
+        <div style="display:flex; gap:10px; margin-top:5px;">
+            <button class="secondary" style="flex:1; padding:5px;" onclick="selectAllPicker(true)">Wszystkie</button>
+            <button class="secondary" style="flex:1; padding:5px;" onclick="selectAllPicker(false)">Żadne</button>
         </div>
 
-        <div style="display:flex; gap: 8px; margin-top: 10px;">
-            <button onclick="applyExportStyle()" style="flex:1; background: #a855f7;">Zastosuj</button>
-            <button onclick="document.getElementById('exportStyleModal').style.display='none'" style="flex:1;" class="secondary">Anuluj</button>
+        <div class="picker-list" id="pickerListContainer"></div>
+
+        <div style="display:flex; gap: 10px;">
+            <button onclick="savePickerSelection()" style="flex:1; background: #22c55e;">Zastosuj</button>
+            <button onclick="document.getElementById('exportPickerModal').style.display='none'" style="flex:1;" class="danger">Anuluj</button>
         </div>
     </div>
 </div>
@@ -1202,6 +1281,14 @@ let draggedPointIndex = null;
 let userSavedPois = []; 
 let tempVisibleMarker = null; 
 let manualPointMode = false; 
+let isDrawMode = false;
+let elevAnimFrame;
+let elevPhase = 0;
+let exportPointSettings = {
+    gas: { ids: new Set() },
+    user: { ids: new Set() }
+};
+let tempPickerType = '';
 const userSavedLayer = L.layerGroup().addTo(map);
 const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
@@ -1211,7 +1298,7 @@ const polyline = L.polyline([], {
     opacity: 0.9, 
     lineJoin: 'round'
 }).addTo(map);
-
+document.body.className = "light";
 document.getElementById('styleColor').addEventListener('input', e => document.getElementById('styleColorHex').innerText = e.target.value);
 document.getElementById('stylePointsColor').addEventListener('input', e => document.getElementById('stylePointsColorHex').innerText = e.target.value);
 document.getElementById('expStyleColor').addEventListener('input', e => document.getElementById('expStyleColorHex').innerText = e.target.value);
@@ -1293,6 +1380,70 @@ function loadUserSavedPois() {
     showCustomAlert("Kliknij w dowolne miejsce na mapie, aby dodać swój punkt.");
 }
 
+
+
+
+
+
+
+
+
+
+    function toggleDrawMode() {
+    isDrawMode = !isDrawMode;
+    const btn = document.getElementById('btnToggleDraw');
+    if (isDrawMode) {
+        btn.classList.add('btn-draw-mode');
+        btn.innerText = "🛑 Zakończ rysowanie";
+        map.getContainer().style.cursor = 'crosshair';
+        showCustomAlert("Tryb rysowania włączony. Klikaj na mapę, by stawiać punkty trasy.");
+    } else {
+        btn.classList.remove('btn-draw-mode');
+        btn.innerText = "✏️ Włącz rysowanie trasy";
+        map.getContainer().style.cursor = '';
+    }
+}
+
+// Zmodyfikowany Event Click na mapie
+map.on('click', async e => {
+    if (manualPointMode) {
+        manualPointMode = false;
+        map.getContainer().style.cursor = '';
+        const mockSearchObj = {
+            name: "Nowy Własny Punkt",
+            icon: "📍",
+            category: "Dodane ręcznie",
+            description: `Współrzędne: <code>${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}</code>`,
+            isUserSaved: true, // Flaga otwierająca formę edycji/zapisu
+            isNewManual: true, // Flaga, że to całkiem nowy punkt
+            rawLat: e.latlng.lat,
+            rawLng: e.latlng.lng,
+            rawTitle: "Mój Punkt"
+        };
+        manualPointMode = false; map.getContainer().style.cursor = '';
+        const mockSearchObj = { name: "Nowy Punkt", icon: "📍", category: "Dodane ręcznie", description: "", isUserSaved: true, isNewManual: true, rawLat: e.latlng.lat, rawLng: e.latlng.lng, rawTitle: "Mój Punkt" };
+        openCustomPoiModal(mockSearchObj); return;
+    }
+    
+    // Kluczowa blokada!
+    if (!isDrawMode && !isRouting) return; 
+    
+    if (isRouting) return; 
+    await addRoutePoint(e.latlng, true);
+});
+
+// Zmodyfikowany clearAll - żeby na starcie nie rysowało samo
+function clearAll() {
+    showCustomConfirm("Czy na pewno chcesz usunąć obecną trasę?", () => {
+        if (isRouting) return;
+        routePoints.forEach(p => map.removeLayer(p.marker));
+        routePoints = []; routeGeometry = [];
+        recalculateRoute();
+    });
+}
+
+
+    
 /* ================= OBSŁUGA MODALI (Floating) ================= */
 function makeDraggable(el) {
     const header = el.querySelector('.modal-header');
@@ -1536,28 +1687,7 @@ async function getRouteSegment(start, end) {
         distance: L.latLng(start).distanceTo(L.latLng(end)) 
     }; 
 }
-map.on('click', async e => {
-        if (manualPointMode) {
-        manualPointMode = false;
-        map.getContainer().style.cursor = '';
-        const mockSearchObj = {
-            name: "Nowy Własny Punkt",
-            icon: "📍",
-            category: "Dodane ręcznie",
-            description: `Współrzędne: <code>${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}</code>`,
-            isUserSaved: true, // Flaga otwierająca formę edycji/zapisu
-            isNewManual: true, // Flaga, że to całkiem nowy punkt
-            rawLat: e.latlng.lat,
-            rawLng: e.latlng.lng,
-            rawTitle: "Mój Punkt"
-        };
-        openCustomPoiModal(mockSearchObj);
-        return;
-    }
-    if (poiMode) { addPOI(e.latlng); poiMode = false; return; }
-    if (isRouting) return; 
-    await addRoutePoint(e.latlng, true);
-});
+
 
 async function addRoutePoint(latlng, recalc = true) {
     const pointId = Date.now() + Math.random();
@@ -1918,15 +2048,45 @@ function unhighlightStep() {
         stepHighlightLayer = null;
     }
 }
-
+function drawEmptyElevationAnimation() {
+    const c = document.getElementById('elevation');
+    const ctx = c.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    c.width = c.offsetWidth * dpr;
+    c.height = c.offsetHeight * dpr;
+    ctx.scale(dpr, dpr);
+    
+    ctx.clearRect(0, 0, c.offsetWidth, c.offsetHeight);
+    
+    // Rysowanie animowanej "fali" terenu
+    ctx.beginPath();
+    for(let x=0; x < c.offsetWidth; x+=2) {
+        const y = (c.offsetHeight / 2) + Math.sin((x * 0.03) + elevPhase) * 12 + Math.cos((x * 0.01) - elevPhase) * 5;
+        if(x===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    
+    // Gradient i styl fali
+    ctx.strokeStyle = document.body.classList.contains('light') ? 'rgba(34, 197, 94, 0.4)' : 'rgba(34, 197, 94, 0.2)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Napis
+    ctx.fillStyle = document.body.classList.contains('light') ? '#64748b' : '#94a3b8';
+    ctx.font = 'bold 12px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText("Narysuj trasę, aby zobaczyć profil terenu", c.offsetWidth/2, c.offsetHeight/2 + 30);
+    
+    elevPhase += 0.04;
+    elevAnimFrame = requestAnimationFrame(drawEmptyElevationAnimation);
+}
 
 async function fetchFullElevationProfile() {
+      if (elevAnimFrame) cancelAnimationFrame(elevAnimFrame);
+    
     if (routeGeometry.length < 2) { 
-        globalElevationData = []; 
-        globalElevationDist = [];
-        globalElevationLatLng = [];
-        clearElevation(); 
+        globalElevationData = []; globalElevationDist = []; globalElevationLatLng = [];
         if (chartHoverMarker) { map.removeLayer(chartHoverMarker); chartHoverMarker = null; }
+        drawEmptyElevationAnimation(); // Uruchomienie animacji
         return; 
     }
     
@@ -2296,14 +2456,7 @@ function unhighlightPointOnMap(idx) {
         weight: 3
     });
 }
-function clearAll() {
-    if (isRouting) return;
-    routePoints.forEach(p => map.removeLayer(p.marker));
-    pois.forEach(p => map.removeLayer(p.marker));
-    routePoints = []; routeGeometry = []; pois = [];
-    if(userMarker) map.removeLayer(userMarker);
-    recalculateRoute();
-}
+
 function toggleLayer(layer, cb) { if (cb.checked) map.addLayer(layer); else map.removeLayer(layer); }
 function toggleTheme() {
     dark = !dark; document.body.className = dark ? "dark" : "light";
@@ -2626,9 +2779,11 @@ function initExportMap() {
     const emptyState = document.getElementById('exportEmptyState');
     if (routeGeometry.length < 2) {
         emptyState.style.display = 'flex';
+        document.querySelector('.map-export-actions').style.display = 'none';
         return; 
     } else {
-        emptyState.style.display = 'none';
+            emptyState.style.display = 'none';
+    document.querySelector('.map-export-actions').style.display = 'flex';
     }
 
     if (exportMap) {
@@ -2683,8 +2838,10 @@ function initExportMap() {
         console.log('[EXPORT] invalidateSize (delayed)');
         exportMap.invalidateSize(true);
     }, 200);
-    
+    exportMap.on('moveend', syncExportPoints);
+    exportMap.on('zoomend', syncExportPoints);
 }
+    
 
 
 function toggleScale() {
@@ -3295,12 +3452,17 @@ function openExportStyleModal() {
 }
 
 function applyExportStyle() {
+    // Linia
     exportLineColor = document.getElementById('expStyleColor').value;
     exportLineWeight = parseInt(document.getElementById('expStyleWeight').value);
+    if (exportPolyline) exportPolyline.setStyle({ color: exportLineColor, weight: exportLineWeight });
     
-    if (exportPolyline) {
-        exportPolyline.setStyle({ color: exportLineColor, weight: exportLineWeight });
-    }
+    // Panel 
+    const panel = document.getElementById('mapInfoPanel');
+    panel.style.fontFamily = document.getElementById('expFontFamily').value;
+    panel.style.backgroundColor = document.getElementById('expPanelBg').value;
+    panel.style.color = document.getElementById('expPanelText').value;
+    panel.style.borderRadius = document.getElementById('expPanelRadius').value + 'px';
     
     document.getElementById('exportStyleModal').style.display = 'none';
 }
@@ -4011,6 +4173,131 @@ function deleteAllUserPois() {
         globalCustomPois = globalCustomPois.filter(p => !p.isUserSaved);
         renderMyPointsList();
     });
+}
+    function openExportDataModal() {
+    document.getElementById('exportDataModal').style.display = 'flex';
+}
+
+function openExportPicker(type) {
+    tempPickerType = type;
+    document.getElementById('pickerTitle').innerText = type === 'gas' ? "Wybierz punkty GS" : "Wybierz moje punkty";
+    document.getElementById('pickerSearch').value = '';
+    document.getElementById('exportPickerModal').style.display = 'flex';
+    filterPickerList();
+}
+
+function filterPickerList() {
+    const query = document.getElementById('pickerSearch').value.toLowerCase();
+    const container = document.getElementById('pickerListContainer');
+    container.innerHTML = '';
+    
+    const dataSource = globalCustomPois.filter(p => type === 'gas' ? p.isGas : p.isUserSaved);
+    const selectedSet = exportPointSettings[tempPickerType].ids;
+
+    dataSource.forEach(p => {
+        if (!p.name.toLowerCase().includes(query)) return;
+        const isChecked = selectedSet.has(p.id) ? 'checked' : '';
+        container.innerHTML += `
+            <label class="picker-item">
+                <input type="checkbox" class="picker-cb" value="${p.id}" ${isChecked}>
+                <span style="font-size:1.2rem;">${p.icon}</span> ${p.name}
+            </label>
+        `;
+    });
+}
+
+function selectAllPicker(state) {
+    document.querySelectorAll('.picker-cb').forEach(cb => cb.checked = state);
+}
+
+function savePickerSelection() {
+    const selectedIds = new Set();
+    document.querySelectorAll('.picker-cb:checked').forEach(cb => selectedIds.add(cb.value));
+    exportPointSettings[tempPickerType].ids = selectedIds;
+    
+    document.getElementById('exportPickerModal').style.display = 'none';
+    syncExportPoints(); // Wymuś natychmiastowe przeliczenie!
+}
+
+// Główny silnik synchronizujący punkty na mapie i w legendzie
+function syncExportPoints() {
+    if(!exportMap) return;
+    const bounds = exportMap.getBounds();
+    const shouldBeVisible = new Set(); // Przechowuje ID punktów, które MAJĄ prawo być na mapie
+
+    const legendGas = document.getElementById('chkExpGasLegend').checked;
+    const legendUser = document.getElementById('chkExpUserLegend').checked;
+
+    globalCustomPois.forEach(poi => {
+        const isGasMatch = poi.isGas && exportPointSettings.gas.ids.has(poi.id);
+        const isUserMatch = poi.isUserSaved && exportPointSettings.user.ids.has(poi.id);
+
+        if (isGasMatch || isUserMatch) {
+            const autoId = 'auto_' + poi.id;
+            const inLegendEnabled = (isGasMatch && legendGas) || (isUserMatch && legendUser);
+
+            // Bierzemy aktualną pozycję z markera (bo user mógł go przesunąć na mapie eksportowej!)
+            const currentLatLng = exportLegendItems[autoId] ? exportLegendItems[autoId].marker.getLatLng() : poi.latlng;
+
+            if (bounds.contains(currentLatLng)) {
+                shouldBeVisible.add(autoId);
+
+                // Tworzenie, jeśli nie istnieje
+                if (!exportLegendItems[autoId]) {
+                    const marker = L.marker(currentLatLng, {
+                        draggable: true,
+                        icon: L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));" title="Przeciągnij by przenieść">${poi.icon}</div>`, className: 'poi-icon' })
+                    }).addTo(exportMap);
+                    
+                    marker.on('click', function(e) { L.DomEvent.stopPropagation(e); });
+
+                    exportLegendItems[autoId] = { marker: marker, emoji: poi.icon, text: poi.name, isAuto: true, inList: false };
+                }
+
+                // Synchronizacja z listą w legendzie DOM
+                const hasDomNode = document.getElementById(autoId);
+                if (inLegendEnabled && !hasDomNode) {
+                    addAutoLegendItemToDOM(autoId);
+                    exportLegendItems[autoId].inList = true;
+                } else if (!inLegendEnabled && hasDomNode) {
+                    hasDomNode.remove();
+                    exportLegendItems[autoId].inList = false;
+                }
+            }
+        }
+    });
+
+    // Usuwanie punktów, które "uciekły" za ekran lub zostały odznaczone
+    Object.keys(exportLegendItems).forEach(id => {
+        if (exportLegendItems[id].isAuto && !shouldBeVisible.has(id)) {
+            exportMap.removeLayer(exportLegendItems[id].marker);
+            const domEl = document.getElementById(id);
+            if(domEl) domEl.remove();
+            delete exportLegendItems[id];
+        }
+    });
+
+    if(document.getElementById('miLegendContainer')) {
+        document.getElementById('miLegendContainer').style.display = 
+            document.getElementById('exportLegendList').children.length > 0 ? 'block' : 'none';
+    }
+    updatePanelVisibility();
+}
+
+function addAutoLegendItemToDOM(id) {
+    const item = exportLegendItems[id];
+    const list = document.getElementById('exportLegendList');
+    const li = document.createElement('li');
+    li.id = id;
+    // Odtwarzamy dokładnie ten sam DOM co dla ręcznej legendy, dzięki czemu funkcja edycji zadziała na nich idealnie!
+    li.innerHTML = `
+        <span class="leg-icon" style="font-size:20px;">${item.emoji}</span> 
+        <span class="leg-text">${item.text}</span>
+        <div class="leg-actions" data-html2canvas-ignore>
+            <button onclick="editLegendItem('${id}')" title="Edytuj">✏️</button>
+        </div>
+    `;
+    list.appendChild(li);
 }
 </script>
 
