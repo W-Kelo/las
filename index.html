@@ -808,6 +808,19 @@ canvas#elevation {
 }
         /* --- DYNAMICZNE ODSTĘPY W LEGENDZIE EKSPORTU --- */
 .map-info-legend-list li { margin-bottom: var(--legend-gap, 5px) !important; }
+        /* --- DYNAMICZNE ZMIENNE DLA MODALU WYGLĄDU EKSPORTU --- */
+.map-info-panel {
+    font-size: var(--exp-font, 14px) !important;
+}
+.map-info-title {
+    font-size: calc(var(--exp-font, 14px) * 1.3) !important;
+}
+.map-info-legend-list {
+    font-size: var(--exp-font, 14px) !important;
+}
+.map-info-legend-list li {
+    margin-bottom: var(--legend-gap, 5px) !important;
+}
     </style>
     
 </head>
@@ -952,7 +965,7 @@ canvas#elevation {
     </div>
 </div>
 <!-- GŁÓWNY MODAL EKSPORTU -->
-<div id="mapExportModal" class="floating-modal map-export-modal" style="display: none;" data-html2canvas-ignore>
+<div id="mapExportModal" class="floating-modal map-export-modal" style="display: none;">
     <div class="modal-header export-header">
         <div class="export-toolbar" id="exportToolbar">
             <button onclick="confirmRefreshRoute()" title="Odśwież trasę">🔄</button>
@@ -3020,44 +3033,56 @@ function toggleScale() {
 }
 
 
+/* --- ZRZUTY EKRANU DLA EKSPORTU (NAPRAWIONE) --- */
+
 async function exportMapPNG() {
-    const el = document.getElementById('mapExport');
-
-    const canvas = await html2canvas(el, {
-        useCORS: true,
-        scale: 2,
-        backgroundColor: null
-    });
-
-    const a = document.createElement('a');
-    a.href = canvas.toDataURL('image/png');
-    a.download = 'mapa_trasy.png';
-    a.click();
+    document.getElementById('emojiPickerUI').style.display = 'none'; // Zamyka popup emotek na czas screena
+    const el = document.getElementById('exportWrapper');
+    
+    try {
+        const canvas = await html2canvas(el, { useCORS: true, scale: 2, backgroundColor: null });
+        const a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = 'mapa_trasy_export.png';
+        a.click();
+    } catch(err) {
+        console.error("Błąd generowania PNG:", err);
+        alert("Wystąpił problem przy generowaniu obrazu.");
+    }
 }
 
-
-
-   async function copyMapPNG() {
-    const el = document.getElementById('mapExport');
-    const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
-
-    canvas.toBlob(blob => {
-        navigator.clipboard.write([
-            new ClipboardItem({ 'image/png': blob })
-        ]);
-        alert("Mapa skopiowana do schowka.");
-    });
+async function copyMapPNG() {
+    document.getElementById('emojiPickerUI').style.display = 'none';
+    const el = document.getElementById('exportWrapper');
+    
+    try {
+        const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
+        canvas.toBlob(blob => {
+            navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            alert("Mapa skopiowana do schowka 👍");
+        });
+    } catch(err) {
+        console.error("Błąd kopiowania:", err);
+        alert("Wystąpił problem przy kopiowaniu. Twoja przeglądarka może tego nie obsługiwać.");
+    }
 }
 
 async function printExportMap() {
-    const el = document.getElementById('mapExport');
-    const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
-
-    const win = window.open('');
-    win.document.write(`
-        <img src="${canvas.toDataURL('image/png')}" style="width:100%">
-        <script>window.onload = () => window.print()<\/script>
-    `);
+    document.getElementById('emojiPickerUI').style.display = 'none';
+    const el = document.getElementById('exportWrapper');
+    
+    try {
+        const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
+        const win = window.open('');
+        win.document.write(`
+            <style>@page { size: landscape; margin: 0; } body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }</style>
+            <img src="${canvas.toDataURL('image/png')}" style="max-width:100%; max-height:100%; object-fit:contain;">
+            <script>window.onload = () => window.print()<\/script>
+        `);
+    } catch(err) {
+        console.error("Błąd drukowania:", err);
+        alert("Wystąpił problem przy przygotowaniu do druku.");
+    }
 }
     function getExportTileLayer() {
     console.log('[EXPORT] Creating tile layer, dark =', dark);
@@ -3709,25 +3734,20 @@ function openExportStyleModal() {
 }
 
 function applyExportStyle() {
-    // 1. Zastosowanie stylów linii trasy
     exportLineColor = document.getElementById('expStyleColor').value;
     exportLineWeight = parseInt(document.getElementById('expStyleWeight').value);
     if (exportPolyline) exportPolyline.setStyle({ color: exportLineColor, weight: exportLineWeight });
     
-    // 2. Zastosowanie formatowania panelu informacyjnego i legendy
     const panel = document.getElementById('mapInfoPanel');
     if(panel) {
         panel.style.fontFamily = document.getElementById('expFontFamily').value;
         panel.style.color = document.getElementById('expPanelText').value;
         panel.style.borderRadius = document.getElementById('expPanelRadius').value + 'px';
         
-        // NOWE: Wielkość czcionki bazowej dla całego panelu
-        panel.style.fontSize = document.getElementById('expFontSize').value + 'px';
-        
-        // NOWE: Przekazanie zmiennej CSS odpowiedzialnej za odstępy między punktami legendy
+        // DYNAMICZNE PRZEKAZYWANIE ZMIENNYCH CSS (Odblokowuje suwaki czcionki i odstępów)
+        panel.style.setProperty('--exp-font', document.getElementById('expFontSize').value + 'px');
         panel.style.setProperty('--legend-gap', document.getElementById('expLegendGap').value + 'px');
         
-        // Przeliczanie HEX i Opacity na RGBA
         const hexBg = document.getElementById('expPanelBg').value;
         const opacity = document.getElementById('expPanelOpacity').value / 100;
         
