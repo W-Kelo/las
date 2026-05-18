@@ -3123,11 +3123,10 @@ async function copyMapPNG() {
         const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
         canvas.toBlob(blob => {
             navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-            alert("Mapa skopiowana do schowka 👍");
         });
     } catch(err) {
         console.error("Błąd kopiowania:", err);
-        alert("Wystąpił problem przy kopiowaniu. Twoja przeglądarka może tego nie obsługiwać.");
+        showCustomAlert("Wystąpił problem przy kopiowaniu. Twoja przeglądarka może tego nie obsługiwać.");
     }
 }
 
@@ -3845,7 +3844,7 @@ function getPointAtDistance(geometry, targetDist) {
 }
 
 function playRouteAnimation() {
-    if (routeGeometry.length < 2) return alert("Brak trasy do animacji!");
+    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy do animacji!");
     
     // Jeśli animacja trwa, zatrzymaj ją
     if (animInterval) clearInterval(animInterval);
