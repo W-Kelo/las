@@ -174,65 +174,90 @@
             #mobile-toggle { display: flex; }
             .floating-modal { width: 95%; left: 2.5% !important; top: 10% !important; height: auto; max-height: 60vh;}
         }
+/* --- RESPONSILWNY I KLASYCZNY MODAL EKSPORTU --- */
 .map-export-modal {
-    width: 88vw;
-    height: 88vh;
-    max-width: 1300px;
-    max-height: 900px;
-
-    /* ⬇️ KLUCZOWE */
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-
-    resize: none;
+    width: 95vw !important;
+    height: 90vh !important;
+    max-width: 1400px;
+    max-height: 1000px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
-
-.map-export-header {
-    background: linear-gradient(90deg, #16a34a, #22c55e);
-    color: white;
-    padding: 10px 14px;
+.export-header {
+    background: #1e293b; /* Jednolity, klasyczny, ciemny kolor */
+    padding: 8px 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 
-/* --- PROFESJONALNY PASEK NARZĘDZI W EKSPORCIE --- */
-.map-export-actions {
+/* Pasek narzędzi z możliwością przewijania na smartfonach */
+.export-toolbar {
     display: flex;
-    flex-wrap: wrap;
+    align-items: center;
     gap: 6px;
-    align-items: center;
+    overflow-x: auto; /* Na telefonie pasek się przewinie w poziomie */
+    white-space: nowrap;
+    scrollbar-width: none; /* Ukrywa scrollbar w Firefox */
+    flex-grow: 1;
 }
-.toolbar-divider {
-    width: 2px;
-    height: 24px;
-    background: rgba(255, 255, 255, 0.4);
-    margin: 0 4px;
-    border-radius: 2px;
-}
-.map-export-actions button {
-    display: flex;
-    align-items: center;
-    gap: 5px;
+.export-toolbar::-webkit-scrollbar { display: none; } /* Ukrywa scrollbar w Chrome/Safari */
+
+.export-toolbar button {
+    background: #475569; /* Klasyczny stonowany kolor */
+    color: #f8fafc;
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 6px 12px;
+    border-radius: 4px;
     font-size: 0.85rem;
-    padding: 6px 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
 }
-/* Przycisk zamknięcia ma być charakterystyczny */
-.btn-close-export {
-    background: #ef4444 !important;
-    border-radius: 50% !important;
-    width: 30px;
-    height: 30px;
-    padding: 0 !important;
+.export-toolbar button:hover {
+    background: #64748b;
+    border-color: rgba(255,255,255,0.3);
+}
+
+.toolbar-divider {
+    min-width: 1px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.2);
+    margin: 0 4px;
+}
+
+/* Obszar roboczy mapy */
+.export-body {
+    flex-grow: 1;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #e2e8f0;
 }
 
 #mapExport {
-    width: 100%;
-    height: 100%;
-    background: #e5e7eb;
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    width: 100%; height: 100%;
+}
+
+/* Ulepszony ekran braku trasy - nie zasłania przycisku X */
+#exportEmptyState {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(15,23,42,0.95);
+    z-index: 4000;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    text-align: center;
+    padding: 20px;
 }
       
 /* --- WYSZUKIWARKA --- */
@@ -920,75 +945,63 @@ canvas#elevation {
         <button onclick="generatePDF()" id="pdfGenBtn" style="width:100%; background: #22c55e;">Generuj i Pobierz</button>
     </div>
 </div>
-<div id="mapExportModal" class="floating-modal map-export-modal">
-    <div class="map-export-header modal-header">
-        <strong>🗺️ Eksport mapy trasy</strong>
-<div class="map-export-actions">
-    <!-- GRUPA 1: Widok Mapy i Odświeżanie -->
-    <button onclick="confirmRefreshRoute()" title="Pobierz najnowszą trasę z mapy głównej">🔄 Odśwież</button>
-    <button onclick="exportZoomIn()" title="Przybliż">➕</button>
-    <button onclick="exportZoomOut()" title="Oddal">➖</button>
-    <button onclick="toggleScale()" title="Pokaż/Ukryj Skalę na mapie">📏 Skala</button>
-    
-    <div class="toolbar-divider"></div>
-    
-    <!-- GRUPA 2: Panel Informacyjny na mapie -->
-    <button onclick="togglePanelDrag()" id="btnDragPanel" title="Przesuń panel informacyjny">✋ Przesuń</button>
-    <button onclick="togglePanelResize()" id="btnResizePanel" title="Dopasuj rozmiar panelu">📐 Kadruj</button>
-    <button onclick="openExportMetaModal()" title="Edytuj Tytuł, Datę i Opis">📝 Teksty</button>
-    <button onclick="openStatsModal()" title="Wstaw dystans i czas">📊 Statystyki</button>
-    <button onclick="openExportStyleModal()" title="Zmień styl linii trasy i kolory panelu">🎨 Wygląd</button>
-    
-    <div class="toolbar-divider"></div>
-    
-    <!-- GRUPA 3: Punkty i Legenda -->
-    <button onclick="toggleLegendMode()" id="btnLegend" style="background: #a855f7" title="Ręcznie naklejaj punkty legendy na mapę">📍 Własna Legenda</button>
-    <button onclick="openExportDataModal()" style="background: #eab308; color: black;" title="Zaciągnij punkty z Bazy GS lub Twoje zapisane">📌 Baza Punktów</button>
-                
-    <div class="toolbar-divider"></div>
-    
-    <!-- GRUPA 4: Eksport pliku -->
-    <button onclick="copyMapPNG()" title="Kopiuj obraz do schowka">📋 Kopiuj</button>
-    <button onclick="exportMapPNG()" title="Zapisz jako plik obrazu">⬇ PNG</button>
-    <button onclick="printExportMap()" title="Wydrukuj mapę">🖨️</button>
-    
-    <button class="btn-close-export" onclick="closeModal('mapExportModal')" title="Zamknij kreator">✖</button>
-</div>
-    <div class="modal-body" style="padding:0; position:relative;">
-        
-            <div id="exportWrapper">
-            <div id="exportEmptyState" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.95); z-index:4000; display:none; flex-direction:column; justify-content:center; align-items:center; color:white;">
-    <div class="export-spinner"></div>
-    <h2 style="color:#f59e0b; margin-bottom: 10px; font-size: 2rem;">Brak wyznaczonej trasy 🗺️</h2>
-    <p style="color: #cbd5e1; margin-bottom: 20px;">Aby wyeksportować mapę, najpierw narysuj lub zaimportuj trasę w oknie głównym.</p>
-    <button onclick="closeModal('mapExportModal')" style="background: #3b82f6; padding: 10px 20px; font-size: 1.1rem; border-radius: 8px; cursor: pointer;">Wróc do mapy głównej</button>
-</div>
+<!-- GŁÓWNY MODAL EKSPORTU -->
+<div id="mapExportModal" class="floating-modal map-export-modal" data-html2canvas-ignore>
+    <div class="modal-header export-header">
+        <div class="export-toolbar" id="exportToolbar">
+            <button onclick="confirmRefreshRoute()" title="Odśwież trasę">🔄</button>
+            <button onclick="exportZoomIn()">➕</button>
+            <button onclick="exportZoomOut()">➖</button>
+            <div class="toolbar-divider"></div>
+            <button onclick="toggleScale()">Skala</button>
+            <button onclick="togglePanelDrag()" id="btnDragPanel">Przesuń panel</button>
+            <button onclick="togglePanelResize()" id="btnResizePanel">Kadruj panel</button>
+            <button onclick="openExportMetaModal()">Teksty</button>
+            <button onclick="openStatsModal()">Statystyki</button>
+            <button onclick="openExportStyleModal()">Wygląd</button>
+            <div class="toolbar-divider"></div>
+            <button onclick="toggleLegendMode()" id="btnLegend">Własna Legenda</button>
+            <button onclick="openExportDataModal()">Baza Punktów</button>
+            <div class="toolbar-divider"></div>
+            <button onclick="copyMapPNG()">Kopiuj</button>
+            <button onclick="exportMapPNG()">Zapisz PNG</button>
+            <button onclick="printExportMap()">Drukuj</button>
+        </div>
+        <!-- Zawsze widoczny przycisk zamknięcia -->
+        <button class="danger icon-only" style="padding: 4px 10px; flex-shrink: 0;" onclick="closeModal('mapExportModal')">X</button>
+    </div>
+       <div class="export-body" id="exportWrapper">
+        <div id="exportEmptyState" style="display:none;">
+            <div style="font-size: 3rem; margin-bottom: 10px;">🗺️</div>
+            <h2 style="margin-bottom: 10px; font-size: 1.5rem;">Brak wyznaczonej trasy</h2>
+            <p style="color: #cbd5e1; margin-bottom: 20px;">Aby wyeksportować mapę, narysuj trasę w oknie głównym.</p>
+            <button onclick="closeModal('mapExportModal')" style="background: #3b82f6; border:none; color:white; padding: 10px 20px; border-radius: 6px; cursor: pointer;">Wróć do mapy</button>
+        </div
             <div id="mapExport"></div>
             
             <!-- Uporządkowany panel informacyjny na mapie -->
-            <div id="mapInfoPanel" class="map-info-panel">
-                <div id="miTitle" class="map-info-title" style="display:none;"></div>
-                <div id="miDate" class="map-info-date" style="display:none;"></div>
-                <div id="miDesc" class="map-info-desc" style="display:none;"></div>
-                <div id="miStats" class="mi-stats-container" style="display:none;"></div>
-                
-                <div id="miLegendContainer" style="display:none;">
-                    <div class="map-info-legend-title">Legenda</div>
-                    <ul id="exportLegendList" class="map-info-legend-list"></ul>
-                </div>
-            </div>
-
-            <!-- Interfejs do wprowadzania punktów legendy (Ignorowany przy zrzucie ekranu) -->
-            <div id="emojiPickerUI" data-html2canvas-ignore>
-                <div style="font-weight:bold; margin-bottom: 10px; font-size: 0.95rem;">Wybierz ikonę i podpis:</div>
-                <div class="emoji-grid" id="emojiGridList"></div>
-                <input type="text" id="emojiLabelText" placeholder="Opis miejsca na mapie..." style="width: 100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius: 6px; margin-bottom: 10px;">
-                <div class="emoji-picker-actions" style="display: flex; gap: 8px;">
-                    <button onclick="saveLegendItem()" style="flex:1; background:var(--accent); padding:10px;">Zapisz punkt</button>
-                    <button onclick="closeEmojiPicker()" style="flex:1; padding:10px;" class="danger">Anuluj</button>
-                </div>
+           <div id="mapInfoPanel" class="map-info-panel">
+            <div id="miTitle" class="map-info-title" style="display:none;"></div>
+            <div id="miDate" class="map-info-date" style="display:none;"></div>
+            <div id="miDesc" class="map-info-desc" style="display:none;"></div>
+            <div id="miStats" class="mi-stats-container" style="display:none;"></div>
+            <div id="miLegendContainer" style="display:none;">
+                <div class="map-info-legend-title">Legenda</div>
+                <ul id="exportLegendList" class="map-info-legend-list"></ul>
             </div>
         </div>
+
+             <div id="emojiPickerUI">
+            <div style="font-weight:bold; margin-bottom: 10px; font-size: 0.95rem;">Wybierz ikonę i podpis:</div>
+            <div class="emoji-grid" id="emojiGridList"></div>
+            <input type="text" id="emojiLabelText" placeholder="Opis miejsca na mapie..." style="width: 100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius: 6px; margin-bottom: 10px;">
+            <div class="emoji-picker-actions" style="display: flex; gap: 8px;">
+                <button onclick="saveLegendItem()" style="flex:1; background:var(--accent); padding:10px;">Zapisz punkt</button>
+                <button onclick="closeEmojiPicker()" style="flex:1; padding:10px;" class="danger">Anuluj</button>
+            </div>
+        </div>
+    </div>
+</div>
 
         <!-- MODAL: META INFO (PŁYWAJĄCY) -->
 <div id="exportMetaModal" class="floating-modal" style="width: 380px; z-index: 3300;" data-html2canvas-ignore>
@@ -1377,7 +1390,7 @@ let manualPointMode = false;
 let isDrawMode = false;
 let elevAnimFrame;
 let elevPhase = 0;
-let wasExportEmpty = false
+let wasExportEmpty = false;
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
@@ -2864,36 +2877,35 @@ async function generatePDF() {
 function openMapExportModal() {
     const modal = document.getElementById('mapExportModal');
     modal.style.display = 'flex';
+    // Centrowanie
     modal.style.left = '50%';
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
 
     const emptyState = document.getElementById('exportEmptyState');
-    const actionsToolbar = document.querySelector('.map-export-actions');
+    const toolbar = document.getElementById('exportToolbar');
 
     if (routeGeometry.length < 2) {
-        // BRAK TRASY - Pokaż ładny spinner i ukryj pasek
         emptyState.style.display = 'flex';
-        actionsToolbar.style.display = 'none';
+        toolbar.style.opacity = '0.3'; // Wyszarzamy pasek, ale X wciąż działa
+        toolbar.style.pointerEvents = 'none';
         wasExportEmpty = true;
-        return; 
     } else {
-        // JEST TRASA - Ukryj spinner
         emptyState.style.display = 'none';
-        actionsToolbar.style.display = 'flex';
+        toolbar.style.opacity = '1';
+        toolbar.style.pointerEvents = 'auto';
 
-        // MAGIA AUTOMATYCZNEGO ODŚWIEŻANIA: 
-        // Jeśli wcześniej był błąd braku trasy, a teraz wróciliśmy, to wymuś ciche odświeżenie!
         if (wasExportEmpty && exportMap) {
-            console.log("Automatyczne odświeżenie po dodaniu trasy.");
-            executeRefreshRoute(); // Czyści starą mapę i ładuje nową geometrię
+            executeRefreshRoute();
         }
         wasExportEmpty = false;
+        
+        // Zawsze upewniamy się, że mapa pobierze wymiary po animacji modala
+        requestAnimationFrame(() => {
+            initExportMap();
+            setTimeout(() => { if (exportMap) exportMap.invalidateSize(true); }, 200);
+        });
     }
-
-    requestAnimationFrame(() => {
-        initExportMap();
-    });
 }
 function initExportMap() {
     const container = document.getElementById('mapExport');
@@ -3199,19 +3211,49 @@ function exportZoomOut() { if (exportMap) exportMap.zoomOut(); }
 
 /* --- OBSŁUGA WEWNĘTRZNEGO MODALA INFORMACJI --- */
 function openExportDataModal() {
-    const modal = document.getElementById('exportDataModal');
-    modal.style.display = 'flex';
-    modal.style.left = '50%';
-    modal.style.top = '50%';
-    modal.style.transform = 'translate(-50%, -50%)';
+    document.getElementById('exportDataModal').style.display = 'flex';
+    document.getElementById('exportDataModal').style.transform = 'translate(-50%, -50%)';
 }
 
-function openExportMetaModal() { 
-    const modal = document.getElementById('exportMetaModal');
-    modal.style.display = 'flex'; 
-    modal.style.left = '50%';
-    modal.style.top = '50%';
-    modal.style.transform = 'translate(-50%, -50%)';
+function openExportPicker(type) {
+    tempPickerType = type;
+    document.getElementById('pickerTitle').innerText = type === 'gas' ? "Wybierz punkty GS" : "Wybierz swoje punkty";
+    document.getElementById('pickerSearch').value = '';
+    
+    document.getElementById('exportPickerModal').style.display = 'flex';
+    document.getElementById('exportPickerModal').style.transform = 'translate(-50%, -50%)';
+    
+    filterPickerList(); // Odśwież listę po otwarciu
+}
+function filterPickerList() {
+    const query = document.getElementById('pickerSearch').value.toLowerCase();
+    const container = document.getElementById('pickerListContainer');
+    container.innerHTML = '';
+    
+    const dataSource = globalCustomPois.filter(p => tempPickerType === 'gas' ? p.isGas : p.isUserSaved);
+    const selectedSet = exportPointSettings[tempPickerType].ids;
+
+    if (dataSource.length === 0) {
+        container.innerHTML = `<p style="text-align:center; padding: 10px; color:#94a3b8;">Brak punktów.</p>`;
+        return;
+    }
+
+    dataSource.forEach(p => {
+        if (!p.name.toLowerCase().includes(query)) return;
+        const isChecked = selectedSet.has(p.id) ? 'checked' : '';
+        const badge = p.isUserSaved ? (p.storage === 'local' ? `[Na stałe]` : `[Sesja]`) : '';
+        
+        container.innerHTML += `
+            <label class="picker-item-styled" style="display:flex; align-items:center; gap:10px; padding:8px; border-bottom:1px solid rgba(255,255,255,0.1); cursor:pointer;">
+                <input type="checkbox" class="picker-cb" value="${p.id}" ${isChecked}>
+                <span style="font-size:1.2rem;">${p.icon}</span> 
+                <div style="display:flex; flex-direction:column; line-height: 1.2;">
+                    <span style="font-weight:bold; font-size:0.9rem;">${p.name}</span>
+                    <small style="font-size:0.75rem; opacity:0.7;">${badge} ${p.category}</small>
+                </div>
+            </label>
+        `;
+    });
 }
 
 function openStatsModal() {
@@ -3862,16 +3904,12 @@ async function loadGoogleSheetsPOIs() {
     
     try {
         const response = await fetch(GAS_WEBAPP_URL);
-        if (!response.ok) throw new Error("Błąd sieci przy pobieraniu punktów z GS");
+        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         const data = await response.json();
         
-        if (data.error) {
-            console.warn("Błąd po stronie serwera GAS:", data.error);
-            return;
-        }
+        if (data.error) throw new Error(data.error);
 
-        globalCustomPois = []; // Zabezpieczenie przed dublowaniem
-        
+        globalCustomPois = []; 
         data.forEach((item, index) => {
             const cleanCoordsStr = item.coords.replace(/[^0-9.,-]/g, '');
             const coordsSplit = cleanCoordsStr.split(',');
@@ -3882,7 +3920,6 @@ async function loadGoogleSheetsPOIs() {
             if (isNaN(lat) || isNaN(lng)) return;
 
             const iconEmoji = item.icon || '📍';
-            // Zapisujemy pełne dane obiektu
             const poiObj = {
                 id: item.id ? String(item.id).trim() : `obiekt_${index}`,
                 latlng: L.latLng(lat, lng),
@@ -3898,7 +3935,7 @@ async function loadGoogleSheetsPOIs() {
 
             const marker = L.marker([lat, lng], {
                 icon: L.divIcon({
-                    html: `<div style="font-size:26px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.6)); transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${iconEmoji}</div>`,
+                    html: `<div style="font-size:26px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.6));">${iconEmoji}</div>`,
                     className: 'poi-icon custom-db-poi'
                 }),
                 zIndexOffset: 500
@@ -3908,12 +3945,15 @@ async function loadGoogleSheetsPOIs() {
         });
 
     } catch (error) {
-        console.error("Nie udało się załadować punktów z Arkusza Google:", error);
+        // Ciche przechwycenie błędu - aplikacja się nie zawiesi, po prostu nie pobierze punktów
+        console.warn("Brak połączenia z Bazą Danych (Google Sheets) lub zły link. Punkty GS nie zostały wczytane.", error.message);
     } finally {
-        // Po pobraniu (nawet z błędem) aktywujemy pasek
-        searchInput.disabled = false;
-        searchBtn.disabled = false;
-        searchInput.placeholder = "Szukaj (nazwa, ID lub współ.)";
+        // Zawsze aktywuj pasek wyszukiwania, by działał dla OSM i punktów lokalnych
+        if(searchInput && searchBtn) {
+            searchInput.disabled = false;
+            searchBtn.disabled = false;
+            searchInput.placeholder = "Szukaj (nazwa, ID lub współ.)";
+        }
     }
 }
 
