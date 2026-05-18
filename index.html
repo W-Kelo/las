@@ -94,26 +94,56 @@
             margin-top: 5px;
         }
 
-        /* Pływające Modale */
-        .floating-modal {
-            position: fixed;
-            top: 50%; left: 50%;
-            width: 400px;
-            min-width: 300px;
-            min-height: 200px;
-            max-width: 90vw;
-            max-height: 80vh;
-            background: rgba(var(--modal-bg-color), 0.95);
-            color: var(--text);
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-            z-index: 2000;
-            display: none;
-            flex-direction: column;
-            border: 1px solid rgba(255,255,255,0.1);
-            resize: both; /* Możliwość zmiany rozmiaru */
-            overflow: hidden;
-        }
+       /* --- ULEPSZONA RESPONSYWNOŚĆ WSZYSTKICH MODALI --- */
+.floating-modal {
+    position: fixed;
+    /* Domyślne centrowanie */
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    min-width: 300px;
+    max-width: 95vw;     /* Zapobiega wyjściu poza ekran na telefonie */
+    max-height: 90vh;    /* Zapobiega ucięciu z góry/dołu */
+    background: rgba(var(--modal-bg-color), 0.95);
+    color: var(--text);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    z-index: 2000;
+    display: none;
+    flex-direction: column;
+    border: 1px solid rgba(255,255,255,0.1);
+    resize: both;
+    overflow: hidden;
+}
+
+/* Gwarantuje, że wnętrze modali będzie się przewijać, zamiast ucinać */
+.modal-body {
+    padding: 15px;
+    overflow-y: auto; 
+    flex-grow: 1;
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+/* --- WYMUSZENIE ZMIENNYCH CSS (NAPRAWA SUWAKÓW CIONKI W EKSPORCIE) --- */
+.map-info-panel, .map-info-desc, .mi-stat-item, .leg-text {
+    font-size: var(--exp-font, 14px) !important;
+}
+.map-info-title {
+    font-size: calc(var(--exp-font, 14px) * 1.3) !important;
+}
+.leg-icon {
+    font-size: calc(var(--exp-font, 14px) + 6px) !important; /* Ikona zawsze trochę większa od tekstu */
+}
+.map-info-legend-list li {
+    margin-bottom: var(--legend-gap, 5px) !important;
+}
+
+/* Zwężenie przycisków w panelu punktów, by zmieściły się nowe opcje */
+.point-actions button {
+    padding: 4px 6px;
+    font-size: 0.9rem;
+}
 
         .modal-header { 
             padding: 10px 15px;
@@ -125,13 +155,6 @@
             user-select: none;
         }
         
-        .modal-body { 
-            padding: 15px;
-            overflow-y: auto; 
-            flex-grow: 1;
-            font-size: 0.9em;
-            line-height: 1.5;
-        }
 
         .opacity-control {
             display: flex;
@@ -914,9 +937,10 @@ canvas#elevation {
     </div>
 </div>
 
-<div id="pointsModal" class="floating-modal">
+<!-- MODAL EDYCJI PUNKTÓW TRASY -->
+<div id="pointsModal" class="floating-modal" style="width: 420px;">
     <div class="modal-header">
-        <span>📍 Edycja Punktów</span>
+        <span>📍 Edycja Punktów Trasy</span>
         <div style="display:flex; align-items:center">
             <div class="opacity-control" title="Przezroczystość">
                 👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
@@ -924,7 +948,10 @@ canvas#elevation {
             <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('pointsModal')">X</button>
         </div>
     </div>
-    <div class="modal-body" id="pointsList"></div>
+    <div class="modal-body" style="display:flex; flex-direction:column; gap:10px; padding: 10px;">
+        <button onclick="reverseRoute()" style="width:100%; background: #8b5cf6; padding: 10px;">🔃 Odwróć kierunek trasy</button>
+        <div id="pointsList" style="flex-grow:1; overflow-y:auto; padding-right: 5px;"></div>
+    </div>
 </div>
 
 <!-- MODAL OPISU TRASY -->
@@ -1620,12 +1647,21 @@ makeDraggable(document.getElementById('pointsModal'));
 makeDraggable(document.getElementById('descModal'));
 makeDraggable(document.getElementById('styleModal'));
 
+// Otwieranie dowolnego pływającego modalu - wymusza centrowanie!
 function openCenteredModal(id) {
     const modal = document.getElementById(id);
     modal.style.display = 'flex';
+    
+    // Reset pozycji - przywraca modal na środek ekranu
     modal.style.top = '50%';
     modal.style.left = '50%';
-    modal.style.transform = 'translate(-50%, -50%)'; // Zawsze wraca na idealny środek
+    modal.style.transform = 'translate(-50%, -50%)';
+    
+    // Jeśli modal przekracza wysokość okna, upewnijmy się, że nie jest przyklejony poza ekranem
+    if(window.innerHeight < modal.offsetHeight) {
+        modal.style.top = '0px';
+        modal.style.transform = 'translate(-50%, 0)';
+    }
 }
 
 function openPointsModal() {
@@ -2475,6 +2511,35 @@ function exportGPX() {
     a.download = `trasa_puszcza_${new Date().toLocaleDateString()}.gpx`;
     a.click();
 }
+    // Odwracanie całej trasy (START staje się METĄ i odwrotnie)
+function reverseRoute() {
+    if (isRouting || routePoints.length < 2) return;
+    
+    // Odwracamy tablicę punktów
+    routePoints.reverse();
+    
+    // Przeliczamy i rysujemy od nowa
+    recalculateRoute();
+    renderPointsList();
+}
+
+// Skok punktu na samą górę lub dół
+function movePointToExtremity(idx, toTop) {
+    if (isRouting) return;
+    
+    // Wyciągamy punkt z tablicy
+    const pt = routePoints.splice(idx, 1)[0];
+    
+    // Wstawiamy na początek (top) lub na koniec (bottom)
+    if (toTop) {
+        routePoints.unshift(pt);
+    } else {
+        routePoints.push(pt);
+    }
+    
+    recalculateRoute(); 
+    renderPointsList();
+}
 
 function removePointById(id) {
     if (isRouting) return;
@@ -2500,7 +2565,6 @@ function renderPointsList() {
         const item = document.createElement('div');
         item.className = 'point-item';
         
-        // Atrybuty Drag & Drop
         item.draggable = true;
         item.dataset.index = i;
         item.addEventListener('dragstart', handleDragStart);
@@ -2509,13 +2573,10 @@ function renderPointsList() {
         item.addEventListener('drop', handleDrop);
         item.addEventListener('dragend', handleDragEnd);
 
-        // Zdarzenia podświetlania na mapie
         item.onmouseenter = () => highlightPointOnMap(i);
         item.onmouseleave = () => unhighlightPointOnMap(i);
 
         const distText = i === 0 ? "START" : `+${(p.distFromPrev).toFixed(0)} m`;
-        
-        // Obliczanie czasu (ok. 4.5 km/h)
         let timeTxt = "";
         if (i > 0) {
             const timeMins = p.distFromPrev / 75;
@@ -2528,8 +2589,11 @@ function renderPointsList() {
                 <span style="color: var(--accent); font-weight: bold;">${distText}</span> <small style="opacity:0.7;">${timeTxt}</small>
             </div>
             <div class="point-actions">
-                <button class="secondary" title="Przesuń w górę" onclick="movePoint(${i}, 'up')" ${i===0?'disabled':''}>↑</button>
-                <button class="secondary" title="Przesuń w dół" onclick="movePoint(${i}, 'down')" ${i===routePoints.length-1?'disabled':''}>↓</button>
+                <!-- NOWE PRZYCISKI: Skok na ekstremum -->
+                <button class="secondary" title="Na sam początek" onclick="movePointToExtremity(${i}, true)" ${i===0?'disabled':''}>⇈</button>
+                <button class="secondary" title="W górę" onclick="movePoint(${i}, 'up')" ${i===0?'disabled':''}>↑</button>
+                <button class="secondary" title="W dół" onclick="movePoint(${i}, 'down')" ${i===routePoints.length-1?'disabled':''}>↓</button>
+                <button class="secondary" title="Na sam koniec" onclick="movePointToExtremity(${i}, false)" ${i===routePoints.length-1?'disabled':''}>⇊</button>
                 <button class="danger" title="Usuń punkt" onclick="removePointById(${p.id})">🗑️</button>
             </div>`;
         list.appendChild(item);
