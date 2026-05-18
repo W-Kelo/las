@@ -1404,7 +1404,12 @@ canvas#elevation {
 <div id="stopsModal" class="floating-modal" style="width: 450px; z-index: 2200;">
     <div class="modal-header" style="background: rgba(245, 158, 11, 0.2);">
         <span style="color: #f59e0b; font-weight:bold;">☕ Planowanie Postojów</span>
-        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="toggleStopMode(false)">X</button>
+        <div style="display:flex; align-items:center">
+            <div class="opacity-control" title="Przezroczystość">
+                👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
+            </div>
+            <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="toggleStopMode(false)">X</button>
+        </div>
     </div>
     <div class="modal-body">
         <div id="stopsInstructions" style="background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; padding: 10px; font-size: 0.85rem; margin-bottom: 15px;">
@@ -1427,7 +1432,10 @@ canvas#elevation {
 <div id="stopsWarningModal" class="floating-modal warning-pulse" style="width: 350px; z-index: 3000;">
     <div class="modal-header" style="background: rgba(239, 68, 68, 0.8); color: white;">
         <span>⚠️ Uwaga! Oddalono się od postoju</span>
-    </div>
+        <div style="display:flex; align-items:center">
+            <div class="opacity-control" title="Przezroczystość">
+                👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
+            </div>
     <div class="modal-body" style="text-align: center;">
         <p style="font-size: 0.95rem;">Zmieniono przebieg trasy. Niektóre z Twoich postojów nie leżą już na ścieżce GPX!</p>
         <p style="font-size: 0.85rem; color: #cbd5e1;">Zgubione postoje zostały podświetlone na mapie. <strong>Przeciągnij je z powrotem na linię trasy</strong>, lub usuń, jeśli nie są już potrzebne.</p>
@@ -1719,6 +1727,8 @@ function makeDraggable(el) {
 makeDraggable(document.getElementById('pointsModal'));
 makeDraggable(document.getElementById('descModal'));
 makeDraggable(document.getElementById('styleModal'));
+makeDraggable(document.getElementById('stopsModal'));
+makeDraggable(document.getElementById('stopsWarningModal'));
 
 // Otwieranie dowolnego pływającego modalu - wymusza centrowanie!
 function openCenteredModal(id) {
@@ -4601,9 +4611,12 @@ function renderMyPointsList() {
         return;
     }
 
-    filtered.forEach(p => {
+    iltered.forEach(p => {
         const globalRef = globalCustomPois.find(gp => gp.id === p.id);
-        const badge = p.storage === 'local' ? `<span class="badge badge-local">💾 Na stałe</span>` : `<span class="badge badge-session">⏳ Sesja</span>`;
+        
+        // Generowanie tagów "Na stałe / Sesja" oraz "Postój"
+        const storageBadge = p.storage === 'local' ? `<span class="badge badge-local">💾 Na stałe</span>` : `<span class="badge badge-session">⏳ Sesja</span>`;
+        const stopBadge = p.isStop ? `<span class="badge" style="background:#f59e0b; color:white; margin-left: 4px;">☕ Postój</span>` : ``;
         
         const item = document.createElement('div');
         item.className = 'my-point-list-item';
@@ -4612,7 +4625,7 @@ function renderMyPointsList() {
                 <span style="font-size:1.4rem; margin-right:5px;">${p.icon}</span>
                 <div style="display:inline-block; vertical-align:middle;">
                     <strong>${p.name}</strong><br>
-                    ${badge} <small style="opacity:0.7">${p.desc ? p.desc.substring(0, 20)+'...' : ''}</small>
+                    ${storageBadge} ${stopBadge} <small style="opacity:0.7">${p.desc ? p.desc.substring(0, 20)+'...' : ''}</small>
                 </div>
             </div>
             <div style="display:flex; gap:5px;">
@@ -4621,9 +4634,7 @@ function renderMyPointsList() {
             </div>
         `;
 
-        // Event najechania myszką = Mignięcie markera na mapie
         item.onmouseenter = () => { if(globalRef) { map.setView(globalRef.latlng, map.getZoom()); highlightAndShowMarker(globalRef); }};
-        
         container.appendChild(item);
     });
 }
@@ -4850,16 +4861,14 @@ function snapAndCreateStop(clickLatLng) {
 
 function createStopObject(latlng, distAlongRoute) {
     const stopId = 'stop_' + Date.now();
-    
-    // Domyślna data to "teraz" zaokrąglona do pełnych minut
     const now = new Date();
     now.setSeconds(0,0);
     
     const stop = {
         id: stopId, latlng: latlng, snappedDist: distAlongRoute,
         name: "Mój postój", desc: "",
-        startTime: now.toISOString().slice(0,16), // format yyyy-MM-ddThh:mm dla inputa
-        duration: 30, // w minutach domyślnie
+        startTime: now.toISOString().slice(0,16),
+        duration: 30,
         endTime: new Date(now.getTime() + 30 * 60000).toISOString().slice(0,16),
         visualType: 'icon', icon: '☕', color: '#f59e0b', radius: 10,
         marker: null, isSaved: false
@@ -4868,6 +4877,7 @@ function createStopObject(latlng, distAlongRoute) {
     routeStops.push(stop);
     renderStopMarker(stop);
     renderStopsList();
+    generateRouteDescription(); // Odśwież opis z nowym postojem
 }
 
 function renderStopMarker(stop) {
@@ -4983,15 +4993,19 @@ function calcStopTimes(id, changedField, value) {
         const dStart = new Date(stop.startTime);
         const dEnd = new Date(value);
         let diffMins = Math.round((dEnd.getTime() - dStart.getTime()) / 60000);
-        if(diffMins < 1) diffMins = 1; // Zabezpieczenie przed ujemnym czasem
+        if(diffMins < 1) diffMins = 1;
         stop.duration = diffMins;
     }
     renderStopsList();
+    generateRouteDescription(); // Odśwież opis ze zmienionym czasem
 }
 
 function updateStopData(id, field, value) {
     const stop = routeStops.find(s => s.id === id);
-    if(stop) stop[field] = value;
+    if(stop) {
+        stop[field] = value;
+        generateRouteDescription(); // Odśwież opis ze zmienioną nazwą/notatką
+    }
 }
 
 function updateStopVisual(id, field, value) {
@@ -5009,8 +5023,19 @@ function deleteStop(id) {
     const idx = routeStops.findIndex(s => s.id === id);
     if(idx > -1) {
         if(routeStops[idx].marker) map.removeLayer(routeStops[idx].marker);
+        
+        // Zabezpieczenie usuwające z Moich Punktów, jeśli był zapisany
+        if(routeStops[idx].isSaved) {
+            const savedIdx = userSavedPois.findIndex(p => p.id === id);
+            if(savedIdx > -1) {
+                userSavedPois.splice(savedIdx, 1);
+                updateLocalStoragePois(); // Pomocnicza funkcja poniżej
+            }
+        }
+        
         routeStops.splice(idx, 1);
         renderStopsList();
+        generateRouteDescription(); // Odśwież opis po usunięciu
     }
 }
 
@@ -5039,6 +5064,16 @@ function saveAllStopsToMyPoints(storageType) {
         if(!s.isSaved) saveStopToMyPoints(s.id, storageType);
     });
 }
+    function updateLocalStoragePois() {
+    const safeLocals = userSavedPois
+        .filter(p => p.storage === 'local')
+        .map(p => ({
+            id: p.id, lat: p.lat, lng: p.lng, name: p.name,
+            desc: p.desc, icon: p.icon, storage: p.storage, rawTitle: p.rawTitle,
+            isStop: p.isStop, snappedDist: p.snappedDist
+        }));
+    localStorage.setItem('gpx_user_pois', JSON.stringify(safeLocals));
+}
 
 // WERYFIKACJA ODDALENIA POSTOJÓW PRZY ZMIANIE TRASY
 // Wywołaj to na samym końcu funkcji recalculateRoute() !
@@ -5049,9 +5084,8 @@ function validateStopsOnLine() {
 
     routeStops.forEach(stop => {
         let isClose = false;
-        // Sprawdzamy czy postój jest blisko jakiegokolwiek punktu nowej geometrii
         for (let i = 0; i < routeGeometry.length; i++) {
-            if (stop.latlng.distanceTo(L.latLng(routeGeometry[i])) < 50) { // Tolerancja 50m
+            if (stop.latlng.distanceTo(L.latLng(routeGeometry[i])) < 50) {
                 isClose = true;
                 break;
             }
@@ -5060,15 +5094,61 @@ function validateStopsOnLine() {
         if (!isClose) {
             displacedCount++;
             if(stop.marker) {
-                stop.marker.getElement().classList.add('warning-pulse');
+                const el = stop.marker.getElement();
+                if(el) el.classList.add('warning-pulse');
                 
-                // Uruchamiamy przeciąganie dla zgubionych
                 stop.marker.dragging.enable();
+                
+                // PRAWIDŁOWE AKTUALIZOWANIE PUNKTU PO PRZESUNIĘCIU
                 stop.marker.on('dragend', function(e) {
-                    snapAndCreateStop(e.target.getLatLng()); // Snappuje na nowo
-                    deleteStop(stop.id); // Usuwa stary zgubiony
-                    stop.marker.getElement().classList.remove('warning-pulse');
-                    if(document.getElementById('stopsWarningModal')) document.getElementById('stopsWarningModal').style.display='none';
+                    const newLatLng = e.target.getLatLng();
+                    
+                    // Szukamy najbliższego punktu na linii, by zaktualizować snappedDist
+                    let closestDist = Infinity;
+                    let accumulatedDistAtSnap = 0;
+                    let tempDist = 0;
+                    let newSnappedLatLng = newLatLng;
+
+                    for (let i = 0; i < routeGeometry.length - 1; i++) {
+                        const p1 = L.latLng(routeGeometry[i]);
+                        const segmentLen = p1.distanceTo(L.latLng(routeGeometry[i+1]));
+                        const d = newLatLng.distanceTo(p1);
+                        if (d < closestDist) {
+                            closestDist = d;
+                            accumulatedDistAtSnap = tempDist;
+                            newSnappedLatLng = p1;
+                        }
+                        tempDist += segmentLen;
+                    }
+
+                    // Aktualizacja danych tego samego postoju
+                    stop.latlng = newSnappedLatLng;
+                    stop.snappedDist = accumulatedDistAtSnap;
+                    stop.marker.setLatLng(newSnappedLatLng);
+                    stop.marker.dragging.disable();
+                    
+                    if(el) el.classList.remove('warning-pulse');
+                    
+                    // Jeśli punkt był zapisany, aktualizujemy go w Moich Punktach
+                    if (stop.isSaved) {
+                        const savedRef = userSavedPois.find(p => p.id === stop.id);
+                        if(savedRef) {
+                            savedRef.lat = newSnappedLatLng.lat;
+                            savedRef.lng = newSnappedLatLng.lng;
+                            savedRef.snappedDist = accumulatedDistAtSnap;
+                            updateLocalStoragePois();
+                        }
+                    }
+
+                    // Odświeżamy widoki
+                    generateRouteDescription();
+                    renderStopsList();
+                    
+                    // Schowaj modal jeśli uratowano wszystkie
+                    displacedCount--;
+                    if(displacedCount <= 0 && document.getElementById('stopsWarningModal')) {
+                        document.getElementById('stopsWarningModal').style.display='none';
+                    }
                 });
             }
         } else {
@@ -5077,9 +5157,7 @@ function validateStopsOnLine() {
         }
     });
 
-    if (displacedCount > 0) {
-        openCenteredModal('stopsWarningModal');
-    }
+    if (displacedCount > 0) openCenteredModal('stopsWarningModal');
 }
 </script>
 
