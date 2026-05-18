@@ -176,13 +176,16 @@
         }
 /* --- RESPONSILWNY I KLASYCZNY MODAL EKSPORTU --- */
 .map-export-modal {
-    width: 95vw !important;
-    height: 90vh !important;
-    max-width: 1400px;
-    max-height: 1000px;
-    display: none; /* TO NAPRAWIA PROBLEM OTWIERANIA NA STARCIE */
+    /* Modal dostosowuje się dynamicznie do KAŻDEGO ekranu, zostawiając 20px marginesu z każdej strony */
+    width: calc(100vw - 40px) !important;
+    height: calc(100vh - 40px) !important;
+    max-width: none;
+    max-height: none;
+    display: none;
     flex-direction: column;
     overflow: hidden;
+    border-radius: 12px;
+}
 }
 
 .export-header {
@@ -308,8 +311,9 @@
     z-index: 1000;
     pointer-events: auto; /* Pozwala klikać w panel, ale nie psuje mapy */
     font-family: 'Segoe UI', sans-serif;
-    min-width: 200px;
-    max-width: 350px;
+    max-width: 85%;
+    max-height: 70vh;
+    overflow-y: auto;
     display: none; /* Domyślnie ukryty, pokazuje się gdy dodamy dane */
     border: 1px solid rgba(0,0,0,0.1);
     backdrop-filter: blur(4px);
@@ -2881,119 +2885,98 @@ function openMapExportModal() {
     modal.style.left = '50%';
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
+    modal.style.display = 'flex'; // Zawsze pokazujemy sam modal
 
-    // Pokazanie DIVa przed logiką
-    modal.style.display = 'flex';
+    const emptyState = document.getElementById('exportEmptyState');
+    const toolbar = document.getElementById('exportToolbar');
 
-    // Używamy Twojej niezawodnej metody z requestAnimationFrame
-    requestAnimationFrame(() => {
-        console.log('[EXPORT] Modal visible');
-        initExportMap();
-    });
+    // BANALNA LOGIKA SPRAWDZANIA:
+    if (routeGeometry.length < 2) {
+        // Nie ma linii - pokaż szary ekran z komunikatem
+        emptyState.style.display = 'flex';
+        if (toolbar) { toolbar.style.opacity = '0.3'; toolbar.style.pointerEvents = 'none'; }
+        wasExportEmpty = true; // Zapisujemy w zmiennej!
+    } else {
+        // Jest linia - ukryj szary ekran
+        emptyState.style.display = 'none';
+        if (toolbar) { toolbar.style.opacity = '1'; toolbar.style.pointerEvents = 'auto'; }
+
+        // Opóźnienie by DOM zdążył się narysować (chroni przed błędami Leafleta)
+        setTimeout(() => {
+            initExportMap();
+            
+            // Jeżeli wcześniej był błąd, automatycznie odświeżamy widok, by narysować linię
+            if (wasExportEmpty) {
+                executeRefreshRoute();
+                wasExportEmpty = false;
+            }
+        }, 50);
+    }
 }
 
 function initExportMap() {
     const container = document.getElementById('mapExport');
-    const emptyState = document.getElementById('exportEmptyState');
-    const toolbar = document.getElementById('exportToolbar');
-    
-    // Zabezpieczenie przed brakiem elementu (rozwiązuje błąd Map container not found)
-    if (!container) {
-        console.error("Błąd krytyczny: Kontener mapExport nie istnieje w DOM!");
-        return;
-    }
+    if (!container) return;
 
-    // 1. Sprawdzenie, czy mamy trasę
-    if (routeGeometry.length < 2) {
-        emptyState.style.display = 'flex';
-        if(toolbar) {
-            toolbar.style.opacity = '0.3';
-            toolbar.style.pointerEvents = 'none';
-        }
-        wasExportEmpty = true;
-        return; // Zakończ! Leaflet nie dostanie pustej mapy do przeróbki.
-    } else {
-        emptyState.style.display = 'none';
-        if(toolbar) {
-            toolbar.style.opacity = '1';
-            toolbar.style.pointerEvents = 'auto';
-        }
-    }
-
-    // 2. Jeśli mapa już wcześniej została stworzona (rozwiązuje błąd addLayer)
-    if (exportMap) {
-        console.log('[EXPORT] Map exists → invalidateSize');
-        exportMap.invalidateSize(true);
+    if (!exportMap) {
+        // Pierwsze utworzenie mapy
+        exportMap = L.map(container, { zoomControl: false, attributionControl: false, preferCanvas: true });
         
-        // Złote rozwiązanie: Jeśli ostatnim razem był błąd, cicho zaktualizuj trasę.
-        if (wasExportEmpty) {
-            console.log('[EXPORT] Trasa dodana po szarym ekranie -> Auto Odświeżanie');
-            executeRefreshRoute();
-            wasExportEmpty = false;
-        }
-        return;
+        // ZŁOTY ŚRODEK NA BŁĄD "Set map center and zoom first": 
+        // Wymuszamy domyślne współrzędne, by Leaflet "ożył" zanim cokolwiek do niego dodamy.
+        exportMap.setView([53.54, 14.55], 13);
+        
+        getExportTileLayer().addTo(exportMap);
+        L.control.zoom({ position: 'topright' }).addTo(exportMap);
+        scaleControl = L.control.scale({ imperial: false, position: 'bottomleft' });
+
+        // Nasłuchiwacze odświeżające legendę po przesunięciu mapy
+        exportMap.on('moveend', syncExportPoints);
+        exportMap.on('zoomend', syncExportPoints);
+    } else {
+        exportMap.invalidateSize(true);
     }
 
-    // 3. Pierwsze utworzenie mapy eksportu
-    exportMap = L.map(container, {
-        zoomControl: false,
-        attributionControl: false,
-        preferCanvas: true
-    });
-
-    const tiles = getExportTileLayer();
-    tiles.addTo(exportMap);
-
-    exportPolyline = L.polyline(routeGeometry, {
-        color: exportLineColor || '#22c55e',
-        weight: exportLineWeight || 6,
-        opacity: 1
+    // Dodanie linii
+    if (exportPolyline) exportMap.removeLayer(exportPolyline);
+    exportPolyline = L.polyline(routeGeometry, { 
+        color: exportLineColor || '#22c55e', 
+        weight: exportLineWeight || 6 
     }).addTo(exportMap);
-    
-    L.control.zoom({ position: 'topright' }).addTo(exportMap);
 
-    scaleControl = L.control.scale({ imperial: false, position: 'bottomleft' });
-
+    // Dopasowanie do trasy
     if (routeGeometry.length > 1) {
         exportMap.fitBounds(exportPolyline.getBounds(), { padding: [60, 60] });
-        console.log('[EXPORT] fitBounds OK');
     }
 
-    // Twoje bezpieczne opóźnienie
     setTimeout(() => {
-        console.log('[EXPORT] invalidateSize (delayed)');
         exportMap.invalidateSize(true);
-        syncExportPoints(); // Wymusza narysowanie legendy z ewentualnych starych danych
+        syncExportPoints(); // Odpalenie legendy
     }, 200);
-
-    exportMap.on('moveend', syncExportPoints);
-    exportMap.on('zoomend', syncExportPoints);
 }
 
-// Zabezpieczamy funkcję odświeżania na wypadek, gdy mapa nie zdążyła powstać
 function executeRefreshRoute() {
     document.getElementById('confirmRefreshModal').style.display = 'none';
-    
-    // Zabezpieczenie!
     if (!exportMap) return; 
 
-    // 1. Czyszczenie legendy
+    // Czyszczenie legendy z ekranu i mapy
     Object.values(exportLegendItems).forEach(item => exportMap.removeLayer(item.marker));
     exportLegendItems = {};
     document.getElementById('exportLegendList').innerHTML = '';
     
-    // 2. Przerysowanie linii trasy
+    // Przerysowanie linii
     if(exportPolyline) exportMap.removeLayer(exportPolyline);
     exportPolyline = L.polyline(routeGeometry, { 
         color: exportLineColor || '#22c55e', 
-        weight: exportLineWeight || 6, 
-        opacity: 1 
+        weight: exportLineWeight || 6 
     }).addTo(exportMap);
     
-    // 3. Dopasowanie widoku
     if (routeGeometry.length > 1) {
         exportMap.fitBounds(exportPolyline.getBounds(), { padding: [60, 60] });
     }
+    
+    // Na koniec odświeżamy punkty (żeby wskoczyły na nowe współrzędne trasy)
+    syncExportPoints();
 }
 function toggleScale() {
     if (!exportMap) return;
@@ -3247,7 +3230,16 @@ function filterPickerList() {
     const container = document.getElementById('pickerListContainer');
     container.innerHTML = '';
     
-    const dataSource = globalCustomPois.filter(p => tempPickerType === 'gas' ? p.isGas : p.isUserSaved);
+    // GWARANCJA POBRANIA PUNKTÓW:
+    // Jeśli wybieramy GAS, bierzemy z bazy globalnej. 
+    // Jeśli wybieramy "Moje Punkty", bierzemy BEZPOŚREDNIO z tablicy userSavedPois.
+    let dataSource = [];
+    if (tempPickerType === 'gas') {
+        dataSource = globalCustomPois.filter(p => p.isGas);
+    } else {
+        dataSource = userSavedPois; // To rozwiązuje problem niewidocznych punktów z LocalStorage!
+    }
+
     const selectedSet = exportPointSettings[tempPickerType].ids;
 
     if (dataSource.length === 0) {
@@ -3258,7 +3250,7 @@ function filterPickerList() {
     dataSource.forEach(p => {
         if (!p.name.toLowerCase().includes(query)) return;
         const isChecked = selectedSet.has(p.id) ? 'checked' : '';
-        const badge = p.isUserSaved ? (p.storage === 'local' ? `[Na stałe]` : `[Sesja]`) : '';
+        const badge = (tempPickerType === 'user') ? (p.storage === 'local' ? `[Na stałe]` : `[Sesja]`) : '';
         
         container.innerHTML += `
             <label class="picker-item-styled" style="display:flex; align-items:center; gap:10px; padding:8px; border-bottom:1px solid rgba(255,255,255,0.1); cursor:pointer;">
@@ -3266,12 +3258,24 @@ function filterPickerList() {
                 <span style="font-size:1.2rem;">${p.icon}</span> 
                 <div style="display:flex; flex-direction:column; line-height: 1.2;">
                     <span style="font-weight:bold; font-size:0.9rem;">${p.name}</span>
-                    <small style="font-size:0.75rem; opacity:0.7;">${badge} ${p.category}</small>
+                    <small style="font-size:0.75rem; opacity:0.7;">${badge}</small>
                 </div>
             </label>
         `;
     });
 }
+
+function savePickerSelection() {
+    const selectedIds = new Set();
+    document.querySelectorAll('.picker-cb:checked').forEach(cb => selectedIds.add(cb.value));
+    exportPointSettings[tempPickerType].ids = selectedIds;
+    
+    document.getElementById('exportPickerModal').style.display = 'none';
+    
+    // Po zamknięciu wyboru natychmiast wrzucamy je na mapę i legendę
+    syncExportPoints(); 
+}
+
 
 function openStatsModal() {
     const modal = document.getElementById('statsSelectionModal');
@@ -4482,40 +4486,51 @@ function savePickerSelection() {
 
 // Główny silnik synchronizujący punkty na mapie i w legendzie
 function syncExportPoints() {
-    if(!exportMap) return;
+    // Zabezpieczenie przed błędem Leafleta
+    if (!exportMap || !exportMap._loaded) return; 
+
     const bounds = exportMap.getBounds();
-    const shouldBeVisible = new Set(); // Przechowuje ID punktów, które MAJĄ prawo być na mapie
+    const shouldBeVisible = new Set(); 
 
-    const legendGas = document.getElementById('chkExpGasLegend').checked;
-    const legendUser = document.getElementById('chkExpUserLegend').checked;
+    // Sprawdzamy stan checkboxów "Pokaż w legendzie" z modalu ustawień
+    const chkGas = document.getElementById('chkExpGasLegend');
+    const chkUser = document.getElementById('chkExpUserLegend');
+    const legendGas = chkGas ? chkGas.checked : false;
+    const legendUser = chkUser ? chkUser.checked : false;
 
-    globalCustomPois.forEach(poi => {
-        const isGasMatch = poi.isGas && exportPointSettings.gas.ids.has(poi.id);
-        const isUserMatch = poi.isUserSaved && exportPointSettings.user.ids.has(poi.id);
+    // Łączymy wszystkie punkty (GAS z global, Twoje z userSavedPois), aby niczego nie pominąć
+    const combinedPois = [...globalCustomPois.filter(p => p.isGas), ...userSavedPois];
+
+    combinedPois.forEach(poi => {
+        const isGas = poi.isGas;
+        const isUser = !poi.isGas;
+
+        const isGasMatch = isGas && exportPointSettings.gas.ids.has(poi.id);
+        const isUserMatch = isUser && exportPointSettings.user.ids.has(poi.id);
 
         if (isGasMatch || isUserMatch) {
             const autoId = 'auto_' + poi.id;
             const inLegendEnabled = (isGasMatch && legendGas) || (isUserMatch && legendUser);
-
-            // Bierzemy aktualną pozycję z markera (bo user mógł go przesunąć na mapie eksportowej!)
-            const currentLatLng = exportLegendItems[autoId] ? exportLegendItems[autoId].marker.getLatLng() : poi.latlng;
-
-            if (bounds.contains(currentLatLng)) {
+            
+            // Konwersja współrzędnych, jeśli pochodzą bezpośrednio z userSavedPois (lat, lng zamiast obiektu L.latLng)
+            const poiLatLng = poi.latlng || L.latLng(poi.lat, poi.lng);
+            
+            // DYNAMICZNE SPRAWDZENIE: Czy punkt mieści się w widoku mapy eksportu?
+            if (bounds.contains(poiLatLng)) {
                 shouldBeVisible.add(autoId);
 
-                // Tworzenie, jeśli nie istnieje
+                // Tworzenie markera, jeśli jeszcze go nie ma na mapie eksportu
                 if (!exportLegendItems[autoId]) {
-                    const marker = L.marker(currentLatLng, {
+                    const marker = L.marker(poiLatLng, {
                         draggable: true,
-                        icon: L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));" title="Przeciągnij by przenieść">${poi.icon}</div>`, className: 'poi-icon' })
+                        icon: L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${poi.icon}</div>`, className: 'poi-icon' })
                     }).addTo(exportMap);
                     
                     marker.on('click', function(e) { L.DomEvent.stopPropagation(e); });
-
                     exportLegendItems[autoId] = { marker: marker, emoji: poi.icon, text: poi.name, isAuto: true, inList: false };
                 }
 
-                // Synchronizacja z listą w legendzie DOM
+                // Dodawanie/usuwanie tekstu z legendy panelu bocznego
                 const hasDomNode = document.getElementById(autoId);
                 if (inLegendEnabled && !hasDomNode) {
                     addAutoLegendItemToDOM(autoId);
@@ -4528,7 +4543,7 @@ function syncExportPoints() {
         }
     });
 
-    // Usuwanie punktów, które "uciekły" za ekran lub zostały odznaczone
+    // Usuwanie punktów, które "wyjechały" za ekran lub zostały odznaczone
     Object.keys(exportLegendItems).forEach(id => {
         if (exportLegendItems[id].isAuto && !shouldBeVisible.has(id)) {
             exportMap.removeLayer(exportLegendItems[id].marker);
@@ -4538,9 +4553,11 @@ function syncExportPoints() {
         }
     });
 
-    if(document.getElementById('miLegendContainer')) {
-        document.getElementById('miLegendContainer').style.display = 
-            document.getElementById('exportLegendList').children.length > 0 ? 'block' : 'none';
+    // NATYCHMIASTOWA AKTUALIZACJA WIDOCZNOŚCI PANELU Z LEGENDĄ
+    const legendContainer = document.getElementById('miLegendContainer');
+    const legendList = document.getElementById('exportLegendList');
+    if(legendContainer && legendList) {
+        legendContainer.style.display = legendList.children.length > 0 ? 'block' : 'none';
     }
     updatePanelVisibility();
 }
