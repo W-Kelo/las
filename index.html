@@ -844,6 +844,43 @@ canvas#elevation {
 .map-info-legend-list li {
     margin-bottom: var(--legend-gap, 5px) !important;
 }
+        /* --- MODULE POSTOJÓW --- */
+.stop-item {
+    background: rgba(0,0,0,0.15);
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    border-left: 4px solid #f59e0b;
+}
+.light .stop-item { background: #f1f5f9; }
+.stop-time-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.stop-input-group label {
+    display: block; font-size: 0.75rem; color: var(--accent); font-weight: bold; margin-bottom: 2px;
+}
+.stop-input-group input, .stop-input-group select, .stop-input-group textarea {
+    width: 100%; box-sizing: border-box; padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(0,0,0,0.2); color: inherit; font-family: inherit; font-size: 0.85rem;
+}
+.light .stop-input-group input, .light .stop-input-group select, .light .stop-input-group textarea {
+    background: #fff; border-color: #ccc;
+}
+.stop-visual-grid {
+    display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 8px; align-items: center; margin-bottom: 8px;
+}
+.btn-stop-save { background: #3b82f6; font-size: 0.8rem; padding: 6px; }
+.btn-stop-save:hover { background: #2563eb; }
+
+/* Ostrzeżenie o zgubionych postojach */
+.warning-pulse {
+    border: 2px solid #ef4444;
+    animation: pulseWarning 1.5s infinite;
+}
+@keyframes pulseWarning { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
     </style>
     
 </head>
@@ -885,6 +922,7 @@ canvas#elevation {
 
     <button onclick="openPointsModal()">📑 Edytuj Punkty</button>
     <button onclick="openDescModal()">📜 Opis Trasy</button>
+    <button onclick="openStopsModal()" style="background: #f59e0b;">☕ Postoje</button>
     <button onclick="openMyPointsModal()" style="background: #10b981;">📋 Zarządzaj punktami</button>
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
         <button onclick="openStyleModal()" style="background: #f59e0b;">🎨 Styl trasy</button>
@@ -1091,6 +1129,7 @@ canvas#elevation {
                 <option value="all">Wszystkie</option>
                 <option value="local">Zapisane na stałe</option>
                 <option value="session">Tylko w tej sesji</option>
+                <option value="stop">Tylko postoje</option>
             </select>
         </div>
         
@@ -1361,6 +1400,40 @@ canvas#elevation {
         </div>
     </div>
 </div>
+    <!-- MODAL: PLANOWANIE POSTOJÓW -->
+<div id="stopsModal" class="floating-modal" style="width: 450px; z-index: 2200;">
+    <div class="modal-header" style="background: rgba(245, 158, 11, 0.2);">
+        <span style="color: #f59e0b; font-weight:bold;">☕ Planowanie Postojów</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="toggleStopMode(false)">X</button>
+    </div>
+    <div class="modal-body">
+        <div id="stopsInstructions" style="background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; padding: 10px; font-size: 0.85rem; margin-bottom: 15px;">
+            ℹ️ <strong>Tryb dodawania postojów jest aktywny.</strong><br>
+            Kliknij w dowolne miejsce <strong style="color:var(--accent)">bezpośrednio na narysowanej linii trasy</strong>, aby dodać postój.
+        </div>
+        
+        <div style="display:flex; gap: 8px; margin-bottom: 15px;">
+            <button class="secondary" style="flex:1; font-size: 0.8rem;" onclick="saveAllStopsToMyPoints('session')">💾 Zapisz wszystkie (Sesja)</button>
+            <button style="flex:1; background: #8b5cf6; font-size: 0.8rem;" onclick="saveAllStopsToMyPoints('local')">💾 Zapisz wszystkie (Na stałe)</button>
+        </div>
+
+        <div id="stopsListContainer" style="max-height: 350px; overflow-y: auto; padding-right: 5px;">
+            <!-- Lista postojów -->
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: OSTRZEŻENIE O ZGUBIONYCH POSTOJACH -->
+<div id="stopsWarningModal" class="floating-modal warning-pulse" style="width: 350px; z-index: 3000;">
+    <div class="modal-header" style="background: rgba(239, 68, 68, 0.8); color: white;">
+        <span>⚠️ Uwaga! Oddalono się od postoju</span>
+    </div>
+    <div class="modal-body" style="text-align: center;">
+        <p style="font-size: 0.95rem;">Zmieniono przebieg trasy. Niektóre z Twoich postojów nie leżą już na ścieżce GPX!</p>
+        <p style="font-size: 0.85rem; color: #cbd5e1;">Zgubione postoje zostały podświetlone na mapie. <strong>Przeciągnij je z powrotem na linię trasy</strong>, lub usuń, jeśli nie są już potrzebne.</p>
+        <button onclick="closeModal('stopsWarningModal')" style="width: 100%; background: #ef4444; margin-top: 15px;">Zrozumiałem</button>
+    </div>
+</div>
 
 <!-- NAKŁADKA DO ZDJĘĆ NA PEŁNYM EKRANIE (LIGHTBOX) -->
 <div id="lightboxOverlay" class="lightbox-overlay" onclick="closeLightbox()">
@@ -1446,12 +1519,15 @@ let isDrawMode = false;
 let elevAnimFrame;
 let elevPhase = 0;
 let wasExportEmpty = false;
+let routeStops = []; 
+let isStopMode = false;
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
 };
 let tempPickerType = '';
 const userSavedLayer = L.layerGroup().addTo(map);
+const STOP_EMOJIS = ["☕", "🍔", "⛺", "🔥", "📸", "🛌", "🔋", "🚾", "🥪", "🪑"];
 const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
 const polyline = L.polyline([], {
@@ -1567,31 +1643,30 @@ function loadUserSavedPois() {
 }
 
 // Zmodyfikowany Event Click na mapie
+// Zmodyfikowany Event Click na mapie
 map.on('click', async e => {
+    // 1. Tryb dodawania własnego punktu
     if (manualPointMode) {
         manualPointMode = false;
         map.getContainer().style.cursor = '';
-        
-        // Deklarujemy mockSearchObj tylko RAZ
         const mockSearchObj = {
-            name: "Nowy Własny Punkt",
-            icon: "📍",
-            category: "Dodane ręcznie",
+            name: "Nowy Własny Punkt", icon: "📍", category: "Dodane ręcznie",
             description: `Współrzędne: <code>${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}</code>`,
-            isUserSaved: true, // Flaga otwierająca formę edycji/zapisu
-            isNewManual: true, // Flaga, że to całkiem nowy punkt
-            rawLat: e.latlng.lat,
-            rawLng: e.latlng.lng,
-            rawTitle: "Mój Punkt"
+            isUserSaved: true, isNewManual: true, rawLat: e.latlng.lat, rawLng: e.latlng.lng, rawTitle: "Mój Punkt"
         };
-        
         openCustomPoiModal(mockSearchObj); 
         return;
     }
     
-    // Kluczowa blokada!
-    if (!isDrawMode && !isRouting) return; 
+    // 2. Tryb dodawania POSTOJU
+    if (isStopMode) {
+        if (routeGeometry.length < 2) return showCustomAlert("Najpierw narysuj trasę!");
+        snapAndCreateStop(e.latlng);
+        return;
+    }
     
+    // 3. Klasyczne rysowanie trasy
+    if (!isDrawMode && !isRouting) return; 
     if (isRouting) return; 
     await addRoutePoint(e.latlng, true);
 });
@@ -1932,6 +2007,7 @@ async function recalculateRoute() {
         await fetchFullElevationProfile();
         generateRouteDescription(); 
         renderPointsList();
+        validateStopsOnLine();
     } catch(e) {
         console.error("Critical routing error", e);
     } finally {
@@ -2114,6 +2190,10 @@ function generateRouteDescription() {
     </div>`;
     
     let stepNumber = 1;
+    // Sortujemy postoje po dystansie od początku, żeby wstrzykiwać je po kolei
+    const sortedStops = [...routeStops, ...userSavedPois.filter(p => p.isStop && p.snappedDist !== undefined)]
+        .sort((a,b) => a.snappedDist - b.snappedDist);
+    let nextStopIdx = 0;
     let accumulatedGeom = [keyPoints[0]]; // Zbiera koordynaty dla żółtego podświetlenia etapu na mapie
     let accumulatedDist = 0;
 
@@ -2127,7 +2207,31 @@ function generateRouteDescription() {
             const prevP = keyPoints[i-1];
             turnAngle = getTurnAngle(prevP, currP, nextP);
         }
+// WSTRZYKIWANIE POSTOJÓW DO OPISU TRASY
+            while (nextStopIdx < sortedStops.length && sortedStops[nextStopIdx].snappedDist <= (accumulatedDist + (i === 0 ? 0 : 50))) { // margines 50m
+                const stop = sortedStops[nextStopIdx];
+                const phrases = ["Czas na przerwę!", "Zasłużony odpoczynek.", "Zrób sobie postój.", "Idealne miejsce na regenerację."];
+                const rPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+                
+                let stopTimeInfo = stop.duration ? `Czas trwania: ok. <b>${stop.duration} min</b>.` : '';
+                if(stop.startTime && stop.endTime) {
+                    const dStart = new Date(stop.startTime); const dEnd = new Date(stop.endTime);
+                    stopTimeInfo = `Planowany czas: <b>${dStart.getHours().toString().padStart(2,'0')}:${dStart.getMinutes().toString().padStart(2,'0')} - ${dEnd.getHours().toString().padStart(2,'0')}:${dEnd.getMinutes().toString().padStart(2,'0')}</b>.`;
+                }
 
+                text += `
+                    <div class="route-step" style="border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.1);">
+                        <div style="display:flex; align-items:center;">
+                            <span class="route-step-icon" style="font-size:1.5rem;">${stop.icon === 'dot' ? '☕' : stop.icon}</span> 
+                            <div>
+                                <small style="color:#f59e0b; font-weight:bold; display:block; text-transform: uppercase;">POSTÓJ: ${stop.name || 'Miejsce odpoczynku'}</small>
+                                ${rPhrase} ${stopTimeInfo}
+                            </div>
+                        </div>
+                        ${stop.desc ? `<span class="route-step-poi" style="border-top-color:#f59e0b;">📝 ${stop.desc}</span>` : ''}
+                    </div>`;
+                nextStopIdx++;
+            }
         accumulatedGeom.push(nextP);
         accumulatedDist += dist;
 
@@ -4696,6 +4800,286 @@ function addAutoLegendItemToDOM(id) {
         </div>
     `;
     list.appendChild(li);
+}
+    /* ================= SILNIK POSTOJÓW (BREAKS) ================= */
+
+function openStopsModal() {
+    toggleStopMode(true);
+    openCenteredModal('stopsModal');
+    renderStopsList();
+}
+
+function toggleStopMode(state) {
+    isStopMode = state;
+    if (state) {
+        map.getContainer().style.cursor = 'crosshair';
+    } else {
+        map.getContainer().style.cursor = '';
+        closeModal('stopsModal');
+    }
+}
+
+// Przyciąganie (Snapping) do najbliższego punktu na ścieżce GPX
+function snapAndCreateStop(clickLatLng) {
+    let closestDist = Infinity;
+    let closestPoint = null;
+    let accumulatedDistAtSnap = 0;
+    let tempDist = 0;
+
+    for (let i = 0; i < routeGeometry.length - 1; i++) {
+        const p1 = L.latLng(routeGeometry[i]);
+        const p2 = L.latLng(routeGeometry[i+1]);
+        const segmentLen = p1.distanceTo(p2);
+        
+        // Zwykła odległość do wierzchołków dla uproszczenia, w gęstym GPX to wystarczy
+        const d = clickLatLng.distanceTo(p1);
+        if (d < closestDist) {
+            closestDist = d;
+            closestPoint = p1;
+            accumulatedDistAtSnap = tempDist;
+        }
+        tempDist += segmentLen;
+    }
+
+    if (closestDist > 150) { // Tolerancja kliknięcia (150 metrów)
+        return showCustomAlert("Kliknąłeś za daleko od trasy. Kliknij bliżej zielonej linii.");
+    }
+
+    createStopObject(closestPoint, accumulatedDistAtSnap);
+}
+
+function createStopObject(latlng, distAlongRoute) {
+    const stopId = 'stop_' + Date.now();
+    
+    // Domyślna data to "teraz" zaokrąglona do pełnych minut
+    const now = new Date();
+    now.setSeconds(0,0);
+    
+    const stop = {
+        id: stopId, latlng: latlng, snappedDist: distAlongRoute,
+        name: "Mój postój", desc: "",
+        startTime: now.toISOString().slice(0,16), // format yyyy-MM-ddThh:mm dla inputa
+        duration: 30, // w minutach domyślnie
+        endTime: new Date(now.getTime() + 30 * 60000).toISOString().slice(0,16),
+        visualType: 'icon', icon: '☕', color: '#f59e0b', radius: 10,
+        marker: null, isSaved: false
+    };
+
+    routeStops.push(stop);
+    renderStopMarker(stop);
+    renderStopsList();
+}
+
+function renderStopMarker(stop) {
+    if (stop.marker) map.removeLayer(stop.marker);
+    
+    if (stop.visualType === 'dot') {
+        stop.marker = L.circleMarker(stop.latlng, {
+            radius: stop.radius, color: '#fff', weight: 2, fillColor: stop.color, fillOpacity: 1, zIndexOffset: 2000
+        }).addTo(map);
+    } else {
+        stop.marker = L.marker(stop.latlng, {
+            icon: L.divIcon({ html: `<div style="font-size:${stop.radius * 2.5}px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${stop.icon}</div>`, className: 'poi-icon' }),
+            zIndexOffset: 2000
+        }).addTo(map);
+    }
+
+    // Pozwalamy na kliknięcie w marker postoju by otworzyć klasyczny modal info
+    stop.marker.on('click', (e) => {
+        if(isStopMode) return; // W trybie edycji ignorujemy
+        L.DomEvent.stopPropagation(e);
+        
+        const dStart = stop.startTime ? new Date(stop.startTime) : null;
+        const timeStr = dStart ? `Planowany czas: <b>${dStart.getHours().toString().padStart(2,'0')}:${dStart.getMinutes().toString().padStart(2,'0')}</b> (Trwa: ${stop.duration} min)` : '';
+        
+        const mockObj = {
+            name: stop.name, icon: stop.visualType === 'dot' ? '☕' : stop.icon, category: "Postój na trasie",
+            description: `${timeStr}<br><br>${stop.desc || 'Brak dodatkowego opisu.'}`
+        };
+        openCustomPoiModal(mockObj);
+    });
+}
+
+function renderStopsList() {
+    const container = document.getElementById('stopsListContainer');
+    container.innerHTML = routeStops.length === 0 ? "<p style='text-align:center; opacity:0.7;'>Kliknij na linię mapy, aby dodać postój.</p>" : "";
+
+    const emojiOptions = STOP_EMOJIS.map(e => `<option value="${e}">${e}</option>`).join('');
+
+    routeStops.forEach((stop, idx) => {
+        const div = document.createElement('div');
+        div.className = 'stop-item';
+        div.innerHTML = `
+            <div class="stop-input-group" style="margin-bottom:6px;">
+                <input type="text" value="${stop.name}" placeholder="Nazwa postoju" onchange="updateStopData('${stop.id}', 'name', this.value)" style="font-weight:bold; font-size:1rem; border:none; background:transparent; padding:0;">
+            </div>
+            
+            <div class="stop-time-grid">
+                <div class="stop-input-group">
+                    <label>Początek:</label>
+                    <input type="datetime-local" value="${stop.startTime}" onchange="calcStopTimes('${stop.id}', 'start', this.value)">
+                </div>
+                <div class="stop-input-group">
+                    <label>Koniec:</label>
+                    <input type="datetime-local" value="${stop.endTime}" onchange="calcStopTimes('${stop.id}', 'end', this.value)">
+                </div>
+            </div>
+            
+            <div class="stop-input-group" style="margin-bottom:8px;">
+                <label>Czas trwania (minuty):</label>
+                <input type="number" min="1" value="${stop.duration}" onchange="calcStopTimes('${stop.id}', 'duration', this.value)">
+            </div>
+
+            <div class="stop-input-group" style="margin-bottom:8px;">
+                <textarea placeholder="Opis/Notatki (np. zjeść kanapki)" onchange="updateStopData('${stop.id}', 'desc', this.value)" rows="1">${stop.desc}</textarea>
+            </div>
+
+            <div class="stop-visual-grid">
+                <select onchange="updateStopVisual('${stop.id}', 'visualType', this.value)" class="stop-input-group">
+                    <option value="icon" ${stop.visualType==='icon'?'selected':''}>Ikona</option>
+                    <option value="dot" ${stop.visualType==='dot'?'selected':''}>Kropka</option>
+                </select>
+                
+                <div id="vis_icon_${stop.id}" style="display:${stop.visualType==='icon'?'block':'none'}">
+                    <select onchange="updateStopVisual('${stop.id}', 'icon', this.value)" class="stop-input-group">
+                        <option value="${stop.icon}">${stop.icon}</option>
+                        ${emojiOptions}
+                    </select>
+                </div>
+                <div id="vis_dot_${stop.id}" style="display:${stop.visualType==='dot'?'block':'none'}">
+                    <input type="color" value="${stop.color}" onchange="updateStopVisual('${stop.id}', 'color', this.value)" style="padding:0; height:30px; width:40px;">
+                </div>
+                
+                <label style="font-size:0.75rem; color:var(--accent);">Rozmiar:</label>
+                <input type="range" min="5" max="25" value="${stop.radius}" onchange="updateStopVisual('${stop.id}', 'radius', this.value)">
+            </div>
+            
+            <div style="display:flex; justify-content: space-between; margin-top: 10px;">
+                <button class="btn-stop-save" onclick="saveStopToMyPoints('${stop.id}', 'session')" ${stop.isSaved?'disabled':''}>${stop.isSaved?'Zapisano':'Zapisz do Moich'}</button>
+                <button class="danger icon-only" onclick="deleteStop('${stop.id}')" style="font-size:0.8rem; padding: 4px 8px;">🗑️ Usuń</button>
+            </div>
+        `;
+        container.appendChild(div);
+    });
+}
+
+// LOGIKA MATEMATYCZNA CZASU POSTOJU
+function calcStopTimes(id, changedField, value) {
+    const stop = routeStops.find(s => s.id === id);
+    if(!stop) return;
+
+    if (changedField === 'start') {
+        stop.startTime = value;
+        const dStart = new Date(value);
+        stop.endTime = new Date(dStart.getTime() + stop.duration * 60000).toISOString().slice(0,16);
+    } 
+    else if (changedField === 'duration') {
+        stop.duration = parseInt(value);
+        const dStart = new Date(stop.startTime);
+        stop.endTime = new Date(dStart.getTime() + stop.duration * 60000).toISOString().slice(0,16);
+    } 
+    else if (changedField === 'end') {
+        stop.endTime = value;
+        const dStart = new Date(stop.startTime);
+        const dEnd = new Date(value);
+        let diffMins = Math.round((dEnd.getTime() - dStart.getTime()) / 60000);
+        if(diffMins < 1) diffMins = 1; // Zabezpieczenie przed ujemnym czasem
+        stop.duration = diffMins;
+    }
+    renderStopsList();
+}
+
+function updateStopData(id, field, value) {
+    const stop = routeStops.find(s => s.id === id);
+    if(stop) stop[field] = value;
+}
+
+function updateStopVisual(id, field, value) {
+    const stop = routeStops.find(s => s.id === id);
+    if(!stop) return;
+    
+    if(field === 'radius') stop.radius = parseInt(value);
+    else stop[field] = value;
+    
+    renderStopMarker(stop);
+    if(field === 'visualType') renderStopsList(); // Przeładowanie by pokazać color picker lub select
+}
+
+function deleteStop(id) {
+    const idx = routeStops.findIndex(s => s.id === id);
+    if(idx > -1) {
+        if(routeStops[idx].marker) map.removeLayer(routeStops[idx].marker);
+        routeStops.splice(idx, 1);
+        renderStopsList();
+    }
+}
+
+// INTEGRACJA Z MOIMI PUNKTAMI (Zapis)
+function saveStopToMyPoints(id, storageType) {
+    const stop = routeStops.find(s => s.id === id);
+    if(!stop) return;
+
+    const savedPoiObj = {
+        id: stop.id, lat: stop.latlng.lat, lng: stop.latlng.lng, name: stop.name, 
+        desc: `Planowany czas: ${stop.startTime.replace('T', ' ')} - ${stop.endTime.replace('T', ' ')} (${stop.duration} min)\n${stop.desc}`,
+        icon: stop.visualType === 'dot' ? '☕' : stop.icon, 
+        storage: storageType, rawTitle: stop.name, 
+        isStop: true, // WAŻNY TAG DLA FILTROWANIA
+        snappedDist: stop.snappedDist
+    };
+
+    renderUserSavedPoi(savedPoiObj, true);
+    stop.isSaved = true;
+    renderStopsList();
+    showCustomAlert("Postój zapisany w Twoich punktach.");
+}
+
+function saveAllStopsToMyPoints(storageType) {
+    routeStops.forEach(s => {
+        if(!s.isSaved) saveStopToMyPoints(s.id, storageType);
+    });
+}
+
+// WERYFIKACJA ODDALENIA POSTOJÓW PRZY ZMIANIE TRASY
+// Wywołaj to na samym końcu funkcji recalculateRoute() !
+function validateStopsOnLine() {
+    if(routeStops.length === 0) return;
+    
+    let displacedCount = 0;
+
+    routeStops.forEach(stop => {
+        let isClose = false;
+        // Sprawdzamy czy postój jest blisko jakiegokolwiek punktu nowej geometrii
+        for (let i = 0; i < routeGeometry.length; i++) {
+            if (stop.latlng.distanceTo(L.latLng(routeGeometry[i])) < 50) { // Tolerancja 50m
+                isClose = true;
+                break;
+            }
+        }
+
+        if (!isClose) {
+            displacedCount++;
+            if(stop.marker) {
+                stop.marker.getElement().classList.add('warning-pulse');
+                
+                // Uruchamiamy przeciąganie dla zgubionych
+                stop.marker.dragging.enable();
+                stop.marker.on('dragend', function(e) {
+                    snapAndCreateStop(e.target.getLatLng()); // Snappuje na nowo
+                    deleteStop(stop.id); // Usuwa stary zgubiony
+                    stop.marker.getElement().classList.remove('warning-pulse');
+                    if(document.getElementById('stopsWarningModal')) document.getElementById('stopsWarningModal').style.display='none';
+                });
+            }
+        } else {
+            if(stop.marker && stop.marker.dragging) stop.marker.dragging.disable();
+            if(stop.marker && stop.marker.getElement()) stop.marker.getElement().classList.remove('warning-pulse');
+        }
+    });
+
+    if (displacedCount > 0) {
+        openCenteredModal('stopsWarningModal');
+    }
 }
 </script>
 
