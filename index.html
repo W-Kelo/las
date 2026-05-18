@@ -180,7 +180,7 @@
     height: 90vh !important;
     max-width: 1400px;
     max-height: 1000px;
-    display: flex;
+    display: none; /* TO NAPRAWIA PROBLEM OTWIERANIA NA STARCIE */
     flex-direction: column;
     overflow: hidden;
 }
@@ -970,6 +970,8 @@ canvas#elevation {
         <!-- Zawsze widoczny przycisk zamknięcia -->
         <button class="danger icon-only" style="padding: 4px 10px; flex-shrink: 0;" onclick="closeModal('mapExportModal')">X</button>
     </div>
+    <div id="mapExportModal" class="floating-modal map-export-modal" style="display: none;" data-html2canvas-ignore>
+
        <div class="export-body" id="exportWrapper">
         <div id="exportEmptyState" style="display:none;">
             <div style="font-size: 3rem; margin-bottom: 10px;">🗺️</div>
@@ -2876,8 +2878,8 @@ async function generatePDF() {
 
 function openMapExportModal() {
     const modal = document.getElementById('mapExportModal');
+    // Wymuszamy pokazanie modalu
     modal.style.display = 'flex';
-    // Centrowanie
     modal.style.left = '50%';
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
@@ -2886,103 +2888,67 @@ function openMapExportModal() {
     const toolbar = document.getElementById('exportToolbar');
 
     if (routeGeometry.length < 2) {
+        // Gdy nie ma trasy
         emptyState.style.display = 'flex';
-        toolbar.style.opacity = '0.3'; // Wyszarzamy pasek, ale X wciąż działa
+        toolbar.style.opacity = '0.3';
         toolbar.style.pointerEvents = 'none';
         wasExportEmpty = true;
     } else {
+        // Gdy trasa istnieje
         emptyState.style.display = 'none';
         toolbar.style.opacity = '1';
         toolbar.style.pointerEvents = 'auto';
 
-        if (wasExportEmpty && exportMap) {
-            executeRefreshRoute();
-        }
-        wasExportEmpty = false;
-        
-        // Zawsze upewniamy się, że mapa pobierze wymiary po animacji modala
-        requestAnimationFrame(() => {
+        // Opóźnienie 50ms rozwiązuje błąd "Map container not found"
+        // Przeglądarka musi zdążyć nadać div-owi rozmiary (display: flex)
+        setTimeout(() => {
             initExportMap();
-            setTimeout(() => { if (exportMap) exportMap.invalidateSize(true); }, 200);
-        });
+            
+            // Jeśli poprzednio był szary ekran, to wymuszamy zaciągnięcie nowej trasy
+            if (wasExportEmpty) {
+                executeRefreshRoute();
+                wasExportEmpty = false;
+            }
+        }, 50);
     }
 }
+
 function initExportMap() {
     const container = document.getElementById('mapExport');
-    console.log('[EXPORT] Container size:',
-        container.clientWidth,
-        container.clientHeight
-    );
-    const emptyState = document.getElementById('exportEmptyState');
-    if (routeGeometry.length < 2) {
-        emptyState.style.display = 'flex';
-        document.querySelector('.map-export-actions').style.display = 'none';
-        return; 
-    } else {
-            emptyState.style.display = 'none';
-    document.querySelector('.map-export-actions').style.display = 'flex';
-    }
+    if (!container) return; // Zabezpieczenie na wypadek braku elementu
 
+    // Jeśli mapa już istnieje, po prostu odświeżamy jej rozmiar
     if (exportMap) {
-        console.log('[EXPORT] Map exists → invalidateSize');
         exportMap.invalidateSize(true);
         return;
     }
 
-    exportMap = L.map(container, {
-        zoomControl: false,
-        attributionControl: false,
-        preferCanvas: true
-    });
-
-    const tiles = getExportTileLayer();
-    tiles.addTo(exportMap);
-
-    tiles.on('tileload', e => {
-        console.log('[EXPORT] Tile loaded:', e.tile.src);
-    });
-
-    tiles.on('tileerror', e => {
-        console.error('[EXPORT] TILE ERROR:', e);
-    });
-
-    exportPolyline = L.polyline(routeGeometry, {
-        color: '#22c55e',
-        weight: 6,
-        opacity: 1
-    }).addTo(exportMap);
-    L.control.zoom({
-    position: 'topright'
-}).addTo(exportMap);
-
-
-    scaleControl = L.control.scale({
-        imperial: false,
-        position: 'bottomleft'
+    // Tworzenie mapy eksportu od zera
+    exportMap = L.map(container, { 
+        zoomControl: false, 
+        attributionControl: false, 
+        preferCanvas: true 
     });
     
+    exportTileLayer = getExportTileLayer();
+    exportTileLayer.addTo(exportMap);
+
+    exportPolyline = L.polyline(routeGeometry, { 
+        color: exportLineColor, 
+        weight: exportLineWeight, 
+        opacity: 1 
+    }).addTo(exportMap);
+    
+    scaleControl = L.control.scale({ imperial: false, position: 'bottomright' });
 
     if (routeGeometry.length > 1) {
-        exportMap.fitBounds(exportPolyline.getBounds(), {
-            padding: [60, 60]
-        });
-        console.log('[EXPORT] fitBounds OK');
-    } else {
-        console.warn('[EXPORT] routeGeometry empty');
+        exportMap.fitBounds(exportPolyline.getBounds(), { padding: [60, 60] });
     }
 
-   // Podmień na końcu funkcji initExportMap() w sekcji Timeout
-    setTimeout(() => {
-        console.log('[EXPORT] invalidateSize (delayed)');
-        exportMap.invalidateSize(true);
-        // WYMUSZAMY ODŚWIEŻENIE LEGENDY PO DOPASOWANIU MAPY
-        syncExportPoints();
-    }, 400); // Zwiększyłem z 200 do 400ms żeby mieć pewność, że mapa się dopasowała
-
+    // Podpięcie eventów legendy po przesunięciu mapy
     exportMap.on('moveend', syncExportPoints);
     exportMap.on('zoomend', syncExportPoints);
 }
-
 
 function toggleScale() {
     if (!exportMap) return;
@@ -3214,7 +3180,13 @@ function openExportDataModal() {
     document.getElementById('exportDataModal').style.display = 'flex';
     document.getElementById('exportDataModal').style.transform = 'translate(-50%, -50%)';
 }
-
+function openExportMetaModal() { 
+    const modal = document.getElementById('exportMetaModal');
+    modal.style.display = 'flex'; 
+    modal.style.left = '50%';
+    modal.style.top = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
+}
 function openExportPicker(type) {
     tempPickerType = type;
     document.getElementById('pickerTitle').innerText = type === 'gas' ? "Wybierz punkty GS" : "Wybierz swoje punkty";
