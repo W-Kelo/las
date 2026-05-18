@@ -199,23 +199,34 @@
     justify-content: space-between;
 }
 
+/* --- PROFESJONALNY PASEK NARZĘDZI W EKSPORCIE --- */
 .map-export-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
+    align-items: center;
 }
-
+.toolbar-divider {
+    width: 2px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.4);
+    margin: 0 4px;
+    border-radius: 2px;
+}
 .map-export-actions button {
-    background: rgba(255,255,255,0.18);
-    border: none;
-    color: white;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.85rem;
     padding: 6px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
 }
-
-.map-export-actions button:hover {
-    background: rgba(255,255,255,0.35);
+/* Przycisk zamknięcia ma być charakterystyczny */
+.btn-close-export {
+    background: #ef4444 !important;
+    border-radius: 50% !important;
+    width: 30px;
+    height: 30px;
+    padding: 0 !important;
 }
 
 #mapExport {
@@ -913,32 +924,36 @@ canvas#elevation {
     <div class="map-export-header modal-header">
         <strong>🗺️ Eksport mapy trasy</strong>
 <div class="map-export-actions">
-            <!-- Nowe przyciski narzędzi panelu -->
-            <button onclick="confirmRefreshRoute()" title="Pobierz zaktualizowaną trasę z głównej mapy">🔄 Odśwież</button>
-            <button onclick="togglePanelDrag()" id="btnDragPanel" title="Przesuń panel informacyjny">✋ Przesuń</button>
-            <button onclick="togglePanelResize()" id="btnResizePanel" title="Rozciągnij / zwęź panel">📐 Kadrowanie</button>
-            <button onclick="openStatsModal()" title="Dodaj dystans i czas do panelu">📊 Statystyki</button>
-            
-            <span style="border-left: 1px solid rgba(255,255,255,0.3); margin: 0 4px;"></span>
-
-            <button onclick="toggleExportTheme()" title="Zmień motyw samej mapy eksportowej">🌓 Motyw Mapy</button>
-            <button onclick="openExportMetaModal()" title="Edytuj tytuł, datę i opis">📝 Edytuj Info</button>
-            <button onclick="toggleScale()">📏 Skala</button>
-            <button onclick="openExportStyleModal()" title="Zmień kolor i grubość trasy w eksporcie">🎨 Styl Linii</button>
-            <button onclick="toggleLegendMode()" id="btnLegend" style="background: #a855f7" title="Zaznacz na mapie obiekty do legendy">📍 Legenda</button>
-            <button onclick="openExportDataModal()" title="Dodaj punkty z bazy" style="background: #eab308;">📌 Punkty na mapie</button>
-                        
-            <button onclick="exportZoomIn()" title="Przybliż mapę">➕</button>
-            <button onclick="exportZoomOut()" title="Oddal mapę">➖</button>
-            
-            <span style="border-left: 1px solid rgba(255,255,255,0.3); margin: 0 4px;"></span>
-            
-            <button onclick="copyMapPNG()">📋 Kopiuj</button>
-            <button onclick="exportMapPNG()">⬇ PNG</button>
-            <button onclick="printExportMap()">🖨️</button>
-            <button onclick="closeModal('mapExportModal')">✖</button>
-        </div>
-    </div>
+    <!-- GRUPA 1: Widok Mapy i Odświeżanie -->
+    <button onclick="confirmRefreshRoute()" title="Pobierz najnowszą trasę z mapy głównej">🔄 Odśwież</button>
+    <button onclick="exportZoomIn()" title="Przybliż">➕</button>
+    <button onclick="exportZoomOut()" title="Oddal">➖</button>
+    <button onclick="toggleScale()" title="Pokaż/Ukryj Skalę na mapie">📏 Skala</button>
+    
+    <div class="toolbar-divider"></div>
+    
+    <!-- GRUPA 2: Panel Informacyjny na mapie -->
+    <button onclick="togglePanelDrag()" id="btnDragPanel" title="Przesuń panel informacyjny">✋ Przesuń</button>
+    <button onclick="togglePanelResize()" id="btnResizePanel" title="Dopasuj rozmiar panelu">📐 Kadruj</button>
+    <button onclick="openExportMetaModal()" title="Edytuj Tytuł, Datę i Opis">📝 Teksty</button>
+    <button onclick="openStatsModal()" title="Wstaw dystans i czas">📊 Statystyki</button>
+    <button onclick="openExportStyleModal()" title="Zmień styl linii trasy i kolory panelu">🎨 Wygląd</button>
+    
+    <div class="toolbar-divider"></div>
+    
+    <!-- GRUPA 3: Punkty i Legenda -->
+    <button onclick="toggleLegendMode()" id="btnLegend" style="background: #a855f7" title="Ręcznie naklejaj punkty legendy na mapę">📍 Własna Legenda</button>
+    <button onclick="openExportDataModal()" style="background: #eab308; color: black;" title="Zaciągnij punkty z Bazy GS lub Twoje zapisane">📌 Baza Punktów</button>
+                
+    <div class="toolbar-divider"></div>
+    
+    <!-- GRUPA 4: Eksport pliku -->
+    <button onclick="copyMapPNG()" title="Kopiuj obraz do schowka">📋 Kopiuj</button>
+    <button onclick="exportMapPNG()" title="Zapisz jako plik obrazu">⬇ PNG</button>
+    <button onclick="printExportMap()" title="Wydrukuj mapę">🖨️</button>
+    
+    <button class="btn-close-export" onclick="closeModal('mapExportModal')" title="Zamknij kreator">✖</button>
+</div>
     <div class="modal-body" style="padding:0; position:relative;">
         
             <div id="exportWrapper">
@@ -975,34 +990,23 @@ canvas#elevation {
             </div>
         </div>
 
-        <div id="exportMetaModal" class="inner-modal-overlay" data-html2canvas-ignore>
-            <div class="inner-modal">
-                <h3 style="margin: 0; color: #22c55e;">📝 Informacje o mapie</h3>
-                <div>
-                    <label style="font-size: 0.85rem; color: #94a3b8;">Tytuł mapy (opcjonalnie):</label>
-                    <input type="text" id="metaInputTitle" placeholder="np. Wyprawa przez Puszczę">
-                </div>
-                <div>
-                    <label style="font-size: 0.85rem; color: #94a3b8;">Data (opcjonalnie):</label>
-                    <input type="text" id="metaInputDate" placeholder="np. 15 Sierpnia 2026">
-                </div>
-                <div>
-                    <label style="font-size: 0.85rem; color: #94a3b8;">Krótki opis (opcjonalnie):</label>
-                    <textarea id="metaInputDesc" placeholder="Krótki opis lub uwagi do wycieczki..."></textarea>
-                </div>
-                
-                <label style="display:flex; align-items:center; gap:8px; font-size: 0.85rem; margin-top: 5px; cursor: pointer;">
-                    <input type="checkbox" id="metaThemeToggle" onchange="togglePanelTheme(this.checked)"> 
-                    Ciemny motyw panelu informacyjnego
-                </label>
-
-                <div style="display:flex; gap: 10px; margin-top: 10px;">
-                    <button onclick="saveExportMeta()" style="flex:1; background: #22c55e;">Zastosuj</button>
-                    <button onclick="document.getElementById('exportMetaModal').style.display='none'" style="flex:1;" class="danger">Anuluj</button>
-                </div>
-            </div>
-        </div>
-
+        <!-- MODAL: META INFO (PŁYWAJĄCY) -->
+<div id="exportMetaModal" class="floating-modal" style="width: 380px; z-index: 3300;" data-html2canvas-ignore>
+    <div class="modal-header">
+        <span style="color: #22c55e; font-weight:bold;">📝 Teksty na Mapie</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="document.getElementById('exportMetaModal').style.display='none'">X</button>
+    </div>
+    <div class="modal-body search-save-form">
+        <label>Tytuł mapy (opcjonalnie):</label>
+        <input type="text" id="metaInputTitle" placeholder="np. Wyprawa przez Puszczę">
+        
+        <label>Data (opcjonalnie):</label>
+        <input type="text" id="metaInputDate" placeholder="np. 15 Sierpnia 2026">
+        
+        <label>Krótki opis (opcjonalnie):</label>
+        <textarea id="metaInputDesc" placeholder="Krótki opis lub uwagi do wycieczki..."></textarea>
+        
+        <button onclick="saveExportMeta()" style="width:100%; background: #22c55e; padding:10px; margin-top:10px;">Zastosuj zmiany</button>
     </div>
 </div>
 <!-- MODAL: ZARZĄDZANIE MOIMI PUNKTAMI -->
@@ -1139,25 +1143,7 @@ canvas#elevation {
     </div>
 </div>
 
-<!-- MODAL: WYBÓR KONKRETNYCH PUNKTÓW (PŁYWAJĄCY) -->
-<div id="exportPickerModal" class="floating-modal" style="width: 400px; z-index: 3200;" data-html2canvas-ignore>
-    <div class="modal-header">
-        <span id="pickerTitle">Wybierz punkty</span>
-        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="document.getElementById('exportPickerModal').style.display='none'">X</button>
-    </div>
-    <div class="modal-body">
-        <input type="text" id="pickerSearch" placeholder="Szukaj na liście..." oninput="filterPickerList()" style="width:100%; padding:8px; border-radius:6px; background:rgba(0,0,0,0.2); color:inherit; border:1px solid rgba(255,255,255,0.2); margin-bottom:10px; outline:none; box-sizing:border-box;">
-        
-        <div style="display:flex; gap:10px; margin-bottom:10px;">
-            <button class="secondary" style="flex:1; padding:6px;" onclick="selectAllPicker(true)">☑ Zaznacz wszystkie</button>
-            <button class="secondary" style="flex:1; padding:6px;" onclick="selectAllPicker(false)">☐ Odznacz wszystkie</button>
-        </div>
 
-        <div id="pickerListContainer" style="max-height: 250px; overflow-y: auto; padding-right: 5px; display:flex; flex-direction:column;"></div>
-
-        <button onclick="savePickerSelection()" style="width:100%; margin-top:15px; background: #22c55e; padding:10px;">Zastosuj i zaktualizuj mapę</button>
-    </div>
-</div>
     <!-- MODAL STYLU LINI I PANELU (EKSPORT) - PŁYWAJĄCY -->
 <div id="exportStyleModal" class="floating-modal" style="width: 360px; z-index: 3500;" data-html2canvas-ignore>
     <div class="modal-header">
@@ -1260,35 +1246,38 @@ canvas#elevation {
     </div>
     <p style="font-size: 0.8rem; color:#94a3b8; margin-top: 10px;">Proszę nie zmieniać rozmiaru okna.</p>
 </div>
-<div id="confirmRefreshModal" class="inner-modal-overlay" data-html2canvas-ignore>
-            <div class="inner-modal" style="width: 320px; text-align: center;">
-                <h3 style="color: #ef4444; margin-top:0;">⚠️ Potwierdzenie</h3>
-                <p style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">Czy na pewno chcesz pobrać nową trasę? Ta operacja zresetuje panel informacyjny i wyczyści Twoją legendę!</p>
-                <div style="display:flex; gap: 10px; margin-top: 15px;">
-                    <button onclick="executeRefreshRoute()" style="flex:1; background: #ef4444;">Tak, odśwież</button>
-                    <button onclick="document.getElementById('confirmRefreshModal').style.display='none'" style="flex:1;" class="secondary">Anuluj</button>
-                </div>
-            </div>
+<!-- MODAL: POTWIERDZENIE ODŚWIEŻENIA (PŁYWAJĄCY) -->
+<div id="confirmRefreshModal" class="floating-modal" style="width: 320px; z-index: 3600;" data-html2canvas-ignore>
+    <div class="modal-header" style="background: rgba(239, 68, 68, 0.2);">
+        <span style="color: #ef4444; font-weight:bold;">⚠️ Potwierdzenie</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="document.getElementById('confirmRefreshModal').style.display='none'">X</button>
+    </div>
+    <div class="modal-body" style="text-align: center;">
+        <p style="font-size: 0.9rem; line-height: 1.4;">Czy na pewno chcesz pobrać nową trasę z mapy głównej? Ta operacja zresetuje panel informacyjny i wyczyści Twoją własną legendę!</p>
+        <div style="display:flex; gap: 10px; margin-top: 15px;">
+            <button onclick="executeRefreshRoute()" style="flex:1; background: #ef4444;">Tak, odśwież</button>
+            <button onclick="document.getElementById('confirmRefreshModal').style.display='none'" style="flex:1;" class="secondary">Anuluj</button>
         </div>
+    </div>
+</div>
 
-        <div id="statsSelectionModal" class="inner-modal-overlay" data-html2canvas-ignore>
-            <div class="inner-modal" style="width: 300px;">
-                <h3 style="color: #3b82f6; margin-top:0;">📊 Dodaj Statystyki</h3>
-                <p style="font-size: 0.8rem; color: #94a3b8; margin-top: -5px;">Zaznacz informacje, które mają pojawić się na mapie.</p>
-                
-                <label style="display:flex; align-items:center; gap:8px; margin-bottom: 8px; font-size: 0.9rem; cursor: pointer;">
-                    <input type="checkbox" id="statCheckDist" checked style="width:auto;"> Długość trasy (dystans)
-                </label>
-                <label style="display:flex; align-items:center; gap:8px; margin-bottom: 15px; font-size: 0.9rem; cursor: pointer;">
-                    <input type="checkbox" id="statCheckTime" checked style="width:auto;"> Czas i przewyższenia
-                </label>
-                
-                <div style="display:flex; gap: 10px;">
-                    <button onclick="applyStatsToPanel()" style="flex:1; background: #3b82f6;">Wstaw</button>
-                    <button onclick="document.getElementById('statsSelectionModal').style.display='none'" style="flex:1;" class="danger">Anuluj</button>
-                </div>
-            </div>
-        </div>
+       <!-- MODAL: STATYSTYKI W EKSPORCIE (PŁYWAJĄCY) -->
+<div id="statsSelectionModal" class="floating-modal" style="width: 320px; z-index: 3400;" data-html2canvas-ignore>
+    <div class="modal-header">
+        <span style="color: #3b82f6; font-weight:bold;">📊 Dodaj Statystyki</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="document.getElementById('statsSelectionModal').style.display='none'">X</button>
+    </div>
+    <div class="modal-body">
+        <p style="font-size: 0.85rem; color: #94a3b8; margin-top: 0;">Zaznacz informacje z głównego panelu, które mają pojawić się na mapie.</p>
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom: 8px; cursor: pointer;">
+            <input type="checkbox" id="statCheckDist" checked style="width:18px; height:18px;"> Długość trasy (dystans)
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom: 15px; cursor: pointer;">
+            <input type="checkbox" id="statCheckTime" checked style="width:18px; height:18px;"> Czas i przewyższenia
+        </label>
+        <button onclick="applyStatsToPanel()" style="width:100%; background: #3b82f6; padding:10px;">Wstaw na mapę</button>
+    </div>
+</div>
 <!-- MODAL SZCZEGÓŁÓW MOJEGO PUNKTU (Z ARKUSZA) -->
 <div id="customPoiModal" class="floating-modal" style="width: 450px; max-height: 85vh; display: none;">
     <div class="modal-header">
@@ -1388,6 +1377,7 @@ let manualPointMode = false;
 let isDrawMode = false;
 let elevAnimFrame;
 let elevPhase = 0;
+let wasExportEmpty = false
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
@@ -2873,18 +2863,38 @@ async function generatePDF() {
 
 function openMapExportModal() {
     const modal = document.getElementById('mapExportModal');
+    modal.style.display = 'flex';
     modal.style.left = '50%';
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
 
-    modal.style.display = 'flex';
+    const emptyState = document.getElementById('exportEmptyState');
+    const actionsToolbar = document.querySelector('.map-export-actions');
+
+    if (routeGeometry.length < 2) {
+        // BRAK TRASY - Pokaż ładny spinner i ukryj pasek
+        emptyState.style.display = 'flex';
+        actionsToolbar.style.display = 'none';
+        wasExportEmpty = true;
+        return; 
+    } else {
+        // JEST TRASA - Ukryj spinner
+        emptyState.style.display = 'none';
+        actionsToolbar.style.display = 'flex';
+
+        // MAGIA AUTOMATYCZNEGO ODŚWIEŻANIA: 
+        // Jeśli wcześniej był błąd braku trasy, a teraz wróciliśmy, to wymuś ciche odświeżenie!
+        if (wasExportEmpty && exportMap) {
+            console.log("Automatyczne odświeżenie po dodaniu trasy.");
+            executeRefreshRoute(); // Czyści starą mapę i ładuje nową geometrię
+        }
+        wasExportEmpty = false;
+    }
 
     requestAnimationFrame(() => {
-        console.log('[EXPORT] Modal visible');
         initExportMap();
     });
 }
-
 function initExportMap() {
     const container = document.getElementById('mapExport');
     console.log('[EXPORT] Container size:',
@@ -3188,8 +3198,28 @@ function exportZoomIn() { if (exportMap) exportMap.zoomIn(); }
 function exportZoomOut() { if (exportMap) exportMap.zoomOut(); }
 
 /* --- OBSŁUGA WEWNĘTRZNEGO MODALA INFORMACJI --- */
+function openExportDataModal() {
+    const modal = document.getElementById('exportDataModal');
+    modal.style.display = 'flex';
+    modal.style.left = '50%';
+    modal.style.top = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
+}
+
 function openExportMetaModal() { 
-    document.getElementById('exportMetaModal').style.display = 'flex'; 
+    const modal = document.getElementById('exportMetaModal');
+    modal.style.display = 'flex'; 
+    modal.style.left = '50%';
+    modal.style.top = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
+}
+
+function openStatsModal() {
+    const modal = document.getElementById('statsSelectionModal');
+    modal.style.display = 'flex';
+    modal.style.left = '50%';
+    modal.style.top = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
 }
 
 function togglePanelTheme(isDark) {
@@ -3892,13 +3922,23 @@ async function loadGoogleSheetsPOIs() {
 document.addEventListener('DOMContentLoaded', () => {
     loadUserSavedPois();
     loadGoogleSheetsPOIs();
-    // Upewniamy się, że nowe modale eksportu dadzą się przesuwać
+    
+    // Sprawienie, że wszystkie modale są pływające
+    makeDraggable(document.getElementById('pointsModal'));
+    makeDraggable(document.getElementById('descModal'));
+    makeDraggable(document.getElementById('styleModal'));
+    makeDraggable(document.getElementById('pdfModal'));
+    makeDraggable(document.getElementById('myPointsModal'));
     makeDraggable(document.getElementById('customPoiModal'));
+    
+    // Modale Eksportu
     makeDraggable(document.getElementById('exportDataModal'));
     makeDraggable(document.getElementById('exportPickerModal'));
     makeDraggable(document.getElementById('exportStyleModal'));
+    makeDraggable(document.getElementById('confirmRefreshModal'));
+    makeDraggable(document.getElementById('statsSelectionModal'));
+    makeDraggable(document.getElementById('exportMetaModal'));
     
-    // Wymuszamy start animacji pustego profilu zaraz po wejściu na stronę
     drawEmptyElevationAnimation(); 
 });
 
