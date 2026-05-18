@@ -946,7 +946,7 @@ canvas#elevation {
     </div>
 </div>
 <!-- GŁÓWNY MODAL EKSPORTU -->
-<div id="mapExportModal" class="floating-modal map-export-modal" data-html2canvas-ignore>
+<div id="mapExportModal" class="floating-modal map-export-modal" style="display: none;" data-html2canvas-ignore>
     <div class="modal-header export-header">
         <div class="export-toolbar" id="exportToolbar">
             <button onclick="confirmRefreshRoute()" title="Odśwież trasę">🔄</button>
@@ -967,22 +967,22 @@ canvas#elevation {
             <button onclick="exportMapPNG()">Zapisz PNG</button>
             <button onclick="printExportMap()">Drukuj</button>
         </div>
-        <!-- Zawsze widoczny przycisk zamknięcia -->
         <button class="danger icon-only" style="padding: 4px 10px; flex-shrink: 0;" onclick="closeModal('mapExportModal')">X</button>
     </div>
-    <div id="mapExportModal" class="floating-modal map-export-modal" style="display: none;" data-html2canvas-ignore>
-
-       <div class="export-body" id="exportWrapper">
-        <div id="exportEmptyState" style="display:none;">
+    
+    <div class="export-body" id="exportWrapper">
+        <!-- Komunikat braku trasy -->
+        <div id="exportEmptyState" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.95); z-index:4000; flex-direction:column; justify-content:center; align-items:center; color:white;">
             <div style="font-size: 3rem; margin-bottom: 10px;">🗺️</div>
             <h2 style="margin-bottom: 10px; font-size: 1.5rem;">Brak wyznaczonej trasy</h2>
             <p style="color: #cbd5e1; margin-bottom: 20px;">Aby wyeksportować mapę, narysuj trasę w oknie głównym.</p>
             <button onclick="closeModal('mapExportModal')" style="background: #3b82f6; border:none; color:white; padding: 10px 20px; border-radius: 6px; cursor: pointer;">Wróć do mapy</button>
-        </div
-            <div id="mapExport"></div>
-            
-            <!-- Uporządkowany panel informacyjny na mapie -->
-           <div id="mapInfoPanel" class="map-info-panel">
+        </div>
+        
+        <!-- KONTENER MAPY -->
+        <div id="mapExport" style="position: absolute; top:0; left:0; width:100%; height:100%;"></div>
+        
+        <div id="mapInfoPanel" class="map-info-panel">
             <div id="miTitle" class="map-info-title" style="display:none;"></div>
             <div id="miDate" class="map-info-date" style="display:none;"></div>
             <div id="miDesc" class="map-info-desc" style="display:none;"></div>
@@ -993,7 +993,7 @@ canvas#elevation {
             </div>
         </div>
 
-             <div id="emojiPickerUI">
+        <div id="emojiPickerUI">
             <div style="font-weight:bold; margin-bottom: 10px; font-size: 0.95rem;">Wybierz ikonę i podpis:</div>
             <div class="emoji-grid" id="emojiGridList"></div>
             <input type="text" id="emojiLabelText" placeholder="Opis miejsca na mapie..." style="width: 100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius: 6px; margin-bottom: 10px;">
@@ -2878,78 +2878,123 @@ async function generatePDF() {
 
 function openMapExportModal() {
     const modal = document.getElementById('mapExportModal');
-    // Wymuszamy pokazanie modalu
-    modal.style.display = 'flex';
     modal.style.left = '50%';
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
 
-    const emptyState = document.getElementById('exportEmptyState');
-    const toolbar = document.getElementById('exportToolbar');
+    // Pokazanie DIVa przed logiką
+    modal.style.display = 'flex';
 
-    if (routeGeometry.length < 2) {
-        // Gdy nie ma trasy
-        emptyState.style.display = 'flex';
-        toolbar.style.opacity = '0.3';
-        toolbar.style.pointerEvents = 'none';
-        wasExportEmpty = true;
-    } else {
-        // Gdy trasa istnieje
-        emptyState.style.display = 'none';
-        toolbar.style.opacity = '1';
-        toolbar.style.pointerEvents = 'auto';
-
-        // Opóźnienie 50ms rozwiązuje błąd "Map container not found"
-        // Przeglądarka musi zdążyć nadać div-owi rozmiary (display: flex)
-        setTimeout(() => {
-            initExportMap();
-            
-            // Jeśli poprzednio był szary ekran, to wymuszamy zaciągnięcie nowej trasy
-            if (wasExportEmpty) {
-                executeRefreshRoute();
-                wasExportEmpty = false;
-            }
-        }, 50);
-    }
+    // Używamy Twojej niezawodnej metody z requestAnimationFrame
+    requestAnimationFrame(() => {
+        console.log('[EXPORT] Modal visible');
+        initExportMap();
+    });
 }
 
 function initExportMap() {
     const container = document.getElementById('mapExport');
-    if (!container) return; // Zabezpieczenie na wypadek braku elementu
-
-    // Jeśli mapa już istnieje, po prostu odświeżamy jej rozmiar
-    if (exportMap) {
-        exportMap.invalidateSize(true);
+    const emptyState = document.getElementById('exportEmptyState');
+    const toolbar = document.getElementById('exportToolbar');
+    
+    // Zabezpieczenie przed brakiem elementu (rozwiązuje błąd Map container not found)
+    if (!container) {
+        console.error("Błąd krytyczny: Kontener mapExport nie istnieje w DOM!");
         return;
     }
 
-    // Tworzenie mapy eksportu od zera
-    exportMap = L.map(container, { 
-        zoomControl: false, 
-        attributionControl: false, 
-        preferCanvas: true 
-    });
-    
-    exportTileLayer = getExportTileLayer();
-    exportTileLayer.addTo(exportMap);
+    // 1. Sprawdzenie, czy mamy trasę
+    if (routeGeometry.length < 2) {
+        emptyState.style.display = 'flex';
+        if(toolbar) {
+            toolbar.style.opacity = '0.3';
+            toolbar.style.pointerEvents = 'none';
+        }
+        wasExportEmpty = true;
+        return; // Zakończ! Leaflet nie dostanie pustej mapy do przeróbki.
+    } else {
+        emptyState.style.display = 'none';
+        if(toolbar) {
+            toolbar.style.opacity = '1';
+            toolbar.style.pointerEvents = 'auto';
+        }
+    }
 
-    exportPolyline = L.polyline(routeGeometry, { 
-        color: exportLineColor, 
-        weight: exportLineWeight, 
-        opacity: 1 
+    // 2. Jeśli mapa już wcześniej została stworzona (rozwiązuje błąd addLayer)
+    if (exportMap) {
+        console.log('[EXPORT] Map exists → invalidateSize');
+        exportMap.invalidateSize(true);
+        
+        // Złote rozwiązanie: Jeśli ostatnim razem był błąd, cicho zaktualizuj trasę.
+        if (wasExportEmpty) {
+            console.log('[EXPORT] Trasa dodana po szarym ekranie -> Auto Odświeżanie');
+            executeRefreshRoute();
+            wasExportEmpty = false;
+        }
+        return;
+    }
+
+    // 3. Pierwsze utworzenie mapy eksportu
+    exportMap = L.map(container, {
+        zoomControl: false,
+        attributionControl: false,
+        preferCanvas: true
+    });
+
+    const tiles = getExportTileLayer();
+    tiles.addTo(exportMap);
+
+    exportPolyline = L.polyline(routeGeometry, {
+        color: exportLineColor || '#22c55e',
+        weight: exportLineWeight || 6,
+        opacity: 1
     }).addTo(exportMap);
     
-    scaleControl = L.control.scale({ imperial: false, position: 'bottomright' });
+    L.control.zoom({ position: 'topright' }).addTo(exportMap);
+
+    scaleControl = L.control.scale({ imperial: false, position: 'bottomleft' });
 
     if (routeGeometry.length > 1) {
         exportMap.fitBounds(exportPolyline.getBounds(), { padding: [60, 60] });
+        console.log('[EXPORT] fitBounds OK');
     }
 
-    // Podpięcie eventów legendy po przesunięciu mapy
+    // Twoje bezpieczne opóźnienie
+    setTimeout(() => {
+        console.log('[EXPORT] invalidateSize (delayed)');
+        exportMap.invalidateSize(true);
+        syncExportPoints(); // Wymusza narysowanie legendy z ewentualnych starych danych
+    }, 200);
+
     exportMap.on('moveend', syncExportPoints);
     exportMap.on('zoomend', syncExportPoints);
 }
 
+// Zabezpieczamy funkcję odświeżania na wypadek, gdy mapa nie zdążyła powstać
+function executeRefreshRoute() {
+    document.getElementById('confirmRefreshModal').style.display = 'none';
+    
+    // Zabezpieczenie!
+    if (!exportMap) return; 
+
+    // 1. Czyszczenie legendy
+    Object.values(exportLegendItems).forEach(item => exportMap.removeLayer(item.marker));
+    exportLegendItems = {};
+    document.getElementById('exportLegendList').innerHTML = '';
+    
+    // 2. Przerysowanie linii trasy
+    if(exportPolyline) exportMap.removeLayer(exportPolyline);
+    exportPolyline = L.polyline(routeGeometry, { 
+        color: exportLineColor || '#22c55e', 
+        weight: exportLineWeight || 6, 
+        opacity: 1 
+    }).addTo(exportMap);
+    
+    // 3. Dopasowanie widoku
+    if (routeGeometry.length > 1) {
+        exportMap.fitBounds(exportPolyline.getBounds(), { padding: [60, 60] });
+    }
+}
 function toggleScale() {
     if (!exportMap) return;
     scaleVisible = !scaleVisible;
