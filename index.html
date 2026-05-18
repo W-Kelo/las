@@ -1234,8 +1234,7 @@ const tiles = {
     dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OSM', crossOrigin: true }),
     light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', crossOrigin: true })
 };
-tiles.dark.addTo(map);
-let dark = false;
+let dark = false; 
 let brouterOutageNotified = false; 
 let routePoints = []; 
 let routeGeometry = []; 
@@ -1299,6 +1298,7 @@ const polyline = L.polyline([], {
     lineJoin: 'round'
 }).addTo(map);
 document.body.className = "light";
+(dark ? tiles.dark : tiles.light).addTo(map);
 document.getElementById('styleColor').addEventListener('input', e => document.getElementById('styleColorHex').innerText = e.target.value);
 document.getElementById('stylePointsColor').addEventListener('input', e => document.getElementById('stylePointsColorHex').innerText = e.target.value);
 const hikingLayer = L.layerGroup().addTo(map);
@@ -3445,25 +3445,31 @@ function saveStyle(saveToLocal) {
 
 
 function openExportStyleModal() {
-    document.getElementById('expStyleColor').value = exportLineColor;
-    document.getElementById('expStyleColorHex').innerText = exportLineColor;
-    document.getElementById('expStyleWeight').value = exportLineWeight;
-    document.getElementById('expStyleWeightVal').innerText = exportLineWeight;
+    // Bezpieczne przypisanie wartości (chroni przed błędem Cannot set properties of null)
+    if(document.getElementById('expStyleColor')) document.getElementById('expStyleColor').value = exportLineColor;
+    if(document.getElementById('expStyleColorHex')) document.getElementById('expStyleColorHex').innerText = exportLineColor;
+    if(document.getElementById('expStyleWeight')) document.getElementById('expStyleWeight').value = exportLineWeight;
+    if(document.getElementById('expStyleWeightVal')) document.getElementById('expStyleWeightVal').innerText = exportLineWeight;
+    
     document.getElementById('exportStyleModal').style.display = 'flex';
 }
 
 function applyExportStyle() {
-    // Linia
-    exportLineColor = document.getElementById('expStyleColor').value;
-    exportLineWeight = parseInt(document.getElementById('expStyleWeight').value);
-    if (exportPolyline) exportPolyline.setStyle({ color: exportLineColor, weight: exportLineWeight });
+    // 1. Zastosowanie stylów linii
+    if(document.getElementById('expStyleColor')) {
+        exportLineColor = document.getElementById('expStyleColor').value;
+        exportLineWeight = parseInt(document.getElementById('expStyleWeight').value);
+        if (exportPolyline) exportPolyline.setStyle({ color: exportLineColor, weight: exportLineWeight });
+    }
     
-    // Panel 
+    // 2. Zastosowanie formatowania panelu (czcionka, tło, radius)
     const panel = document.getElementById('mapInfoPanel');
-    panel.style.fontFamily = document.getElementById('expFontFamily').value;
-    panel.style.backgroundColor = document.getElementById('expPanelBg').value;
-    panel.style.color = document.getElementById('expPanelText').value;
-    panel.style.borderRadius = document.getElementById('expPanelRadius').value + 'px';
+    if(panel && document.getElementById('expFontFamily')) {
+        panel.style.fontFamily = document.getElementById('expFontFamily').value;
+        panel.style.backgroundColor = document.getElementById('expPanelBg').value;
+        panel.style.color = document.getElementById('expPanelText').value;
+        panel.style.borderRadius = document.getElementById('expPanelRadius').value + 'px';
+    }
     
     document.getElementById('exportStyleModal').style.display = 'none';
 }
@@ -4192,7 +4198,8 @@ function filterPickerList() {
     const container = document.getElementById('pickerListContainer');
     container.innerHTML = '';
     
-    const dataSource = globalCustomPois.filter(p => type === 'gas' ? p.isGas : p.isUserSaved);
+    // TUTAJ BYŁ BŁĄD! Użyto `type` zamiast `tempPickerType`
+    const dataSource = globalCustomPois.filter(p => tempPickerType === 'gas' ? p.isGas : p.isUserSaved);
     const selectedSet = exportPointSettings[tempPickerType].ids;
 
     dataSource.forEach(p => {
