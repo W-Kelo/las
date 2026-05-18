@@ -1160,8 +1160,6 @@ canvas#elevation {
     </div>
 </div>
 
-<!-- MODAL STYLU LINI (TYLKO DLA EKSPORTU) -->
-<!-- MODAL: USTAWIENIA PUNKTÓW W EKSPORCIE -->
 <!-- MODAL: USTAWIENIA PUNKTÓW W EKSPORCIE (PŁYWAJĄCY) -->
 <div id="exportDataModal" class="floating-modal" style="width: 450px; z-index: 3100;" data-html2canvas-ignore>
     <div class="modal-header">
@@ -3844,7 +3842,7 @@ function getPointAtDistance(geometry, targetDist) {
 }
 
 function playRouteAnimation() {
-    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy do animacji!");
+    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy do animacji. Najpierw wyznacz trasę lub zaimportuj plik GPX");
     
     // Jeśli animacja trwa, zatrzymaj ją
     if (animInterval) clearInterval(animInterval);
@@ -3902,7 +3900,7 @@ function playRouteAnimation() {
 
 /* ================= EKSPORT DO GIF ================= */
 async function recordRouteGIF() {
-    if (routeGeometry.length < 2) return alert("Brak trasy do nagrania!");
+    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy do nagrania. Najpierw wyznacz trasę lub zaimportuj plik GPX.");
     
     const overlay = document.getElementById('recordingOverlay');
     const progressText = document.getElementById('gifProgressText');
