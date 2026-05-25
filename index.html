@@ -896,78 +896,7 @@ canvas#elevation {
 
 #time { cursor: pointer; text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 3px; }
 #time:hover { color: var(--accent); }
-        /* ================= EKRAN DO RENDEROWANIA PDF (UKRYTY) ================= */
-/* ================= EKRAN DO RENDEROWANIA PDF (UKRYTY) ================= */
-#pdfRenderContainer {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 800px; /* Szerokość optymalna dla A4 */
-    background: #ffffff;
-    z-index: -1000;
-    opacity: 0; /* Kluczowe: html2canvas widzi to, ale użytkownik nie */
-    pointer-events: none;
-}
-
-.pdf-page {
-    padding: 40px; /* To zastępuje zbugowane marginesy w html2pdf */
-    background: #ffffff;
-    color: #0f172a;
-    box-sizing: border-box;
-    width: 100%;
-}
-
-.pdf-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    border-bottom: 3px solid var(--pdf-accent, #16a34a);
-    padding-bottom: 15px;
-    margin-bottom: 25px;
-}
-
-.pdf-title { margin: 0; font-size: 28px; color: var(--pdf-accent, #16a34a); font-weight: bold; }
-.pdf-subtitle { margin: 5px 0 0 0; color: #64748b; font-size: 12px; }
-.pdf-stats { background: #f8fafc; padding: 10px 15px; border-radius: 8px; font-size: 12px; text-align: right; border: 1px solid #e2e8f0; }
-
-.pdf-custom-text {
-    background: #fefce8;
-    border-left: 4px solid #facc15;
-    padding: 15px;
-    font-size: 13px;
-    line-height: 1.6;
-    border-radius: 4px;
-    margin-bottom: 25px;
-}
-
-.pdf-section-title {
-    font-size: 18px;
-    border-bottom: 2px solid var(--pdf-accent, #16a34a);
-    padding-bottom: 5px;
-    margin: 30px 0 15px 0;
-    color: #1e293b;
-    font-weight: bold;
-}
-
-.pdf-map-container img { width: 100%; max-height: 450px; object-fit: contain; border-radius: 8px; border: 1px solid #cbd5e1; }
-.pdf-elev-container img { width: 100%; height: 100px; object-fit: cover; }
-
-/* Układy wielokolumnowe */
-.pdf-cols-2 { column-count: 2; column-gap: 25px; }
-.pdf-cols-3 { column-count: 3; column-gap: 20px; }
-
-/* Elementy zapobiegające ucinaniu w połowie na przełomie stron */
-.pdf-avoid-break { break-inside: avoid; page-break-inside: avoid; margin-bottom: 12px; }
-
-.pdf-stop-item {
-    border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; background: #f8fafc;
-}
-.pdf-point-item {
-    font-size: 11px; border-left: 2px solid var(--pdf-accent, #16a34a); padding-left: 8px;
-}
-.pdf-step-item {
-    font-size: 12px; padding: 8px; background: #f8fafc; border-left: 3px solid var(--pdf-accent, #16a34a); line-height: 1.4;
-}
+       
     </style>
     
 </head>
@@ -2176,7 +2105,7 @@ async function recalculateRoute() {
         await fetchFullElevationProfile();
         generateRouteDescription(); 
         renderPointsList();
-        validateStopsOnLine();
+        autoUpdateStopsOnRouteChange();
     } catch(e) {
         console.error("Critical routing error", e);
     } finally {
@@ -2353,17 +2282,18 @@ function generateRouteDescription() {
         return [ll.lat, ll.lng];
     });
 
-    let text = `<div style="margin-bottom:15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom:10px;">
+     let text = `<div style="margin-bottom:15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom:10px;">
         <strong>🟢 Punkt Startowy</strong><br>
         <small>Wysokość: ${routePoints[0].elevation.toFixed(0)} m n.p.m.</small>
     </div>`;
     
     let stepNumber = 1;
-    // Sortujemy postoje po dystansie od początku, żeby wstrzykiwać je po kolei
-    const sortedStops = [...routeStops, ...userSavedPois.filter(p => p.isStop && p.snappedDist !== undefined)]
-        .sort((a,b) => a.snappedDist - b.snappedDist);
+    
+    // TYLKO postoje z routeStops posortowane po dystansie
+    const sortedStops = [...routeStops].sort((a,b) => a.snappedDist - b.snappedDist);
     let nextStopIdx = 0;
-    let accumulatedGeom = [keyPoints[0]]; // Zbiera koordynaty dla żółtego podświetlenia etapu na mapie
+    
+    let accumulatedGeom = [keyPoints[0]]; 
     let accumulatedDist = 0;
 
     for (let i = 0; i < keyPoints.length - 1; i++) {
@@ -2376,31 +2306,36 @@ function generateRouteDescription() {
             const prevP = keyPoints[i-1];
             turnAngle = getTurnAngle(prevP, currP, nextP);
         }
-// WSTRZYKIWANIE POSTOJÓW DO OPISU TRASY
-            while (nextStopIdx < sortedStops.length && sortedStops[nextStopIdx].snappedDist <= (accumulatedDist + (i === 0 ? 0 : 50))) { // margines 50m
-                const stop = sortedStops[nextStopIdx];
-                const phrases = ["Czas na przerwę!", "Zasłużony odpoczynek.", "Zrób sobie postój.", "Idealne miejsce na regenerację."];
-                const rPhrase = phrases[Math.floor(Math.random() * phrases.length)];
-                
-                let stopTimeInfo = stop.duration ? `Czas trwania: ok. <b>${stop.duration} min</b>.` : '';
-                if(stop.startTime && stop.endTime) {
-                    const dStart = new Date(stop.startTime); const dEnd = new Date(stop.endTime);
-                    stopTimeInfo = `Planowany czas: <b>${dStart.getHours().toString().padStart(2,'0')}:${dStart.getMinutes().toString().padStart(2,'0')} - ${dEnd.getHours().toString().padStart(2,'0')}:${dEnd.getMinutes().toString().padStart(2,'0')}</b>.`;
-                }
 
-                text += `
-                    <div class="route-step" style="border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.1);">
-                        <div style="display:flex; align-items:center;">
-                            <span class="route-step-icon" style="font-size:1.5rem;">${stop.icon === 'dot' ? '☕' : stop.icon}</span> 
-                            <div>
-                                <small style="color:#f59e0b; font-weight:bold; display:block; text-transform: uppercase;">POSTÓJ: ${stop.name || 'Miejsce odpoczynku'}</small>
-                                ${rPhrase} ${stopTimeInfo}
-                            </div>
-                        </div>
-                        ${stop.desc ? `<span class="route-step-poi" style="border-top-color:#f59e0b;">📝 ${stop.desc}</span>` : ''}
-                    </div>`;
-                nextStopIdx++;
+        // --- WSTRZYKIWANIE POSTOJÓW DO OPISU TRASY ---
+        // Sprawdzamy czy dystans globalny od początku trasy przekroczył miejsce postoju
+        const globalDistSoFar = calculateTotalDistToPoint(i) + accumulatedDist;
+
+        while (nextStopIdx < sortedStops.length && sortedStops[nextStopIdx].snappedDist <= (globalDistSoFar + 50)) { 
+            const stop = sortedStops[nextStopIdx];
+            
+            let timeTxtInfo = `${stop.duration} min.`;
+            if(!isTimeSkipped && stop.startTime && stop.endTime) {
+                const hs = stop.startTime.getHours().toString().padStart(2,'0');
+                const ms = stop.startTime.getMinutes().toString().padStart(2,'0');
+                const he = stop.endTime.getHours().toString().padStart(2,'0');
+                const me = stop.endTime.getMinutes().toString().padStart(2,'0');
+                timeTxtInfo = `<b>${hs}:${ms} - ${he}:${me}</b> (${stop.duration} min)`;
             }
+
+            text += `
+                <div class="route-step" style="border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.1);">
+                    <div style="display:flex; align-items:center;">
+                        <span class="route-step-icon" style="font-size:1.5rem;">${stop.icon === 'dot' ? '☕' : stop.icon}</span> 
+                        <div>
+                            <small style="color:#f59e0b; font-weight:bold; display:block; text-transform: uppercase;">POSTÓJ: ${stop.name}</small>
+                            Zasłużony odpoczynek. Czas: ${timeTxtInfo}
+                        </div>
+                    </div>
+                    ${stop.desc ? `<span class="route-step-poi" style="border-top-color:rgba(245,158,11,0.3); color: inherit;">📝 ${stop.desc}</span>` : ''}
+                </div>`;
+            nextStopIdx++;
+        }
         accumulatedGeom.push(nextP);
         accumulatedDist += dist;
 
@@ -2502,6 +2437,13 @@ function unhighlightStep() {
         map.removeLayer(stepHighlightLayer);
         stepHighlightLayer = null;
     }
+}
+ function calculateTotalDistToPoint(pointIndex) {
+    let d = 0;
+    for (let j = 1; j <= pointIndex; j++) {
+        d += L.latLng(routeGeometry[j-1]).distanceTo(L.latLng(routeGeometry[j]));
+    }
+    return d;
 }
 function drawEmptyElevationAnimation() {
     const c = document.getElementById('elevation');
@@ -3220,180 +3162,163 @@ async function generatePDF() {
     const customText = document.getElementById('pdfCustomDescEditor').innerHTML;
     
     btn.disabled = true;
-    btn.innerText = "⏳ Przygotowywanie układu...";
-
-    // Ustalanie źródła mapy
-    let mapImgSrc = sessionStorage.getItem('custom_map_png');
     
-    if (document.getElementById('pdfIncludeMap').checked && !mapImgSrc) {
-        btn.innerText = "⏳ Generowanie mapy...";
-        const oldBounds = map.getBounds();
-        map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
-        await new Promise(r => setTimeout(r, 1000)); 
-        mapImgSrc = await domtoimage.toPng(document.getElementById('map'), { width: 1200, height: 700 });
-        map.fitBounds(oldBounds, { animate: false });
-    }
-
-    btn.innerText = "⏳ Składanie dokumentu...";
-
-    // Ekstrakcja danych ze statystyk
-    const statsDist = document.getElementById('stats').innerText;
-    const statsTime = document.getElementById('time').innerText;
-
-    // Formatter: Lista punktów
-    const pointsData = routePoints.map((p, i) => {
-        const type = i === 0 ? "START" : (i === routePoints.length - 1 ? "META" : `Punkt ${i+1}`);
-        const lat = p.latlng.lat.toFixed(5);
-        const lng = p.latlng.lng.toFixed(5);
-        const elev = p.elevation ? `${p.elevation.toFixed(0)}m` : "-";
-        
-        return `
-            <div class="pdf-point-item pdf-avoid-break">
-                <strong style="color: ${accentColor};">${type}</strong> <span style="color:#64748b;">(⛰️ ${elev})</span><br>
-                <code style="font-size:10px;">${lat}, ${lng}</code>
-            </div>`;
-    }).join('');
-
-    // Formatter: Lista postojów
-    let stopsHtml = '';
-    if (document.getElementById('pdfIncludeStops').checked && routeStops.length > 0) {
-        const sortedStops = [...routeStops].sort((a,b) => a.snappedDist - b.snappedDist);
-        const stopsList = sortedStops.map(s => {
-            let tInfo = `${s.duration} min`;
-            if(!isTimeSkipped && s.startTime && s.endTime) {
-                const hs = s.startTime.getHours().toString().padStart(2,'0');
-                const ms = s.startTime.getMinutes().toString().padStart(2,'0');
-                const he = s.endTime.getHours().toString().padStart(2,'0');
-                const me = s.endTime.getMinutes().toString().padStart(2,'0');
-                tInfo = `${hs}:${ms} - ${he}:${me}`;
-            }
-            return `
-            <div class="pdf-stop-item pdf-avoid-break">
-                <div style="display:flex; justify-content: space-between; margin-bottom: 5px;">
-                    <strong style="color: ${accentColor}; font-size: 13px;">${s.icon==='dot'?'☕':s.icon} ${s.name}</strong>
-                    <span style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">${tInfo}</span>
-                </div>
-                ${s.desc ? `<div style="color: #475569; font-size: 11px;">${s.desc}</div>` : ''}
-            </div>`;
-        }).join('');
-        
-        stopsHtml = `
-            <div class="pdf-section-title" style="color: ${accentColor};">Przystanki na trasie</div>
-            <div class="pdf-cols-2">${stopsList}</div>`;
-    }
-
-    // Formatter: Instrukcja (Nawigacja)
-    let rawDescHtml = '';
-    if (document.getElementById('pdfIncludeDesc').checked) {
-        const cloneDesc = document.createElement('div');
-        cloneDesc.innerHTML = document.getElementById('routeDescText').innerHTML;
-        
-        const steps = cloneDesc.querySelectorAll('.route-step');
-        let compactSteps = '';
-        steps.forEach(st => {
-            compactSteps += `<div class="pdf-step-item pdf-avoid-break">${st.innerHTML}</div>`;
-        });
-        
-        if (compactSteps) {
-            rawDescHtml = `
-            <div class="pdf-section-title" style="color: ${accentColor};">Nawigacja krok po kroku</div>
-            <div class="pdf-cols-2">${compactSteps}</div>`;
-        }
-    }
-
-    // --- BUDOWANIE FIZYCZNEGO KONTENERA ---
-    const renderContainer = document.getElementById('pdfRenderContainer');
-    
-    // Przekazanie zmiennych CSS do kontenera
-    renderContainer.style.setProperty('--pdf-accent', accentColor);
-    renderContainer.style.fontFamily = fontFam;
-
-    renderContainer.innerHTML = `
-        <div class="pdf-page">
-            <!-- Nagłówek -->
-            <div class="pdf-header">
-                <div>
-                    <h1 class="pdf-title">${title}</h1>
-                    <p class="pdf-subtitle">Wygenerowano z: Planer Tras Puszczy Wkrzańskiej</p>
-                </div>
-                <div class="pdf-stats">
-                    <strong>Dystans:</strong> ${statsDist}<br>
-                    ${statsTime}
-                </div>
-            </div>
-
-            <!-- Własny opis -->
-            ${customText.trim().length > 0 ? `
-                <div class="pdf-custom-text">${customText}</div>
-            ` : ''}
-
-            <!-- Mapa -->
-            ${document.getElementById('pdfIncludeMap').checked && mapImgSrc ? `
-                <div class="pdf-map-container" style="margin-bottom: 20px;">
-                    <img src="${mapImgSrc}">
-                </div>
-            ` : ''}
-
-            <!-- Profil Wysokości -->
-            ${document.getElementById('pdfIncludeElev').checked && routeGeometry.length > 1 ? `
-                <div class="pdf-elev-container" style="margin-bottom: 20px;">
-                    <div style="font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #475569;">Profil Wysokości</div>
-                    <img src="${document.getElementById('elevation').toDataURL()}">
-                </div>
-            ` : ''}
-
-            <!-- Postoje -->
-            ${stopsHtml}
-
-            <!-- Punkty -->
-            ${document.getElementById('pdfIncludePoints').checked && pointsData ? `
-                <div class="pdf-section-title" style="color: ${accentColor};">Współrzędne trasy</div>
-                <div class="pdf-cols-3">${pointsData}</div>
-            ` : ''}
-
-            <!-- Nawigacja -->
-            ${rawDescHtml}
-            
-            <!-- Stopka -->
-            <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; font-size: 10px; color: #94a3b8;">
-                Dokument wygenerowany w dniu: ${new Date().toLocaleString('pl-PL')}
-            </div>
-        </div>
-    `;
-
-    // --- USTAWIENIA BIBLIOTEKI html2pdf ---
-    btn.innerText = "⏳ Generowanie pliku...";
-    
-    // Używamy formatu 'a4' i układu portrait - to najbardziej stabilna konfiguracja
-    // Ponieważ daliśmy .pdf-page { padding: 40px; }, to margines html2pdf musi wynosić równe 0.
-    const opt = {
-        margin: 0, 
-        filename: title.replace(/\s+/g, '_') + '.pdf',
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-            scale: 2, 
-            useCORS: true, 
-            letterRendering: true,
-            windowWidth: 800, // Zgadza się z szerokością renderContainer
-            scrollY: 0
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['css', 'legacy'] }
-    };
-
     try {
+        console.log("[PDF] Rozpoczęcie generowania PDF...");
+        btn.innerText = "⏳ Przygotowywanie mapy...";
+
+        // 1. ZDJĘCIE MAPY
+        let mapImgSrc = sessionStorage.getItem('custom_map_png');
+        if (document.getElementById('pdfIncludeMap').checked && !mapImgSrc) {
+            console.log("[PDF] Brak mapy w sesji, generowanie z okna głównego...");
+            const oldBounds = map.getBounds();
+            map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
+            await new Promise(r => setTimeout(r, 1200)); 
+            mapImgSrc = await domtoimage.toPng(document.getElementById('map'), { width: 1200, height: 700 });
+            map.fitBounds(oldBounds, { animate: false });
+        }
+
+        btn.innerText = "⏳ Składanie dokumentu...";
+        console.log("[PDF] Pobieranie danych tekstowych...");
+
+        // 2. DANE DO PDF
+        const statsDist = document.getElementById('stats').innerText;
+        const statsTime = document.getElementById('time').innerText;
+
+        const pointsData = routePoints.map((p, i) => {
+            const type = i === 0 ? "START" : (i === routePoints.length - 1 ? "META" : `Punkt ${i+1}`);
+            const lat = p.latlng.lat.toFixed(5);
+            const lng = p.latlng.lng.toFixed(5);
+            const elev = p.elevation ? `${p.elevation.toFixed(0)}m` : "-";
+            return `
+                <div style="font-size: 11px; border-left: 2px solid ${accentColor}; padding-left: 8px; margin-bottom: 12px; break-inside: avoid;">
+                    <strong style="color: ${accentColor};">${type}</strong> <span style="color:#64748b;">(⛰️ ${elev})</span><br>
+                    <code style="font-size:10px;">${lat}, ${lng}</code>
+                </div>`;
+        }).join('');
+
+        let stopsHtml = '';
+        if (document.getElementById('pdfIncludeStops').checked && routeStops.length > 0) {
+            const sortedStops = [...routeStops].sort((a,b) => a.snappedDist - b.snappedDist);
+            const stopsList = sortedStops.map(s => {
+                let tInfo = `${s.duration} min`;
+                if(!isTimeSkipped && s.startTime && s.endTime) {
+                    const hs = s.startTime.getHours().toString().padStart(2,'0');
+                    const ms = s.startTime.getMinutes().toString().padStart(2,'0');
+                    const he = s.endTime.getHours().toString().padStart(2,'0');
+                    const me = s.endTime.getMinutes().toString().padStart(2,'0');
+                    tInfo = `${hs}:${ms} - ${he}:${me}`;
+                }
+                return `
+                <div style="border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; background: #f8fafc; margin-bottom: 12px; break-inside: avoid;">
+                    <div style="display:flex; justify-content: space-between; margin-bottom: 5px;">
+                        <strong style="color: ${accentColor}; font-size: 13px;">${s.icon==='dot'?'☕':s.icon} ${s.name}</strong>
+                        <span style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">${tInfo}</span>
+                    </div>
+                    ${s.desc ? `<div style="color: #475569; font-size: 11px;">${s.desc}</div>` : ''}
+                </div>`;
+            }).join('');
+            
+            stopsHtml = `
+                <div style="font-size: 18px; border-bottom: 2px solid ${accentColor}; padding-bottom: 5px; margin: 30px 0 15px 0; color: #1e293b; font-weight: bold;">Przystanki na trasie</div>
+                <div style="column-count: 2; column-gap: 25px;">${stopsList}</div>`;
+        }
+
+        let rawDescHtml = '';
+        if (document.getElementById('pdfIncludeDesc').checked) {
+            const cloneDesc = document.createElement('div');
+            cloneDesc.innerHTML = document.getElementById('routeDescText').innerHTML;
+            const steps = cloneDesc.querySelectorAll('.route-step');
+            let compactSteps = '';
+            steps.forEach(st => {
+                compactSteps += `<div style="font-size: 12px; padding: 8px; background: #f8fafc; border-left: 3px solid ${accentColor}; line-height: 1.4; margin-bottom: 12px; break-inside: avoid;">${st.innerHTML}</div>`;
+            });
+            if (compactSteps) {
+                rawDescHtml = `
+                <div style="font-size: 18px; border-bottom: 2px solid ${accentColor}; padding-bottom: 5px; margin: 30px 0 15px 0; color: #1e293b; font-weight: bold;">Nawigacja krok po kroku</div>
+                <div style="column-count: 2; column-gap: 25px;">${compactSteps}</div>`;
+            }
+        }
+
+        // 3. TWORZENIE TYMCZASOWEGO, FIZYCZNEGO KONTENERA W DOM (Zamiast ukrytego diva w HTML)
+        console.log("[PDF] Budowanie struktury HTML...");
+        const renderContainer = document.createElement('div');
+        renderContainer.id = "tempPdfRender";
+        
+        // ZŁOTA ZASADA HTML2CANVAS: Musi być w DOM, musi mieć zdefiniowane tło, nie może mieć opacity 0. 
+        // Ukrywamy go podążając za z-index i upewniając się, że jest na szczycie lewego rogu ukryty pod mapą.
+        renderContainer.style.position = 'absolute';
+        renderContainer.style.top = '0';
+        renderContainer.style.left = '0';
+        renderContainer.style.width = '800px';
+        renderContainer.style.backgroundColor = '#ffffff';
+        renderContainer.style.color = '#0f172a';
+        renderContainer.style.fontFamily = fontFam;
+        renderContainer.style.zIndex = '-9999'; // Pod spodem wszystkiego
+        
+        renderContainer.innerHTML = `
+            <div style="padding: 40px; box-sizing: border-box; width: 100%;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid ${accentColor}; padding-bottom: 15px; margin-bottom: 25px;">
+                    <div>
+                        <h1 style="margin: 0; font-size: 28px; color: ${accentColor}; font-weight: bold;">${title}</h1>
+                        <p style="margin: 5px 0 0 0; color: #64748b; font-size: 12px;">Wygenerowano z: Planer Tras Puszczy Wkrzańskiej</p>
+                    </div>
+                    <div style="background: #f8fafc; padding: 10px 15px; border-radius: 8px; font-size: 12px; text-align: right; border: 1px solid #e2e8f0;">
+                        <strong>Dystans:</strong> ${statsDist}<br>${statsTime}
+                    </div>
+                </div>
+
+                ${customText.trim().length > 0 ? `<div style="background: #fefce8; border-left: 4px solid #facc15; padding: 15px; font-size: 13px; line-height: 1.6; border-radius: 4px; margin-bottom: 25px;">${customText}</div>` : ''}
+                ${document.getElementById('pdfIncludeMap').checked && mapImgSrc ? `<div style="margin-bottom: 20px;"><img src="${mapImgSrc}" style="width: 100%; max-height: 450px; object-fit: contain; border-radius: 8px; border: 1px solid #cbd5e1;"></div>` : ''}
+                ${document.getElementById('pdfIncludeElev').checked && routeGeometry.length > 1 ? `<div style="margin-bottom: 20px;"><div style="font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #475569;">Profil Wysokości</div><img src="${document.getElementById('elevation').toDataURL()}" style="width: 100%; height: 100px; object-fit: cover;"></div>` : ''}
+                
+                ${stopsHtml}
+
+                ${document.getElementById('pdfIncludePoints').checked && pointsData ? `
+                    <div style="font-size: 18px; border-bottom: 2px solid ${accentColor}; padding-bottom: 5px; margin: 30px 0 15px 0; color: #1e293b; font-weight: bold;">Współrzędne trasy</div>
+                    <div style="column-count: 3; column-gap: 20px;">${pointsData}</div>
+                ` : ''}
+
+                ${rawDescHtml}
+                
+                <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; font-size: 10px; color: #94a3b8;">
+                    Dokument wygenerowany w dniu: ${new Date().toLocaleString('pl-PL')}
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(renderContainer); // Wrzucamy do DOM
+
+        // 4. GENEROWANIE PLIKU
+        console.log("[PDF] Rozpoczęto renderowanie do PDF...");
+        btn.innerText = "⏳ Generowanie pliku...";
+        
+        const opt = {
+            margin: 0, 
+            filename: title.replace(/\s+/g, '_') + '.pdf',
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, letterRendering: true, windowWidth: 800, scrollY: 0 },
+            jsPDF: { unit: 'px', format: [800, 1131], orientation: 'portrait' }, // Wymuszamy format pixelowy dla precyzji
+            pagebreak: { mode: ['css', 'legacy'] }
+        };
+
         await html2pdf().set(opt).from(renderContainer).save();
+        console.log("[PDF] Sukces!");
+        
+        // Sprzątanie na koniec
+        document.body.removeChild(renderContainer);
+
     } catch (err) {
-        console.error("Błąd zapisu PDF:", err);
-        showCustomAlert("Wystąpił błąd podczas generowania pliku PDF.");
+        console.error("[PDF] Błąd zapisu PDF:", err);
+        showCustomAlert("Wystąpił błąd podczas generowania pliku PDF. Sprawdź konsolę (F12).");
+        // Upewnij się, że sprzątniemy diva nawet przy błędzie
+        const stuckContainer = document.getElementById('tempPdfRender');
+        if (stuckContainer) document.body.removeChild(stuckContainer);
     } finally {
-        // Sprzątanie zawartości
-        renderContainer.innerHTML = '';
         btn.disabled = false;
         btn.innerText = "Generuj Elegancki PDF";
     }
 }
-
 // Niezawodna funkcja pozycjonująca okno (w miejsce CSS transform)
 function centerExportModal() {
     const modal = document.getElementById('mapExportModal');
@@ -5542,87 +5467,82 @@ function saveAllStopsToMyPoints(storageType) {
 
 // WERYFIKACJA ODDALENIA POSTOJÓW PRZY ZMIANIE TRASY
 // Wywołaj to na samym końcu funkcji recalculateRoute() !
-function validateStopsOnLine() {
-    if(routeStops.length === 0) return;
-    
-    let displacedCount = 0;
+// --- AUTOMATYCZNA AKTUALIZACJA POSTOJÓW PRZY ZMIANIE TRASY ---
+function autoUpdateStopsOnRouteChange() {
+    if (routeStops.length === 0 || routeGeometry.length < 2) return;
+
+    let wasChanged = false;
 
     routeStops.forEach(stop => {
-        let isClose = false;
-        for (let i = 0; i < routeGeometry.length; i++) {
-            if (stop.latlng.distanceTo(L.latLng(routeGeometry[i])) < 50) {
-                isClose = true;
-                break;
+        // Szukamy najbliższego punktu nowej trasy dla tego postoju
+        let closestDist = Infinity;
+        let accumulatedDistAtSnap = 0;
+        let tempDist = 0;
+        let newSnappedLatLng = stop.latlng;
+
+        for (let i = 0; i < routeGeometry.length - 1; i++) {
+            const p1 = L.latLng(routeGeometry[i]);
+            const p2 = L.latLng(routeGeometry[i+1]);
+            const segmentLen = p1.distanceTo(p2);
+            
+            const d = stop.latlng.distanceTo(p1);
+            if (d < closestDist) {
+                closestDist = d;
+                accumulatedDistAtSnap = tempDist;
+                newSnappedLatLng = p1;
             }
+            tempDist += segmentLen;
         }
 
-        if (!isClose) {
-            displacedCount++;
-            if(stop.marker) {
-                const el = stop.marker.getElement();
-                if(el) el.classList.add('warning-pulse');
-                
-                stop.marker.dragging.enable();
-                
-                // PRAWIDŁOWE AKTUALIZOWANIE PUNKTU PO PRZESUNIĘCIU
-                stop.marker.on('dragend', function(e) {
-                    const newLatLng = e.target.getLatLng();
-                    
-                    // Szukamy najbliższego punktu na linii, by zaktualizować snappedDist
-                    let closestDist = Infinity;
-                    let accumulatedDistAtSnap = 0;
-                    let tempDist = 0;
-                    let newSnappedLatLng = newLatLng;
-
-                    for (let i = 0; i < routeGeometry.length - 1; i++) {
-                        const p1 = L.latLng(routeGeometry[i]);
-                        const segmentLen = p1.distanceTo(L.latLng(routeGeometry[i+1]));
-                        const d = newLatLng.distanceTo(p1);
-                        if (d < closestDist) {
-                            closestDist = d;
-                            accumulatedDistAtSnap = tempDist;
-                            newSnappedLatLng = p1;
-                        }
-                        tempDist += segmentLen;
-                    }
-
-                    // Aktualizacja danych tego samego postoju
-                    stop.latlng = newSnappedLatLng;
-                    stop.snappedDist = accumulatedDistAtSnap;
-                    stop.marker.setLatLng(newSnappedLatLng);
-                    stop.marker.dragging.disable();
-                    
-                    if(el) el.classList.remove('warning-pulse');
-                    
-                    // Jeśli punkt był zapisany, aktualizujemy go w Moich Punktach
-                    if (stop.isSaved) {
-                        const savedRef = userSavedPois.find(p => p.id === stop.id);
-                        if(savedRef) {
-                            savedRef.lat = newSnappedLatLng.lat;
-                            savedRef.lng = newSnappedLatLng.lng;
-                            savedRef.snappedDist = accumulatedDistAtSnap;
-                            updateLocalStoragePois();
-                        }
-                    }
-
-                    // Odświeżamy widoki
-                    generateRouteDescription();
-                    renderStopsList();
-                    
-                    // Schowaj modal jeśli uratowano wszystkie
-                    displacedCount--;
-                    if(displacedCount <= 0 && document.getElementById('stopsWarningModal')) {
-                        document.getElementById('stopsWarningModal').style.display='none';
-                    }
-                });
-            }
-        } else {
-            if(stop.marker && stop.marker.dragging) stop.marker.dragging.disable();
-            if(stop.marker && stop.marker.getElement()) stop.marker.getElement().classList.remove('warning-pulse');
+        // Aktualizujemy pozycję markera postoju i jego nową odległość od startu
+        if (stop.snappedDist !== accumulatedDistAtSnap || stop.latlng.lat !== newSnappedLatLng.lat) {
+            stop.latlng = newSnappedLatLng;
+            stop.snappedDist = accumulatedDistAtSnap;
+            if (stop.marker) stop.marker.setLatLng(newSnappedLatLng);
+            wasChanged = true;
         }
     });
 
-    if (displacedCount > 0) openCenteredModal('stopsWarningModal');
+    if (wasChanged) {
+        // Sortujemy istniejące postoje według nowej kolejności kilometrażu
+        routeStops.sort((a,b) => a.snappedDist - b.snappedDist);
+        
+        // Przeliczamy nowe czasy zachowując ustawienia (blokady) użytkownika
+        recalcAllStops();
+        
+        // Aktualizujemy wszystkie widoki
+        renderStopsList();
+        generateRouteDescription();
+        updateStats(calculateTotalDist());
+
+        // Elegancki komunikat u góry ekranu zamiast natrętnego alertu
+        showTopBannerWarning("Zmieniono trasę! Pozycje i czasy postojów zostały automatycznie zaktualizowane do nowej ścieżki.");
+    }
+}
+
+function showTopBannerWarning(msg) {
+    const banner = document.createElement('div');
+    banner.style.position = 'fixed';
+    banner.style.top = '15px';
+    banner.style.left = '50%';
+    banner.style.transform = 'translateX(-50%)';
+    banner.style.background = '#f59e0b';
+    banner.style.color = 'white';
+    banner.style.padding = '10px 20px';
+    banner.style.borderRadius = '8px';
+    banner.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+    banner.style.zIndex = '9999';
+    banner.style.fontWeight = 'bold';
+    banner.style.fontSize = '0.9rem';
+    banner.innerHTML = `⚠️ ${msg}`;
+    
+    document.body.appendChild(banner);
+    
+    setTimeout(() => {
+        banner.style.opacity = '0';
+        banner.style.transition = 'opacity 0.5s';
+        setTimeout(() => document.body.removeChild(banner), 500);
+    }, 4000);
 }
     // Zapis PNG z Export Modalu do sesji (aby użyć w PDF)
 async function saveExportMapToSession() {
