@@ -881,6 +881,21 @@ canvas#elevation {
     animation: pulseWarning 1.5s infinite;
 }
 @keyframes pulseWarning { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        /* --- NOWE STYLE (Postoje, PDF, Edytor) --- */
+.time-summary-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.light .time-summary-item { border-bottom-color: rgba(0,0,0,0.1); }
+.time-warning { color: #ef4444; font-size: 0.75rem; margin-top: 2px; display: block; }
+
+.rt-editor-toolbar { display: flex; gap: 5px; background: rgba(0,0,0,0.1); padding: 5px; border-radius: 6px 6px 0 0; }
+.light .rt-editor-toolbar { background: rgba(0,0,0,0.05); }
+.rt-editor-toolbar button { padding: 4px 8px; font-size: 0.9rem; background: rgba(255,255,255,0.1); color: inherit; border: 1px solid transparent; }
+.rt-editor-toolbar button:hover { background: rgba(255,255,255,0.2); }
+.light .rt-editor-toolbar button { background: #fff; border-color: #ccc; }
+.rt-editor-content { background: rgba(0,0,0,0.2); min-height: 150px; padding: 10px; border-radius: 0 0 6px 6px; outline: none; border: 1px solid rgba(255,255,255,0.1); border-top: none; }
+.light .rt-editor-content { background: #fff; border-color: #ccc; }
+
+#time { cursor: pointer; text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 3px; }
+#time:hover { color: var(--accent); }
     </style>
     
 </head>
@@ -1007,26 +1022,92 @@ canvas#elevation {
         <em>Zaznacz punkty na mapie, aby wygenerować opis...</em>
     </div>
 </div>
-    <div id="pdfModal" class="floating-modal" style="width: 380px;">
+   <!-- ZMODYFIKOWANY MODAL PDF -->
+<div id="pdfModal" class="floating-modal" style="width: 420px;">
     <div class="modal-header">
-        <span>📄 Ustawienia pliku PDF</span>
-        <button class="danger" onclick="closeModal('pdfModal')">X</button>
+        <span>📄 Elegancki Eksport PDF</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('pdfModal')">X</button>
     </div>
     <div class="modal-body">
         <label>Tytuł wycieczki:</label>
-        <input type="text" id="pdfTitle" value="Moja Wycieczka - Puszcza" style="width:100%; padding:8px; margin: 8px 0; border-radius:5px; border:1px solid #ccc;">
+        <input type="text" id="pdfTitle" value="Wycieczka - Puszcza Wkrzańska" style="width:100%; padding:8px; margin: 4px 0 12px 0; border-radius:5px; border:1px solid #ccc; box-sizing: border-box;">
         
-        <hr>
-        <label>Zawartość PDF:</label><br><br>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-            <label><input type="checkbox" id="pdfIncludeStats" checked> Statystyki (Dystans, Czas)</label>
-            <label><input type="checkbox" id="pdfIncludeMap" checked> Mapa trasy (Zrzut)</label>
-            <label><input type="checkbox" id="pdfIncludeElev" checked> Wykres wysokości</label>
-            <label><input type="checkbox" id="pdfIncludeDesc" checked> Opis trasy</label>
-            <label><input type="checkbox" id="pdfIncludePoints" checked> Lista punktów</label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+            <div>
+                <label style="font-size: 0.8rem;">Kolor akcentów:</label>
+                <input type="color" id="pdfColor" value="#16a34a" style="width:100%; height: 30px; border:none; padding:0;">
+            </div>
+            <div>
+                <label style="font-size: 0.8rem;">Czcionka:</label>
+                <select id="pdfFont" style="width:100%; padding: 4px;">
+                    <option value="'Segoe UI', sans-serif">Nowoczesna (Segoe)</option>
+                    <option value="Georgia, serif">Klasyczna (Georgia)</option>
+                    <option value="'Courier New', monospace">Maszynowa</option>
+                </select>
+            </div>
         </div>
-        <br>
-        <button onclick="generatePDF()" id="pdfGenBtn" style="width:100%; background: #22c55e;">Generuj i Pobierz</button>
+
+        <div id="pdfMapStatus" style="font-size: 0.8rem; padding: 8px; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; margin-bottom: 10px;">
+            Sprawdzanie dostępności mapy z sesji...
+        </div>
+        
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; background: rgba(0,0,0,0.05); padding: 10px; border-radius: 6px;">
+            <label><input type="checkbox" id="pdfIncludeStats" checked> Statystyki (Dystans, Czas, Podejścia)</label>
+            <label><input type="checkbox" id="pdfIncludeMap" checked> Mapa trasy <small id="pdfMapLabel">(Zrzut z okna głównego)</small></label>
+            <label><input type="checkbox" id="pdfIncludeElev" checked> Profil wysokościowy</label>
+            <label><input type="checkbox" id="pdfIncludeDesc" checked> Nawigacja (Opis krok po kroku)</label>
+            <label><input type="checkbox" id="pdfIncludePoints" checked> Lista punktów nawigacyjnych</label>
+            <label><input type="checkbox" id="pdfIncludeStops" checked> Lista postojów</label>
+        </div>
+
+        <button onclick="openCustomDescModal()" style="width:100%; background: #8b5cf6; margin-top: 10px; padding: 8px;">✏️ Dodaj własny opis / notatki do PDF</button>
+        <button onclick="generatePDF()" id="pdfGenBtn" style="width:100%; background: #22c55e; margin-top: 10px; padding: 10px; font-weight: bold;">Generuj Elegancki PDF</button>
+    </div>
+</div>
+
+<!-- NOWY MODAL: CZAS STARTU -->
+<div id="departureTimeModal" class="floating-modal" style="width: 320px; z-index: 3000;">
+    <div class="modal-header">
+        <span>⏰ Planowanie Czasu</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="skipDepartureTime()">X</button>
+    </div>
+    <div class="modal-body" style="text-align: center;">
+        <p style="font-size: 0.95rem;">O której godzinie planujesz wyruszyć na trasę?</p>
+        <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 15px;">Pozwoli to na automatyczne wyliczenie godzin dotarcia do postojów.</p>
+        <input type="time" id="departureTimeInput" style="font-size: 1.2rem; padding: 5px; margin-bottom: 15px;">
+        <div style="display: flex; gap: 10px;">
+            <button onclick="setDepartureTime()" style="flex:1; background: #22c55e;">Ustaw czas</button>
+            <button onclick="skipDepartureTime()" style="flex:1;" class="secondary">Pomiń</button>
+        </div>
+    </div>
+</div>
+
+<!-- NOWY MODAL: PODSUMOWANIE CZASU -->
+<div id="timeSummaryModal" class="floating-modal" style="width: 350px;">
+    <div class="modal-header">
+        <span>⏱️ Podsumowanie Czasu</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('timeSummaryModal')">X</button>
+    </div>
+    <div class="modal-body" id="timeSummaryContent">
+        <!-- Generowane dynamicznie -->
+    </div>
+</div>
+
+<!-- NOWY MODAL: WŁASNY OPIS PDF -->
+<div id="customDescModal" class="floating-modal" style="width: 450px; z-index: 2500;">
+    <div class="modal-header">
+        <span>📝 Własny opis do PDF</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('customDescModal')">X</button>
+    </div>
+    <div class="modal-body">
+        <div class="rt-editor-toolbar">
+            <button onclick="formatText('bold')" title="Pogrubienie"><b>B</b></button>
+            <button onclick="formatText('italic')" title="Kursywa"><i>I</i></button>
+            <button onclick="formatText('underline')" title="Podkreślenie"><u>U</u></button>
+            <button onclick="formatText('insertUnorderedList')" title="Lista">ul</button>
+        </div>
+        <div id="pdfCustomDescEditor" class="rt-editor-content" contenteditable="true" placeholder="Wpisz tutaj swój wstęp, notatki lub podsumowanie trasy..."></div>
+        <button onclick="closeModal('customDescModal')" style="width:100%; background: #3b82f6; margin-top:10px;">Zapisz treść</button>
     </div>
 </div>
 <!-- GŁÓWNY MODAL EKSPORTU -->
@@ -1049,6 +1130,7 @@ canvas#elevation {
             <button onclick="syncExportPoints()" title="Przeładuj i zaktualizuj legendę w obecnym widoku">🔄 Legenda</button>
             <div class="toolbar-divider"></div>
             <button onclick="copyMapPNG()">Kopiuj</button>
+            <button onclick="saveExportMapToSession()" style="background:#8b5cf6;">💾 Do Sesji (Dla PDF)</button>
             <button onclick="exportMapPNG()">Zapisz PNG</button>
             <button onclick="printExportMap()">Drukuj</button>
         </div>
@@ -1529,12 +1611,16 @@ let elevPhase = 0;
 let wasExportEmpty = false;
 let routeStops = []; 
 let isStopMode = false;
+let tripStartTime = null; 
+let isTimeSkipped = true;
+let customPdfText = "";
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
 };
 let tempPickerType = '';
 const userSavedLayer = L.layerGroup().addTo(map);
+const WALK_SPEED_M_PER_MIN = 70; // 4.2 km/h;
 const STOP_EMOJIS = ["☕", "🍔", "⛺", "🔥", "📸", "🛌", "🔋", "🚾", "🥪", "🪑"];
 const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
@@ -2583,11 +2669,70 @@ function drawElevation(hoverIdx = -1) {
 function updateStats(distMeters) {
     const km = distMeters / 1000;
     document.getElementById('stats').innerText = `${km.toFixed(2)} km`;
-    const speed = 4.2; 
-    const minutes = (km / speed) * 60 + (totalAscent / 100 * 10);
-    document.getElementById('time').innerText = `Czas: ~${Math.floor(minutes/60)}h ${Math.round(minutes%60)}m | ⬆️ ${totalAscent}m`;
+    
+    const walkMinutes = (km / 4.2) * 60 + (totalAscent / 100 * 10);
+    
+    // Obliczanie czasu postojów
+    let stopsMinutes = 0;
+    routeStops.forEach(s => stopsMinutes += s.duration);
+    
+    const totalMinutes = walkMinutes + stopsMinutes;
+    
+    let timeText = `Czas: ~${Math.floor(totalMinutes/60)}h ${Math.round(totalMinutes%60)}m`;
+    if (stopsMinutes > 0) {
+        timeText += ` (w tym ${stopsMinutes} min postojów)`;
+    }
+    
+    document.getElementById('time').innerText = `${timeText} | ⬆️ ${totalAscent}m`;
+    
+    // Przechowujemy dane do modalu podsumowania
+    window._timeStats = {
+        walkMins: Math.round(walkMinutes),
+        stopsMins: stopsMinutes,
+        totalMins: Math.round(totalMinutes)
+    };
 }
+// Podpięcie eventu click do #time
+document.getElementById('time').onclick = openTimeSummaryModal;
 
+function openTimeSummaryModal() {
+    if(!window._timeStats) return;
+    
+    let html = `
+        <div style="font-size: 1.1rem; text-align: center; margin-bottom: 15px;">
+            Całkowity czas: <strong>${Math.floor(window._timeStats.totalMins/60)}h ${window._timeStats.totalMins%60}m</strong>
+        </div>
+        <div class="time-summary-item">
+            <span>🥾 Czysty marsz (i przewyższenia):</span>
+            <strong>${Math.floor(window._timeStats.walkMins/60)}h ${window._timeStats.walkMins%60}m</strong>
+        </div>
+        <div class="time-summary-item">
+            <span>☕ Czas na postojach:</span>
+            <strong>${Math.floor(window._timeStats.stopsMins/60)}h ${window._timeStats.stopsMins%60}m</strong>
+        </div>
+    `;
+
+    if (routeStops.length > 0) {
+        html += `<div style="margin-top: 15px; font-weight: bold; font-size: 0.9rem; color: var(--accent);">Rozpiska postojów:</div>`;
+        routeStops.sort((a,b) => a.snappedDist - b.snappedDist).forEach(s => {
+            let timeInfo = `${s.duration} min`;
+            if(!isTimeSkipped && s.startTime) {
+                const h = s.startTime.getHours().toString().padStart(2,'0');
+                const m = s.startTime.getMinutes().toString().padStart(2,'0');
+                timeInfo = `${h}:${m} (${s.duration} min)`;
+            }
+            html += `
+                <div style="display:flex; justify-content:space-between; font-size:0.85rem; padding: 4px 0; border-bottom: 1px dashed rgba(255,255,255,0.1);">
+                    <span>${s.icon === 'dot' ? '☕' : s.icon} ${s.name}</span>
+                    <span style="color: #94a3b8;">${timeInfo}</span>
+                </div>
+            `;
+        });
+    }
+
+    document.getElementById('timeSummaryContent').innerHTML = html;
+    openCenteredModal('timeSummaryModal');
+}
 function calculateTotalDist() {
     let d = 0;
     for (let i = 1; i < routeGeometry.length; i++) {
@@ -2960,122 +3105,210 @@ function isBlacklistedOSM(e) {
     return false;
 }
 
+// --- LOGIKA EDYTORA TEKSTU DO PDF ---
+function openCustomDescModal() {
+    openCenteredModal('customDescModal');
+}
+
+function formatText(command) {
+    document.execCommand(command, false, null);
+    document.getElementById('pdfCustomDescEditor').focus();
+}
+
+// Nasłuchiwanie przed otwarciem modalu PDF by sprawdzić mapę
+document.getElementById('pdfModal').addEventListener('mouseenter', checkSessionMapForPdf); // Sprawdzanie najeżdżając kursorem by było aktualne
+
+function checkSessionMapForPdf() {
+    const hasMap = sessionStorage.getItem('custom_map_png') !== null;
+    const statusDiv = document.getElementById('pdfMapStatus');
+    const mapLabel = document.getElementById('pdfMapLabel');
+    
+    if (hasMap) {
+        statusDiv.style.borderLeftColor = '#22c55e';
+        statusDiv.style.backgroundColor = 'rgba(34, 197, 94, 0.1)';
+        statusDiv.innerHTML = '✅ Wykryto wyeksportowaną mapę w pamięci! Zostanie ona użyta w PDF.';
+        mapLabel.innerText = "(Utworzona z panelu Eksportu)";
+    } else {
+        statusDiv.style.borderLeftColor = '#f59e0b';
+        statusDiv.style.backgroundColor = 'rgba(245, 158, 11, 0.1)';
+        statusDiv.innerHTML = 'ℹ️ Aby stworzyć ładniejszą mapę do PDF z własną legendą i tytułem, wygeneruj ją w zakładce "Eksport Mapy" i kliknij <b>💾 Do Sesji</b>.';
+        mapLabel.innerText = "(Zrzut z okna głównego)";
+    }
+}
+
+// --- NOWY, ELEGANCKI GENERATOR PDF ---
 async function generatePDF() {
     const btn = document.getElementById('pdfGenBtn');
     const title = document.getElementById('pdfTitle').value || "Plan trasy";
+    const accentColor = document.getElementById('pdfColor').value;
+    const fontFam = document.getElementById('pdfFont').value;
+    const customText = document.getElementById('pdfCustomDescEditor').innerHTML;
     
     btn.disabled = true;
-    btn.innerText = "⏳ Generowanie danych...";
+    btn.innerText = "⏳ Generowanie dokumentu...";
 
-    // --- 1. PRZYGOTOWANIE MAPY (Większy kadr) ---
-    const oldBounds = map.getBounds();
-    map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
-    await new Promise(r => setTimeout(r, 1200)); 
-    const mapImg = await domtoimage.toPng(document.getElementById('map'), {
-        width: 1600, // Zwiększona rozdzielczość dla PDF
-        height: 900
-    });
+    // Ustalanie źródła mapy
+    let mapImgSrc = sessionStorage.getItem('custom_map_png');
+    
+    if (document.getElementById('pdfIncludeMap').checked && !mapImgSrc) {
+        // Fallback: robienie zwykłego screena mapy głównej
+        const oldBounds = map.getBounds();
+        map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
+        await new Promise(r => setTimeout(r, 1000)); 
+        mapImgSrc = await domtoimage.toPng(document.getElementById('map'), { width: 1200, height: 700 });
+        map.fitBounds(oldBounds, { animate: false });
+    }
 
- // --- 2. EKSTRAKCJA SUROWYCH DANYCH (Model danych) ---
+    // Ekstrakcja danych
     const stats = {
         dist: document.getElementById('stats').innerText,
         time: document.getElementById('time').innerText
     };
 
-    // Budowanie czystej listy punktów z wysokością i współrzędnymi
+    // Formatter punktów z kolumnami CSS
     const pointsData = routePoints.map((p, i) => {
         const type = i === 0 ? "START" : (i === routePoints.length - 1 ? "META" : `Punkt ${i+1}`);
-        
-        // Pobieramy współrzędne z obiektu latlng (format: DD.DDDDD)
         const lat = p.latlng.lat.toFixed(5);
         const lng = p.latlng.lng.toFixed(5);
-        const elev = p.elevation ? `${p.elevation.toFixed(0)} m n.p.m.` : "---";
-        const dist = i === 0 ? "Punkt początkowy" : `+${p.distFromPrev.toFixed(0)} m`;
-
+        const elev = p.elevation ? `${p.elevation.toFixed(0)}m` : "-";
+        
         return `
-            <li style="margin-bottom: 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 5px;">
-                <div style="font-weight: bold; color: #16a34a;">${type}</div>
-                <div style="font-size: 11px; color: #475569;">
-                    📍 Współrzędne: <code style="background: #f1f5f9; padding: 1px 4px;">${lat}, ${lng}</code> | 
-                    ⛰️ Wysokość: <b>${elev}</b> | 
-                    📏 Odległość: ${dist}
-                </div>
-            </li>`;
+            <div style="margin-bottom: 8px; font-size: 11px; break-inside: avoid; border-left: 2px solid ${accentColor}; padding-left: 6px;">
+                <strong style="color: ${accentColor};">${type}</strong> <span style="color:#555;">(⛰️ ${elev})</span><br>
+                <code>${lat}, ${lng}</code>
+            </div>`;
     }).join('');
 
-    // Pobieramy surowy tekst instrukcji, usuwając tagi HTML, ale zachowując nowe linie
-    const rawDesc = document.getElementById('routeDescText').innerText;
+    // Formatter postojów
+    let stopsHtml = '';
+    if (document.getElementById('pdfIncludeStops').checked && routeStops.length > 0) {
+        const sortedStops = [...routeStops].sort((a,b) => a.snappedDist - b.snappedDist);
+        const stopsList = sortedStops.map(s => {
+            let tInfo = `${s.duration} min`;
+            if(!isTimeSkipped && s.startTime && s.endTime) {
+                const hs = s.startTime.getHours().toString().padStart(2,'0');
+                const ms = s.startTime.getMinutes().toString().padStart(2,'0');
+                const he = s.endTime.getHours().toString().padStart(2,'0');
+                const me = s.endTime.getMinutes().toString().padStart(2,'0');
+                tInfo = `${hs}:${ms} - ${he}:${me} (${s.duration}min)`;
+            }
+            return `
+            <div style="margin-bottom: 10px; font-size: 12px; border: 1px solid #ddd; padding: 8px; border-radius: 4px; break-inside: avoid;">
+                <div style="display:flex; justify-content: space-between; margin-bottom: 4px;">
+                    <strong style="color: ${accentColor};">${s.icon==='dot'?'☕':s.icon} ${s.name}</strong>
+                    <span style="background: #f1f5f9; padding: 2px 5px; border-radius: 3px; font-size: 10px;">${tInfo}</span>
+                </div>
+                ${s.desc ? `<div style="color: #475569; font-style: italic;">${s.desc}</div>` : ''}
+            </div>`;
+        }).join('');
+        
+        stopsHtml = `
+            <h2 style="font-size: 16px; border-bottom: 2px solid ${accentColor}; padding-bottom: 4px; margin-top: 25px;">Przystanki na trasie</h2>
+            <div style="column-count: 2; column-gap: 20px;">
+                ${stopsList}
+            </div>`;
+    }
 
-    // --- 3. BUDOWANIE "SZABLONU" (Czysty, nowoczesny dokument) ---
+    // Instrukcja przejścia
+    let rawDescHtml = '';
+    if (document.getElementById('pdfIncludeDesc').checked) {
+        // Wyciągamy zawartość jako HTML, ale obieramy ją ze skomplikowanych klas
+        const cloneDesc = document.createElement('div');
+        cloneDesc.innerHTML = document.getElementById('routeDescText').innerHTML;
+        
+        // Transformacja divów ".route-step" w proste akapity do PDF
+        const steps = cloneDesc.querySelectorAll('.route-step');
+        let compactSteps = '';
+        steps.forEach(st => {
+            compactSteps += `<div style="margin-bottom: 10px; font-size: 11px; padding: 6px; background: #f8fafc; border-left: 3px solid ${accentColor}; break-inside: avoid;">${st.innerHTML}</div>`;
+        });
+        
+        if (compactSteps) {
+            rawDescHtml = `
+            <h2 style="font-size: 16px; border-bottom: 2px solid ${accentColor}; padding-bottom: 4px; margin-top: 25px;">Nawigacja</h2>
+            <div style="column-count: 2; column-gap: 20px;">
+                ${compactSteps}
+            </div>`;
+        }
+    }
+
+    // --- BUDOWANIE SZABLONU (Compact, Nowoczesny HTML) ---
     const element = document.createElement('div');
-    element.style.width = "750px"; // Szerokość robocza
+    element.style.width = "800px"; 
+    element.style.padding = "25px 40px";
+    element.style.fontFamily = fontFam;
+    element.style.color = "#1e293b";
+    
     element.innerHTML = `
-        <div style="padding: 30px; font-family: 'DejaVu Sans', Arial, sans-serif; color: #1e293b;">
-            <header style="border-bottom: 3px solid #16a34a; padding-bottom: 10px; margin-bottom: 20px;">
-                <h1 style="font-size: 26px; margin: 0; color: #16a34a;">${title}</h1>
-                <p style="margin: 5px 0 0 0; color: #64748b; font-size: 12px;">Planer Puszczy Wkrzańskiej | ${new Date().toLocaleString('pl-PL')}</p>
-            </header>
-
-            <div style="margin-bottom: 20px; font-size: 14px;">
-                <strong>Podsumowanie trasy:</strong> ${stats.dist} | ${stats.time}
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid ${accentColor}; padding-bottom: 10px; margin-bottom: 20px;">
+            <div>
+                <h1 style="font-size: 28px; margin: 0; color: ${accentColor};">${title}</h1>
+                <p style="margin: 5px 0 0 0; color: #64748b; font-size: 12px;">Planer Tras Puszczy Wkrzańskiej</p>
             </div>
-
-            ${document.getElementById('pdfIncludeMap').checked ? `
-                <div style="margin-bottom: 25px;">
-                    <img src="${mapImg}" style="width: 100%; border: 1px solid #ddd; border-radius: 4px;">
-                </div>
-            ` : ''}
-
-            ${document.getElementById('pdfIncludeElev').checked ? `
-                <div style="margin-bottom: 25px;">
-                    <h2 style="font-size: 16px; border-left: 4px solid #16a34a; padding-left: 10px;">Profil wysokości</h2>
-                    <img src="${document.getElementById('elevation').toDataURL()}" style="width: 100%; height: 100px;">
-                </div>
-            ` : ''}
-
-            <div style="display: block;">
-                ${document.getElementById('pdfIncludePoints').checked ? `
-                    <div style="margin-bottom: 25px;">
-                        <h2 style="font-size: 16px; border-left: 4px solid #16a34a; padding-left: 10px;">Lista punktów</h2>
-                        <ul style="font-size: 12px; color: #334155; padding-left: 20px;">
-                            ${pointsData}
-                        </ul>
-                    </div>
-                ` : ''}
-
-                ${document.getElementById('pdfIncludeDesc').checked ? `
-                    <div style="page-break-before: auto;">
-                        <h2 style="font-size: 16px; border-left: 4px solid #16a34a; padding-left: 10px;">Instrukcja przejścia</h2>
-                        <div style="font-size: 12px; text-align: justify; line-height: 1.5; white-space: pre-line; background: #f8fafc; padding: 15px; border-radius: 5px;">
-                            ${rawDesc}
-                        </div>
-                    </div>
-                ` : ''}
+            <div style="text-align: right; font-size: 11px; background: #f1f5f9; padding: 8px; border-radius: 6px;">
+                <strong>Dystans:</strong> ${stats.dist}<br>
+                ${stats.time}
             </div>
+        </header>
+
+        ${customText.trim().length > 0 ? `
+            <div style="margin-bottom: 20px; font-size: 12px; line-height: 1.5; padding: 15px; background: #fefce8; border-left: 4px solid #facc15; border-radius: 4px;">
+                ${customText}
+            </div>
+        ` : ''}
+
+        ${document.getElementById('pdfIncludeMap').checked && mapImgSrc ? `
+            <div style="margin-bottom: 20px; text-align: center;">
+                <img src="${mapImgSrc}" style="width: 100%; max-height: 400px; object-fit: contain; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            </div>
+        ` : ''}
+
+        ${document.getElementById('pdfIncludeElev').checked && routeGeometry.length > 1 ? `
+            <div style="margin-bottom: 20px;">
+                <h2 style="font-size: 14px; margin-bottom: 8px; color: #475569;">Profil Wysokości</h2>
+                <img src="${document.getElementById('elevation').toDataURL()}" style="width: 100%; height: 80px; object-fit: cover;">
+            </div>
+        ` : ''}
+
+        ${stopsHtml}
+
+        ${document.getElementById('pdfIncludePoints').checked && pointsData ? `
+            <h2 style="font-size: 16px; border-bottom: 2px solid ${accentColor}; padding-bottom: 4px; margin-top: 25px;">Punkty trasy (Koordynaty)</h2>
+            <div style="column-count: 3; column-gap: 15px;">
+                ${pointsData}
+            </div>
+        ` : ''}
+
+        ${rawDescHtml}
+        
+        <div style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 10px; text-align: center; font-size: 9px; color: #94a3b8;">
+            Wygenerowano: ${new Date().toLocaleString('pl-PL')}
         </div>
     `;
 
-    // --- 4. KONFIGURACJA EKSPORTU ---
+    // Ustawienia Html2Pdf (Wysoka kompresja, Smart Page Breaking)
     const opt = {
-        margin: 10,
+        margin: [10, 10, 10, 10], // Marginesy w mm
         filename: title.replace(/\s+/g, '_') + '.pdf',
-        image: { type: 'jpeg', quality: 1.0 },
+        image: { type: 'jpeg', quality: 0.95 },
         html2canvas: { 
-            scale: 3, // Wysoka jakość
+            scale: 2, 
             useCORS: true, 
-            letterRendering: true 
+            letterRendering: true,
+            windowWidth: 800
         },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
 
     try {
         await html2pdf().set(opt).from(element).save();
     } catch (err) {
-        console.error("PDF Error:", err);
+        console.error("Błąd zapisu PDF:", err);
+        showCustomAlert("Wystąpił błąd podczas generowania pliku PDF.");
     } finally {
-        map.fitBounds(oldBounds, { animate: false });
         btn.disabled = false;
-        btn.innerText = "Generuj i Pobierz";
+        btn.innerText = "Generuj Elegancki PDF";
     }
 }
 
@@ -4600,9 +4833,17 @@ function renderMyPointsList() {
     
     container.innerHTML = '';
     
-    const filtered = userSavedPois.filter(p => {
+    // Złączamy userSavedPois i routeStops (dla widoku unifikacji)
+    const combined = [...userSavedPois, ...routeStops];
+    
+    const filtered = combined.filter(p => {
         const matchText = p.name.toLowerCase().includes(query) || (p.desc && p.desc.toLowerCase().includes(query));
-        const matchFilter = (filter === 'all') || (p.storage === filter);
+        let matchFilter = false;
+        if(filter === 'all') matchFilter = true;
+        else if (filter === 'stop' && p.isStop) matchFilter = true;
+        else if (filter === 'local' && p.storage === 'local') matchFilter = true;
+        else if (filter === 'session' && p.storage === 'session' && !p.isStop) matchFilter = true;
+        
         return matchText && matchFilter;
     });
 
@@ -4611,40 +4852,64 @@ function renderMyPointsList() {
         return;
     }
 
-    filtered.forEach(p => {
+    // Eliminujemy duplikaty (jeśli z jakiegoś powodu ID się pokrywa, co nie powinno mieć miejsca, ale dla bezpieczeństwa)
+    const uniqueMap = new Map();
+    filtered.forEach(p => uniqueMap.set(p.id, p));
+
+    Array.from(uniqueMap.values()).forEach(p => {
         const globalRef = globalCustomPois.find(gp => gp.id === p.id);
         
-        // Generowanie tagów "Na stałe / Sesja" oraz "Postój"
-        const storageBadge = p.storage === 'local' ? `<span class="badge badge-local">💾 Na stałe</span>` : `<span class="badge badge-session">⏳ Sesja</span>`;
-        const stopBadge = p.isStop ? `<span class="badge" style="background:#f59e0b; color:white; margin-left: 4px;">☕ Postój</span>` : ``;
+        let storageBadge = p.storage === 'local' ? `<span class="badge badge-local">💾 Na stałe</span>` : `<span class="badge badge-session">⏳ Sesja</span>`;
+        if (p.isStop) storageBadge = ''; // Dla postojów mamy osobny badge
+
+        const stopBadge = p.isStop ? `<span class="badge" style="background:#f59e0b; color:white;">☕ Postój Trasy</span>` : ``;
         
         const item = document.createElement('div');
         item.className = 'my-point-list-item';
         item.innerHTML = `
             <div>
-                <span style="font-size:1.4rem; margin-right:5px;">${p.icon}</span>
+                <span style="font-size:1.4rem; margin-right:5px;">${p.icon === 'dot' ? '☕' : p.icon}</span>
                 <div style="display:inline-block; vertical-align:middle;">
                     <strong>${p.name}</strong><br>
                     ${storageBadge} ${stopBadge} <small style="opacity:0.7">${p.desc ? p.desc.substring(0, 20)+'...' : ''}</small>
                 </div>
             </div>
             <div style="display:flex; gap:5px;">
-                <button class="secondary icon-only" onclick="editPoiFromList('${p.id}')">✏️</button>
-                <button class="danger icon-only" onclick="deleteUserSavedPoi('${p.id}')">🗑️</button>
+                ${p.isStop ? 
+                    `<button class="secondary icon-only" onclick="openStopsModal()">✏️</button>` : 
+                    `<button class="secondary icon-only" onclick="editPoiFromList('${p.id}')">✏️</button>`
+                }
+                <button class="danger icon-only" onclick="${p.isStop ? `deleteStop('${p.id}')` : `deleteUserSavedPoi('${p.id}')`}">🗑️</button>
             </div>
         `;
-
-        item.onmouseenter = () => { if(globalRef) { map.setView(globalRef.latlng, map.getZoom()); highlightAndShowMarker(globalRef); }};
         container.appendChild(item);
     });
 }
 
+
 function editPoiFromList(id) {
-    const globalRef = globalCustomPois.find(gp => gp.id === id);
-    if(globalRef) {
-        map.setView(globalRef.latlng, 15);
-        openCustomPoiModal(globalRef);
-        highlightAndShowMarker(globalRef);
+    // Najpierw szukamy w bieżącej sesji użytkownika
+    let poiRef = userSavedPois.find(p => p.id === id);
+    // Jeśli nie ma, szukamy w bazie globalnej (awaryjnie)
+    if(!poiRef) poiRef = globalCustomPois.find(gp => gp.id === id);
+    
+    if(poiRef) {
+        // Ujednolicenie struktury, jeśli punkt pochodzi z userSavedPois
+        const modalObj = {
+            id: poiRef.id,
+            name: poiRef.name,
+            icon: poiRef.icon,
+            category: poiRef.storage === 'local' ? "Zapisane w przeglądarce" : "Zapisane na sesję",
+            description: poiRef.desc,
+            isUserSaved: true,
+            storage: poiRef.storage,
+            rawLat: poiRef.lat || poiRef.latlng.lat,
+            rawLng: poiRef.lng || poiRef.latlng.lng,
+            rawTitle: poiRef.rawTitle || poiRef.name
+        };
+        const latlng = L.latLng(modalObj.rawLat, modalObj.rawLng);
+        map.setView(latlng, 15);
+        openCustomPoiModal(modalObj);
     }
 }
 
@@ -4815,6 +5080,33 @@ function addAutoLegendItemToDOM(id) {
     /* ================= SILNIK POSTOJÓW (BREAKS) ================= */
 
 function openStopsModal() {
+    if (tripStartTime === null && routeGeometry.length > 1) {
+        openCenteredModal('departureTimeModal');
+    } else {
+        openStopsUI();
+    }
+}
+function skipDepartureTime() {
+    isTimeSkipped = true;
+    tripStartTime = null;
+    closeModal('departureTimeModal');
+    openStopsUI();
+}
+
+function setDepartureTime() {
+    const val = document.getElementById('departureTimeInput').value;
+    if (val) {
+        const now = new Date();
+        const [h, m] = val.split(':');
+        now.setHours(h, m, 0, 0);
+        tripStartTime = now;
+        isTimeSkipped = false;
+        recalcAllStops(); // Przelicz jeśli były już jakieś istniejące postoje
+    }
+    closeModal('departureTimeModal');
+    openStopsUI();
+}
+ function openStopsUI() {
     toggleStopMode(true);
     openCenteredModal('stopsModal');
     renderStopsList();
@@ -4861,23 +5153,61 @@ function snapAndCreateStop(clickLatLng) {
 
 function createStopObject(latlng, distAlongRoute) {
     const stopId = 'stop_' + Date.now();
-    const now = new Date();
-    now.setSeconds(0,0);
     
     const stop = {
         id: stopId, latlng: latlng, snappedDist: distAlongRoute,
         name: "Mój postój", desc: "",
-        startTime: now.toISOString().slice(0,16),
-        duration: 30,
-        endTime: new Date(now.getTime() + 30 * 60000).toISOString().slice(0,16),
+        startTime: null, endTime: null,
+        duration: 15, // domyślnie 15 minut
+        locked: false, // czy użytkownik zamroził czas
         visualType: 'icon', icon: '☕', color: '#f59e0b', radius: 10,
-        marker: null, isSaved: false
+        marker: null, isStop: true
     };
 
     routeStops.push(stop);
+    
+    // Sortujemy postoje według odległości
+    routeStops.sort((a,b) => a.snappedDist - b.snappedDist);
+    
+    recalcAllStops();
     renderStopMarker(stop);
     renderStopsList();
-    generateRouteDescription(); // Odśwież opis z nowym postojem
+    generateRouteDescription();
+    updateStats(calculateTotalDist());
+}
+    function recalcAllStops() {
+    if (isTimeSkipped || !tripStartTime) return;
+
+    let currentTime = new Date(tripStartTime.getTime());
+    let currentDist = 0;
+
+    routeStops.forEach(stop => {
+        // Oblicz czas przejścia od poprzedniego punktu (lub startu)
+        const walkDist = stop.snappedDist - currentDist;
+        const walkMins = walkDist / WALK_SPEED_M_PER_MIN;
+        
+        currentTime = new Date(currentTime.getTime() + walkMins * 60000);
+
+        // Zapisujemy idealny czas przybycia do celów ostrzeżeń
+        stop.idealStartTime = new Date(currentTime.getTime());
+
+        if (!stop.locked || !stop.startTime) {
+            stop.startTime = new Date(currentTime.getTime());
+            stop.endTime = new Date(currentTime.getTime() + stop.duration * 60000);
+        } else {
+            // Jeśli zablokowany, aktualizujemy current time do jego końca, żeby kolejne punkty liczyły od tego momentu
+            currentTime = new Date(stop.endTime.getTime());
+        }
+
+        currentDist = stop.snappedDist;
+        
+        // Zabezpieczenie przed cofaniem czasu przez blokadę
+        if (stop.locked && stop.startTime < stop.idealStartTime) {
+            stop.warning = "Ostrzeżenie: Możesz nie zdążyć dojść na tę godzinę!";
+        } else {
+            stop.warning = null;
+        }
+    });
 }
 
 function renderStopMarker(stop) {
@@ -4912,36 +5242,53 @@ function renderStopMarker(stop) {
 
 function renderStopsList() {
     const container = document.getElementById('stopsListContainer');
-    container.innerHTML = routeStops.length === 0 ? "<p style='text-align:center; opacity:0.7;'>Kliknij na linię mapy, aby dodać postój.</p>" : "";
+    container.innerHTML = routeStops.length === 0 ? "<p style='text-align:center; opacity:0.7;'>Kliknij na zieloną linię mapy, aby dodać postój.</p>" : "";
 
     const emojiOptions = STOP_EMOJIS.map(e => `<option value="${e}">${e}</option>`).join('');
 
     routeStops.forEach((stop, idx) => {
+        let timeFieldsHtml = '';
+        
+        if (!isTimeSkipped && stop.startTime && stop.endTime) {
+            // Konwersja do formatu input datetime-local lokalnego (bez stref czasowych krzaczących format)
+            const tStart = new Date(stop.startTime.getTime() - stop.startTime.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+            const tEnd = new Date(stop.endTime.getTime() - stop.endTime.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+            
+            timeFieldsHtml = `
+                <div class="stop-time-grid">
+                    <div class="stop-input-group">
+                        <label>Przybycie:</label>
+                        <input type="datetime-local" value="${tStart}" onchange="calcStopTimesAdvanced('${stop.id}', 'start', this.value)">
+                    </div>
+                    <div class="stop-input-group">
+                        <label>Odjazd/Wyjście:</label>
+                        <input type="datetime-local" value="${tEnd}" onchange="calcStopTimesAdvanced('${stop.id}', 'end', this.value)">
+                    </div>
+                </div>
+                ${stop.warning ? `<span class="time-warning">⚠️ ${stop.warning}</span>` : ''}
+                <label style="font-size: 0.8rem; margin-top: 5px; display: flex; align-items: center; gap: 5px;">
+                    <input type="checkbox" ${stop.locked ? 'checked' : ''} onchange="calcStopTimesAdvanced('${stop.id}', 'lock', this.checked)"> 
+                    Zamroź (nie przesuwaj automatem)
+                </label>
+            `;
+        }
+
         const div = document.createElement('div');
         div.className = 'stop-item';
         div.innerHTML = `
             <div class="stop-input-group" style="margin-bottom:6px;">
-                <input type="text" value="${stop.name}" placeholder="Nazwa postoju" onchange="updateStopData('${stop.id}', 'name', this.value)" style="font-weight:bold; font-size:1rem; border:none; background:transparent; padding:0;">
+                <input type="text" value="${stop.name}" placeholder="Nazwa postoju" onchange="updateStopData('${stop.id}', 'name', this.value)" style="font-weight:bold; font-size:1rem; border:none; background:transparent; padding:0; color: var(--text);">
             </div>
             
-            <div class="stop-time-grid">
-                <div class="stop-input-group">
-                    <label>Początek:</label>
-                    <input type="datetime-local" value="${stop.startTime}" onchange="calcStopTimes('${stop.id}', 'start', this.value)">
-                </div>
-                <div class="stop-input-group">
-                    <label>Koniec:</label>
-                    <input type="datetime-local" value="${stop.endTime}" onchange="calcStopTimes('${stop.id}', 'end', this.value)">
-                </div>
-            </div>
+            ${timeFieldsHtml}
             
-            <div class="stop-input-group" style="margin-bottom:8px;">
+            <div class="stop-input-group" style="margin:8px 0;">
                 <label>Czas trwania (minuty):</label>
-                <input type="number" min="1" value="${stop.duration}" onchange="calcStopTimes('${stop.id}', 'duration', this.value)">
+                <input type="number" min="1" value="${stop.duration}" onchange="calcStopTimesAdvanced('${stop.id}', 'duration', this.value)">
             </div>
 
             <div class="stop-input-group" style="margin-bottom:8px;">
-                <textarea placeholder="Opis/Notatki (np. zjeść kanapki)" onchange="updateStopData('${stop.id}', 'desc', this.value)" rows="1">${stop.desc}</textarea>
+                <textarea placeholder="Notatki do PDF..." onchange="updateStopData('${stop.id}', 'desc', this.value)" rows="1">${stop.desc}</textarea>
             </div>
 
             <div class="stop-visual-grid">
@@ -4949,7 +5296,6 @@ function renderStopsList() {
                     <option value="icon" ${stop.visualType==='icon'?'selected':''}>Ikona</option>
                     <option value="dot" ${stop.visualType==='dot'?'selected':''}>Kropka</option>
                 </select>
-                
                 <div id="vis_icon_${stop.id}" style="display:${stop.visualType==='icon'?'block':'none'}">
                     <select onchange="updateStopVisual('${stop.id}', 'icon', this.value)" class="stop-input-group">
                         <option value="${stop.icon}">${stop.icon}</option>
@@ -4959,14 +5305,11 @@ function renderStopsList() {
                 <div id="vis_dot_${stop.id}" style="display:${stop.visualType==='dot'?'block':'none'}">
                     <input type="color" value="${stop.color}" onchange="updateStopVisual('${stop.id}', 'color', this.value)" style="padding:0; height:30px; width:40px;">
                 </div>
-                
-                <label style="font-size:0.75rem; color:var(--accent);">Rozmiar:</label>
-                <input type="range" min="5" max="25" value="${stop.radius}" onchange="updateStopVisual('${stop.id}', 'radius', this.value)">
+                <input type="range" min="5" max="25" value="${stop.radius}" onchange="updateStopVisual('${stop.id}', 'radius', this.value)" style="width: 50px;">
             </div>
             
-            <div style="display:flex; justify-content: space-between; margin-top: 10px;">
-                <button class="btn-stop-save" onclick="saveStopToMyPoints('${stop.id}', 'session')" ${stop.isSaved?'disabled':''}>${stop.isSaved?'Zapisano':'Zapisz do Moich'}</button>
-                <button class="danger icon-only" onclick="deleteStop('${stop.id}')" style="font-size:0.8rem; padding: 4px 8px;">🗑️ Usuń</button>
+            <div style="text-align: right; margin-top: 5px;">
+                <button class="danger icon-only" onclick="deleteStop('${stop.id}')" style="font-size:0.8rem; padding: 4px 12px;">🗑️ Usuń z trasy</button>
             </div>
         `;
         container.appendChild(div);
@@ -4974,30 +5317,57 @@ function renderStopsList() {
 }
 
 // LOGIKA MATEMATYCZNA CZASU POSTOJU
-function calcStopTimes(id, changedField, value) {
+function calcStopTimesAdvanced(id, field, value) {
     const stop = routeStops.find(s => s.id === id);
     if(!stop) return;
 
-    if (changedField === 'start') {
-        stop.startTime = value;
-        const dStart = new Date(value);
-        stop.endTime = new Date(dStart.getTime() + stop.duration * 60000).toISOString().slice(0,16);
-    } 
-    else if (changedField === 'duration') {
+    let cascadeShift = false;
+    let shiftMinutes = 0;
+
+    if (field === 'start' || field === 'end') {
+        const oldStart = new Date(stop.startTime).getTime();
+        const newTime = new Date(value);
+        
+        if (field === 'start') {
+            shiftMinutes = (newTime.getTime() - oldStart) / 60000;
+            stop.startTime = newTime;
+            stop.endTime = new Date(newTime.getTime() + stop.duration * 60000);
+        } else {
+            stop.endTime = newTime;
+            stop.duration = Math.max(1, Math.round((newTime.getTime() - new Date(stop.startTime).getTime()) / 60000));
+        }
+        
+        stop.locked = true; // Zmiana ręczna = blokada
+
+        // Jeśli przesuwamy czas i są kolejne postoje, pytamy o kaskadę
+        const stopIndex = routeStops.findIndex(s => s.id === id);
+        if (shiftMinutes > 0 && stopIndex < routeStops.length - 1) {
+            showCustomConfirm(`Przesunąłeś czas o ${shiftMinutes} min. Czy przesunąć automatycznie czasy wszystkich kolejnych postojów?`, () => {
+                // Przesunięcie kaskadowe
+                for (let i = stopIndex + 1; i < routeStops.length; i++) {
+                    if (routeStops[i].startTime) {
+                        routeStops[i].startTime = new Date(routeStops[i].startTime.getTime() + shiftMinutes * 60000);
+                        routeStops[i].endTime = new Date(routeStops[i].endTime.getTime() + shiftMinutes * 60000);
+                    }
+                }
+                recalcAllStops();
+                renderStopsList();
+            });
+            return; // render zrobimy po odpowiedzi
+        }
+    } else if (field === 'duration') {
         stop.duration = parseInt(value);
-        const dStart = new Date(stop.startTime);
-        stop.endTime = new Date(dStart.getTime() + stop.duration * 60000).toISOString().slice(0,16);
-    } 
-    else if (changedField === 'end') {
-        stop.endTime = value;
-        const dStart = new Date(stop.startTime);
-        const dEnd = new Date(value);
-        let diffMins = Math.round((dEnd.getTime() - dStart.getTime()) / 60000);
-        if(diffMins < 1) diffMins = 1;
-        stop.duration = diffMins;
+        if (stop.startTime) {
+            stop.endTime = new Date(stop.startTime.getTime() + stop.duration * 60000);
+        }
+    } else if (field === 'lock') {
+        stop.locked = value;
     }
+
+    recalcAllStops();
     renderStopsList();
-    generateRouteDescription(); // Odśwież opis ze zmienionym czasem
+    generateRouteDescription();
+    updateStats(calculateTotalDist());
 }
 
 function updateStopData(id, field, value) {
@@ -5158,6 +5528,36 @@ function validateStopsOnLine() {
     });
 
     if (displacedCount > 0) openCenteredModal('stopsWarningModal');
+}
+    // Zapis PNG z Export Modalu do sesji (aby użyć w PDF)
+async function saveExportMapToSession() {
+    document.getElementById('emojiPickerUI').style.display = 'none';
+    const el = document.getElementById('exportWrapper');
+    const btn = event.currentTarget;
+    
+    const originalText = btn.innerHTML;
+    btn.innerHTML = "⏳ Przetwarzanie...";
+    btn.disabled = true;
+
+    try {
+        const canvas = await html2canvas(el, { useCORS: true, scale: 1.5 }); // scale 1.5 jest optymalne do PDF
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85); // JPEG dla mniejszego rozmiaru w sesji
+        
+        try {
+            sessionStorage.setItem('custom_map_png', dataUrl);
+            showCustomAlert("Pomyślnie zapisano wygląd mapy w sesji! Możesz teraz użyć go w opcji 'Pobierz PDF'.");
+        } catch(e) {
+            if (e.name === 'QuotaExceededError') {
+                showCustomAlert("Mapa jest zbyt duża, by zapisać ją w pamięci podręcznej. Użyj mniejszego kadru lub mniejszego formatu okna.");
+            }
+        }
+    } catch(err) {
+        console.error("Błąd zapisu sesji:", err);
+        showCustomAlert("Wystąpił problem przy renderowaniu.");
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
 }
 </script>
 
