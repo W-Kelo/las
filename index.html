@@ -1717,8 +1717,51 @@ const polyline = L.polyline([], {
 }).addTo(map);
 document.body.className = "light";
 (dark ? tiles.dark : tiles.light).addTo(map);
-document.getElementById('styleColor').addEventListener('input', e => document.getElementById('styleColorHex').innerText = e.target.value);
-document.getElementById('stylePointsColor').addEventListener('input', e => document.getElementById('stylePointsColorHex').innerText = e.target.value);
+
+    document.addEventListener('DOMContentLoaded', () => {
+    // Ładowanie zapisanych punktów
+    loadUserSavedPois();
+    loadGoogleSheetsPOIs();
+    
+    // Sprawienie, że wszystkie modale są pływające
+    const modals = [
+        'pointsModal', 'descModal', 'styleModal', 'pdfModal', 
+        'myPointsModal', 'customPoiModal', 'exportDataModal', 
+        'exportPickerModal', 'exportStyleModal', 'confirmRefreshModal', 
+        'statsSelectionModal', 'exportMetaModal', 'departureTimeModal',
+        'timeSummaryModal', 'customDescModal'
+    ];
+    
+    modals.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) makeDraggable(el);
+    });
+    
+    // Uruchomienie animacji radaru 
+    drawEmptyElevationAnimation(); 
+
+    // BEZPIECZNE PODPINANIE LISTENERÓW (Zabezpieczenie przed "Cannot read properties of null")
+    const styleColorInput = document.getElementById('styleColor');
+    if (styleColorInput) {
+        styleColorInput.addEventListener('input', e => {
+            const hexSpan = document.getElementById('styleColorHex');
+            if (hexSpan) hexSpan.innerText = e.target.value;
+        });
+    }
+
+    const stylePointsColorInput = document.getElementById('stylePointsColor');
+    if (stylePointsColorInput) {
+        stylePointsColorInput.addEventListener('input', e => {
+            const hexSpan = document.getElementById('stylePointsColorHex');
+            if (hexSpan) hexSpan.innerText = e.target.value;
+        });
+    }
+
+    const pdfModalEl = document.getElementById('pdfModal');
+    if (pdfModalEl) {
+        pdfModalEl.addEventListener('mouseenter', checkSessionMapForPdf);
+    }
+});
 const hikingLayer = L.layerGroup().addTo(map);
 const poiLayer = L.layerGroup().addTo(map);
 const customPoiLayer = L.layerGroup().addTo(map); 
@@ -3220,7 +3263,6 @@ function formatText(command) {
 }
 
 // Nasłuchiwanie przed otwarciem modalu PDF by sprawdzić mapę
-document.getElementById('pdfModal').addEventListener('mouseenter', checkSessionMapForPdf); // Sprawdzanie najeżdżając kursorem by było aktualne
 
 function checkSessionMapForPdf() {
     const hasMap = sessionStorage.getItem('custom_map_png') !== null;
