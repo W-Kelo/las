@@ -3158,7 +3158,6 @@ function checkSessionMapForPdf() {
 
 // --- NOWY, ELEGANCKI GENERATOR PDF ---
 // --- NOWY, NIEZAWODNY I ELEGANCKI GENERATOR PDF ---
-// --- NOWY, NIEZAWODNY I ELEGANCKI GENERATOR PDF ---
 async function generatePDF() {
     const btn = document.getElementById('pdfGenBtn');
     const title = document.getElementById('pdfTitle').value || "Plan trasy";
@@ -3202,7 +3201,7 @@ async function generatePDF() {
             const sortedStops = [...routeStops].sort((a,b) => a.snappedDist - b.snappedDist);
             const stopsList = sortedStops.map(s => {
                 let tInfo = `${s.duration} min`;
-                if(!isTimeSkipped && s.startTime && s.endTime) {
+                if(typeof isTimeSkipped !== 'undefined' && !isTimeSkipped && s.startTime && s.endTime) {
                     const hs = s.startTime.getHours().toString().padStart(2,'0');
                     const ms = s.startTime.getMinutes().toString().padStart(2,'0');
                     const he = s.endTime.getHours().toString().padStart(2,'0');
@@ -3226,8 +3225,8 @@ async function generatePDF() {
 
         let rawDescHtml = '';
         if (document.getElementById('pdfIncludeDesc').checked) {
-            // Wymuszenie aktualizacji opisu tuż przed pobraniem
-            generateRouteDescription();
+            // Upewniamy się, że opis jest najświeższy przed wrzuceniem do PDF
+            generateRouteDescription(); 
             const cloneDesc = document.createElement('div');
             cloneDesc.innerHTML = document.getElementById('routeDescText').innerHTML;
             const steps = cloneDesc.querySelectorAll('.route-step');
@@ -3242,20 +3241,11 @@ async function generatePDF() {
             }
         }
 
-        console.log("[PDF] 3. Tworzenie kontenera DOM...");
+        console.log("[PDF] 3. Tworzenie kontenera dla html2pdf...");
         
-        // ZABEZPIECZENIE: Usuwanie poprzednich sierot, jeśli proces wcześniej padł
-        const oldContainer = document.getElementById('tempPdfRender');
-        if (oldContainer) document.body.removeChild(oldContainer);
-
+        // Nie dodajemy tego do DOM, html2pdf sklonuje to bez problemu i obliczy poprawną wysokość
         const renderContainer = document.createElement('div');
-        renderContainer.id = "tempPdfRender";
-        
-        // USTAWIENIA FIZYCZNE KONTENERA (Naprawa 800x0)
-        renderContainer.style.position = 'absolute';
-        renderContainer.style.left = '-10000px'; // Wyrzucamy poza lewy ekran (aby użytkownik nie widział mignięcia)
-        renderContainer.style.top = '0';
-        renderContainer.style.width = '800px'; // Sztywna szerokość
+        renderContainer.style.width = '800px'; 
         renderContainer.style.backgroundColor = '#ffffff';
         renderContainer.style.color = '#0f172a';
         renderContainer.style.fontFamily = fontFam;
@@ -3287,27 +3277,13 @@ async function generatePDF() {
             </div>
         `;
 
-        document.body.appendChild(renderContainer); 
-
-        // KRYTYCZNY PUNKT: Czekamy 150ms, aż przeglądarka fizycznie wyrysuje to na ekranie i przeliczy wysokość
-        await new Promise(resolve => setTimeout(resolve, 150));
-        console.log(`[PDF] 4. Wysokość obliczona przez przeglądarkę: ${renderContainer.offsetHeight}px (Jeśli > 0, to sukces)`);
-
         btn.innerText = "⏳ Renderowanie pliku...";
         
         const opt = {
             margin: 0, 
             filename: title.replace(/\s+/g, '_') + '.pdf',
             image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { 
-                scale: 2, 
-                useCORS: true, 
-                letterRendering: true, 
-                windowWidth: 800, 
-                scrollY: 0,
-                x: 0,
-                y: 0
-            },
+            html2canvas: { scale: 2, useCORS: true, letterRendering: true, windowWidth: 800 },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, 
             pagebreak: { mode: ['css', 'legacy'] }
         };
@@ -3315,14 +3291,9 @@ async function generatePDF() {
         await html2pdf().set(opt).from(renderContainer).save();
         console.log("[PDF] 5. Sukces! Plik pobrany.");
         
-        // Usunięcie po sukcesie
-        document.body.removeChild(renderContainer);
-
     } catch (err) {
         console.error("[PDF] Błąd zapisu PDF:", err);
         showCustomAlert("Wystąpił błąd podczas generowania pliku PDF. Sprawdź konsolę (F12).");
-        const stuckContainer = document.getElementById('tempPdfRender');
-        if (stuckContainer) document.body.removeChild(stuckContainer);
     } finally {
         btn.disabled = false;
         btn.innerText = "Generuj Elegancki PDF";
