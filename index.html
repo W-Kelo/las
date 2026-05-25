@@ -1840,8 +1840,8 @@ function openPointsModal() {
     renderPointsList();
 }
 function openDescModal() {
+    generateRouteDescription(); // Wymusza przeliczenie na najświeższych danych!
     openCenteredModal('descModal');
-    generateRouteDescription();
 }
 
 
@@ -2297,7 +2297,7 @@ function generateRouteDescription() {
     let accumulatedDist = 0;
 
     for (let i = 0; i < keyPoints.length - 1; i++) {
-        const currP = keyPoints[i];
+              const currP = keyPoints[i];
         const nextP = keyPoints[i+1];
         const dist = L.latLng(currP).distanceTo(L.latLng(nextP));
         
@@ -2307,11 +2307,11 @@ function generateRouteDescription() {
             turnAngle = getTurnAngle(prevP, currP, nextP);
         }
 
-        // --- WSTRZYKIWANIE POSTOJÓW DO OPISU TRASY ---
-        // Sprawdzamy czy dystans globalny od początku trasy przekroczył miejsce postoju
+        // --- NIEZAWODNE WSTRZYKIWANIE POSTOJÓW DO OPISU TRASY ---
         const globalDistSoFar = calculateTotalDistToPoint(i) + accumulatedDist;
 
-        while (nextStopIdx < sortedStops.length && sortedStops[nextStopIdx].snappedDist <= (globalDistSoFar + 50)) { 
+        // Szukamy wszystkich postojów, których dystans wypada na tym odcinku
+        while (nextStopIdx < sortedStops.length && sortedStops[nextStopIdx].snappedDist <= (globalDistSoFar + 150)) { 
             const stop = sortedStops[nextStopIdx];
             
             let timeTxtInfo = `${stop.duration} min.`;
@@ -2329,7 +2329,7 @@ function generateRouteDescription() {
                         <span class="route-step-icon" style="font-size:1.5rem;">${stop.icon === 'dot' ? '☕' : stop.icon}</span> 
                         <div>
                             <small style="color:#f59e0b; font-weight:bold; display:block; text-transform: uppercase;">POSTÓJ: ${stop.name}</small>
-                            Zasłużony odpoczynek. Czas: ${timeTxtInfo}
+                            Czas postoju: ${timeTxtInfo}
                         </div>
                     </div>
                     ${stop.desc ? `<span class="route-step-poi" style="border-top-color:rgba(245,158,11,0.3); color: inherit;">📝 ${stop.desc}</span>` : ''}
@@ -2440,7 +2440,12 @@ function unhighlightStep() {
 }
  function calculateTotalDistToPoint(pointIndex) {
     let d = 0;
-    for (let j = 1; j <= pointIndex; j++) {
+    if (!routeGeometry || routeGeometry.length < 2) return 0;
+    
+    // Zapobiegamy wyjściu poza zakres tablicy
+    const maxIndex = Math.min(pointIndex, routeGeometry.length - 1);
+    
+    for (let j = 1; j <= maxIndex; j++) {
         d += L.latLng(routeGeometry[j-1]).distanceTo(L.latLng(routeGeometry[j]));
     }
     return d;
@@ -3164,13 +3169,12 @@ async function generatePDF() {
     btn.disabled = true;
     
     try {
-        console.log("[PDF] Rozpoczęcie generowania PDF...");
+        console.log("[PDF] 1. Rozpoczęcie generowania...");
         btn.innerText = "⏳ Przygotowywanie mapy...";
 
-        // 1. ZDJĘCIE MAPY
         let mapImgSrc = sessionStorage.getItem('custom_map_png');
         if (document.getElementById('pdfIncludeMap').checked && !mapImgSrc) {
-            console.log("[PDF] Brak mapy w sesji, generowanie z okna głównego...");
+            console.log("[PDF] Tworzenie zrzutu mapy z okna głównego...");
             const oldBounds = map.getBounds();
             map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
             await new Promise(r => setTimeout(r, 1200)); 
@@ -3179,21 +3183,17 @@ async function generatePDF() {
         }
 
         btn.innerText = "⏳ Składanie dokumentu...";
-        console.log("[PDF] Pobieranie danych tekstowych...");
+        console.log("[PDF] 2. Pobieranie statystyk i punktów...");
 
-        // 2. DANE DO PDF
         const statsDist = document.getElementById('stats').innerText;
         const statsTime = document.getElementById('time').innerText;
 
         const pointsData = routePoints.map((p, i) => {
             const type = i === 0 ? "START" : (i === routePoints.length - 1 ? "META" : `Punkt ${i+1}`);
-            const lat = p.latlng.lat.toFixed(5);
-            const lng = p.latlng.lng.toFixed(5);
-            const elev = p.elevation ? `${p.elevation.toFixed(0)}m` : "-";
             return `
                 <div style="font-size: 11px; border-left: 2px solid ${accentColor}; padding-left: 8px; margin-bottom: 12px; break-inside: avoid;">
-                    <strong style="color: ${accentColor};">${type}</strong> <span style="color:#64748b;">(⛰️ ${elev})</span><br>
-                    <code style="font-size:10px;">${lat}, ${lng}</code>
+                    <strong style="color: ${accentColor};">${type}</strong> <span style="color:#64748b;">(⛰️ ${p.elevation ? p.elevation.toFixed(0) : 0}m)</span><br>
+                    <code style="font-size:10px;">${p.latlng.lat.toFixed(5)}, ${p.latlng.lng.toFixed(5)}</code>
                 </div>`;
         }).join('');
 
@@ -3226,6 +3226,8 @@ async function generatePDF() {
 
         let rawDescHtml = '';
         if (document.getElementById('pdfIncludeDesc').checked) {
+            // Wymuszenie aktualizacji opisu tuż przed pobraniem
+            generateRouteDescription();
             const cloneDesc = document.createElement('div');
             cloneDesc.innerHTML = document.getElementById('routeDescText').innerHTML;
             const steps = cloneDesc.querySelectorAll('.route-step');
@@ -3240,21 +3242,23 @@ async function generatePDF() {
             }
         }
 
-        // 3. TWORZENIE TYMCZASOWEGO, FIZYCZNEGO KONTENERA W DOM (Zamiast ukrytego diva w HTML)
-        console.log("[PDF] Budowanie struktury HTML...");
+        console.log("[PDF] 3. Tworzenie kontenera DOM...");
+        
+        // ZABEZPIECZENIE: Usuwanie poprzednich sierot, jeśli proces wcześniej padł
+        const oldContainer = document.getElementById('tempPdfRender');
+        if (oldContainer) document.body.removeChild(oldContainer);
+
         const renderContainer = document.createElement('div');
         renderContainer.id = "tempPdfRender";
         
-        // ZŁOTA ZASADA HTML2CANVAS: Musi być w DOM, musi mieć zdefiniowane tło, nie może mieć opacity 0. 
-        // Ukrywamy go podążając za z-index i upewniając się, że jest na szczycie lewego rogu ukryty pod mapą.
+        // USTAWIENIA FIZYCZNE KONTENERA (Naprawa 800x0)
         renderContainer.style.position = 'absolute';
+        renderContainer.style.left = '-10000px'; // Wyrzucamy poza lewy ekran (aby użytkownik nie widział mignięcia)
         renderContainer.style.top = '0';
-        renderContainer.style.left = '0';
-        renderContainer.style.width = '800px';
+        renderContainer.style.width = '800px'; // Sztywna szerokość
         renderContainer.style.backgroundColor = '#ffffff';
         renderContainer.style.color = '#0f172a';
         renderContainer.style.fontFamily = fontFam;
-        renderContainer.style.zIndex = '-9999'; // Pod spodem wszystkiego
         
         renderContainer.innerHTML = `
             <div style="padding: 40px; box-sizing: border-box; width: 100%;">
@@ -3273,45 +3277,50 @@ async function generatePDF() {
                 ${document.getElementById('pdfIncludeElev').checked && routeGeometry.length > 1 ? `<div style="margin-bottom: 20px;"><div style="font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #475569;">Profil Wysokości</div><img src="${document.getElementById('elevation').toDataURL()}" style="width: 100%; height: 100px; object-fit: cover;"></div>` : ''}
                 
                 ${stopsHtml}
-
+                
                 ${document.getElementById('pdfIncludePoints').checked && pointsData ? `
                     <div style="font-size: 18px; border-bottom: 2px solid ${accentColor}; padding-bottom: 5px; margin: 30px 0 15px 0; color: #1e293b; font-weight: bold;">Współrzędne trasy</div>
                     <div style="column-count: 3; column-gap: 20px;">${pointsData}</div>
                 ` : ''}
 
                 ${rawDescHtml}
-                
-                <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; font-size: 10px; color: #94a3b8;">
-                    Dokument wygenerowany w dniu: ${new Date().toLocaleString('pl-PL')}
-                </div>
             </div>
         `;
 
-        document.body.appendChild(renderContainer); // Wrzucamy do DOM
+        document.body.appendChild(renderContainer); 
 
-        // 4. GENEROWANIE PLIKU
-        console.log("[PDF] Rozpoczęto renderowanie do PDF...");
-        btn.innerText = "⏳ Generowanie pliku...";
+        // KRYTYCZNY PUNKT: Czekamy 150ms, aż przeglądarka fizycznie wyrysuje to na ekranie i przeliczy wysokość
+        await new Promise(resolve => setTimeout(resolve, 150));
+        console.log(`[PDF] 4. Wysokość obliczona przez przeglądarkę: ${renderContainer.offsetHeight}px (Jeśli > 0, to sukces)`);
+
+        btn.innerText = "⏳ Renderowanie pliku...";
         
         const opt = {
             margin: 0, 
             filename: title.replace(/\s+/g, '_') + '.pdf',
             image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, letterRendering: true, windowWidth: 800, scrollY: 0 },
-            jsPDF: { unit: 'px', format: [800, 1131], orientation: 'portrait' }, // Wymuszamy format pixelowy dla precyzji
+            html2canvas: { 
+                scale: 2, 
+                useCORS: true, 
+                letterRendering: true, 
+                windowWidth: 800, 
+                scrollY: 0,
+                x: 0,
+                y: 0
+            },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, 
             pagebreak: { mode: ['css', 'legacy'] }
         };
 
         await html2pdf().set(opt).from(renderContainer).save();
-        console.log("[PDF] Sukces!");
+        console.log("[PDF] 5. Sukces! Plik pobrany.");
         
-        // Sprzątanie na koniec
+        // Usunięcie po sukcesie
         document.body.removeChild(renderContainer);
 
     } catch (err) {
         console.error("[PDF] Błąd zapisu PDF:", err);
         showCustomAlert("Wystąpił błąd podczas generowania pliku PDF. Sprawdź konsolę (F12).");
-        // Upewnij się, że sprzątniemy diva nawet przy błędzie
         const stuckContainer = document.getElementById('tempPdfRender');
         if (stuckContainer) document.body.removeChild(stuckContainer);
     } finally {
@@ -5468,13 +5477,13 @@ function saveAllStopsToMyPoints(storageType) {
 // WERYFIKACJA ODDALENIA POSTOJÓW PRZY ZMIANIE TRASY
 // Wywołaj to na samym końcu funkcji recalculateRoute() !
 // --- AUTOMATYCZNA AKTUALIZACJA POSTOJÓW PRZY ZMIANIE TRASY ---
+// --- AUTOMATYCZNA AKTUALIZACJA POSTOJÓW PRZY ZMIANIE TRASY ---
 function autoUpdateStopsOnRouteChange() {
     if (routeStops.length === 0 || routeGeometry.length < 2) return;
 
     let wasChanged = false;
 
     routeStops.forEach(stop => {
-        // Szukamy najbliższego punktu nowej trasy dla tego postoju
         let closestDist = Infinity;
         let accumulatedDistAtSnap = 0;
         let tempDist = 0;
@@ -5494,8 +5503,9 @@ function autoUpdateStopsOnRouteChange() {
             tempDist += segmentLen;
         }
 
-        // Aktualizujemy pozycję markera postoju i jego nową odległość od startu
-        if (stop.snappedDist !== accumulatedDistAtSnap || stop.latlng.lat !== newSnappedLatLng.lat) {
+        // Tolerancja zmian - reaguj tylko, gdy punkt zmieni pozycję o więcej niż metr,
+        // lub dystans zmieni się zauważalnie (żeby uniknąć spamu ostrzeżeniami)
+        if (Math.abs(stop.snappedDist - accumulatedDistAtSnap) > 10 || stop.latlng.distanceTo(newSnappedLatLng) > 10) {
             stop.latlng = newSnappedLatLng;
             stop.snappedDist = accumulatedDistAtSnap;
             if (stop.marker) stop.marker.setLatLng(newSnappedLatLng);
@@ -5504,20 +5514,54 @@ function autoUpdateStopsOnRouteChange() {
     });
 
     if (wasChanged) {
-        // Sortujemy istniejące postoje według nowej kolejności kilometrażu
+        // Sortowanie i przeliczenie czasów
         routeStops.sort((a,b) => a.snappedDist - b.snappedDist);
-        
-        // Przeliczamy nowe czasy zachowując ustawienia (blokady) użytkownika
         recalcAllStops();
         
-        // Aktualizujemy wszystkie widoki
-        renderStopsList();
+        // Odświeżenie widoków "w tle"
+        if(document.getElementById('stopsModal').style.display === 'flex') renderStopsList();
         generateRouteDescription();
         updateStats(calculateTotalDist());
 
-        // Elegancki komunikat u góry ekranu zamiast natrętnego alertu
-        showTopBannerWarning("Zmieniono trasę! Pozycje i czasy postojów zostały automatycznie zaktualizowane do nowej ścieżki.");
+        // Elegancki banner
+        showTopBannerWarning("Zmieniono trasę! Pozycje i godziny postojów zaktualizowano automatycznie.");
     }
+}
+
+function showTopBannerWarning(msg) {
+    // Sprawdzamy czy banner już istnieje by nie śmiecić
+    let existingBanner = document.getElementById('topBannerWarningAuto');
+    if (existingBanner) document.body.removeChild(existingBanner);
+
+    const banner = document.createElement('div');
+    banner.id = 'topBannerWarningAuto';
+    banner.style.position = 'fixed';
+    banner.style.top = '20px';
+    banner.style.left = '50%';
+    banner.style.transform = 'translateX(-50%)';
+    banner.style.background = 'linear-gradient(90deg, #f59e0b, #d97706)';
+    banner.style.color = 'white';
+    banner.style.padding = '12px 25px';
+    banner.style.borderRadius = '30px';
+    banner.style.boxShadow = '0 10px 25px rgba(0,0,0,0.3)';
+    banner.style.zIndex = '9999';
+    banner.style.fontWeight = 'bold';
+    banner.style.fontSize = '0.95rem';
+    banner.style.display = 'flex';
+    banner.style.alignItems = 'center';
+    banner.style.gap = '10px';
+    
+    banner.innerHTML = `<span>⏳</span> <span>${msg}</span>`;
+    
+    document.body.appendChild(banner);
+    
+    setTimeout(() => {
+        banner.style.opacity = '0';
+        banner.style.transition = 'opacity 0.6s ease';
+        setTimeout(() => {
+            if(document.body.contains(banner)) document.body.removeChild(banner);
+        }, 600);
+    }, 4500);
 }
 
 function showTopBannerWarning(msg) {
