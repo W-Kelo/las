@@ -1296,6 +1296,58 @@ canvas#elevation {
     </div>
 </div>
   <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) - PŁYWAJĄCY -->
+      <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) - PŁYWAJĄCY -->
+<div id="styleModal" class="floating-modal" style="width: 340px;" data-html2canvas-ignore>
+    <div class="modal-header">
+        <span style="color: #f59e0b; font-weight: bold;">🎨 Styl i Animacja</span>
+        <div style="display:flex; align-items:center">
+            <div class="opacity-control" title="Przezroczystość">
+                👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
+            </div>
+            <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('styleModal')">X</button>
+        </div>
+    </div>
+    <div class="modal-body">
+        
+        <div class="style-control-group">
+            <label>Kolor linii:</label>
+            <div class="color-picker-wrap">
+                <input type="color" id="styleColor" value="#22c55e">
+                <span id="styleColorHex" style="font-family: monospace; font-size: 0.9em;">#22c55e</span>
+            </div>
+        </div>
+
+        <div class="style-control-group">
+            <label>Grubość linii: <span id="styleWeightVal">6</span> px</label>
+            <input type="range" id="styleWeight" class="thick-slider" min="2" max="15" value="6" oninput="document.getElementById('styleWeightVal').innerText=this.value">
+        </div>
+        
+        <div class="style-control-group" style="padding-top: 5px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" id="stylePointsToggle" onchange="togglePointsColorInput(this.checked)">
+                Zmień kolor kropek trasy (GPX)
+            </label>
+            <div id="stylePointsColorWrap" class="color-picker-wrap" style="display:none; margin-top:5px;">
+                <input type="color" id="stylePointsColor" value="#22c55e">
+                <span id="stylePointsColorHex" style="font-family: monospace; font-size: 0.9em;">#22c55e</span>
+            </div>
+        </div>
+
+        <div class="style-control-group">
+            <label>Szybkość animacji:</label>
+            <select id="styleSpeed" class="style-select">
+                <option value="slow">Wolno</option>
+                <option value="medium" selected>Średnio</option>
+                <option value="fast">Szybko</option>
+            </select>
+        </div>
+
+        <div style="display:flex; flex-direction: column; gap: 8px; margin-top: 5px;">
+            <button onclick="saveStyle(false)" style="background: #22c55e;">Zastosuj w tej sesji</button>
+            <button onclick="saveStyle(true)" style="background: #3b82f6;">Zapisz jako domyślne (Zawsze)</button>
+        </div>
+    </div>
+</div>
 <!-- MODAL STYLU LINI I PANELU (EKSPORT) -->
 <div id="exportStyleModal" class="floating-modal" style="width: 380px; z-index: 3500;" data-html2canvas-ignore>
     <div class="modal-header">
@@ -1409,65 +1461,6 @@ canvas#elevation {
 </div>
 
 
-   <!-- MODAL STYLU LINI I PANELU (EKSPORT) - PŁYWAJĄCY -->
-<div id="exportStyleModal" class="floating-modal" style="width: 360px; z-index: 3500;" data-html2canvas-ignore>
-    <div class="modal-header">
-        <span style="color: #a855f7; font-weight: bold;">🎨 Edycja Stylu Eksportu</span>
-        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="document.getElementById('exportStyleModal').style.display='none'">X</button>
-    </div>
-    <div class="modal-body">
-        
-        <div class="style-control-group">
-            <label style="color:var(--accent); font-weight:bold;">Panel Informacyjny (Tekst i Tło):</label>
-            
-            <div style="display:flex; gap:10px; margin-top:10px;">
-                <div style="flex:1;">
-                    <label>Tło:</label>
-                    <input type="color" id="expPanelBg" value="#ffffff" style="width:100%;">
-                </div>
-                <div style="flex:1;">
-                    <label>Tekst:</label>
-                    <input type="color" id="expPanelText" value="#0f172a" style="width:100%;">
-                </div>
-            </div>
-
-            <label style="margin-top:10px;">Przezroczystość tła: <span id="expPanelOpacityVal">92</span>%</label>
-            <input type="range" id="expPanelOpacity" class="thick-slider" min="20" max="100" value="92" oninput="document.getElementById('expPanelOpacityVal').innerText=this.value">
-
-            <label style="margin-top:10px;">Czcionka mapy:</label>
-            <select id="expFontFamily" class="style-select">
-                <option value="'Segoe UI', Roboto, Helvetica, Arial, sans-serif">Segoe UI (Domyślna)</option>
-                <option value="Georgia, serif">Georgia (Elegancka)</option>
-                <option value="'Courier New', Courier, monospace">Courier (Maszynowa)</option>
-                <option value="Impact, Charcoal, sans-serif">Impact (Pogrubiona)</option>
-            </select>
-            
-            <!-- NOWE SUWAKI -->
-            <label style="margin-top:10px;">Wielkość czcionki: <span id="expFontSizeVal">14</span>px</label>
-            <input type="range" id="expFontSize" class="thick-slider" min="10" max="24" value="14" oninput="document.getElementById('expFontSizeVal').innerText=this.value">
-
-            <label style="margin-top:10px;">Odstępy punktów legendy: <span id="expLegendGapVal">5</span>px</label>
-            <input type="range" id="expLegendGap" class="thick-slider" min="0" max="20" value="5" oninput="document.getElementById('expLegendGapVal').innerText=this.value">
-
-            <label style="margin-top:10px;">Zaokrąglenie rogów (Radius): <span id="expPanelRadiusVal">8</span>px</label>
-            <input type="range" id="expPanelRadius" class="thick-slider" min="0" max="30" value="8" oninput="document.getElementById('expPanelRadiusVal').innerText=this.value">
-        </div>
-
-        <div class="style-control-group">
-            <label style="color:var(--accent); font-weight:bold;">Linia Trasy:</label>
-            <label style="margin-top:5px;">Kolor linii na wydruku:</label>
-            <div class="color-picker-wrap">
-                <input type="color" id="expStyleColor" value="#22c55e">
-                <span id="expStyleColorHex" style="font-family: monospace; font-size: 0.9em;">#22c55e</span>
-            </div>
-
-            <label style="margin-top:10px;">Grubość linii: <span id="expStyleWeightVal">6</span> px</label>
-            <input type="range" id="expStyleWeight" class="thick-slider" min="2" max="15" value="6" oninput="document.getElementById('expStyleWeightVal').innerText=this.value">
-        </div>
-
-        <button onclick="applyExportStyle()" style="width:100%; background: #22c55e; padding:10px; font-weight:bold; margin-top:5px;">Zastosuj Styl</button>
-    </div>
-</div>
     <!-- MODAL: USTAWIENIA PUNKTÓW W EKSPORCIE -->
 <div id="exportDataModal" class="inner-modal-overlay" data-html2canvas-ignore>
     <div class="inner-modal" style="width: 450px;">
