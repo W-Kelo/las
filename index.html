@@ -897,13 +897,16 @@ canvas#elevation {
 #time { cursor: pointer; text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 3px; }
 #time:hover { color: var(--accent); }
         /* ================= EKRAN DO RENDEROWANIA PDF (UKRYTY) ================= */
+/* ================= EKRAN DO RENDEROWANIA PDF (UKRYTY) ================= */
 #pdfRenderContainer {
     position: absolute;
     top: 0;
-    left: -9999px; /* Schowany poza ekranem, ale przeglądarka go renderuje */
-    width: 800px; /* Sztywna szerokość zbliżona do A4 */
+    left: 0;
+    width: 800px; /* Szerokość optymalna dla A4 */
     background: #ffffff;
-    z-index: -1;
+    z-index: -1000;
+    opacity: 0; /* Kluczowe: html2canvas widzi to, ale użytkownik nie */
+    pointer-events: none;
 }
 
 .pdf-page {
@@ -3208,6 +3211,7 @@ function checkSessionMapForPdf() {
 
 // --- NOWY, ELEGANCKI GENERATOR PDF ---
 // --- NOWY, NIEZAWODNY I ELEGANCKI GENERATOR PDF ---
+// --- NOWY, NIEZAWODNY I ELEGANCKI GENERATOR PDF ---
 async function generatePDF() {
     const btn = document.getElementById('pdfGenBtn');
     const title = document.getElementById('pdfTitle').value || "Plan trasy";
@@ -3222,7 +3226,6 @@ async function generatePDF() {
     let mapImgSrc = sessionStorage.getItem('custom_map_png');
     
     if (document.getElementById('pdfIncludeMap').checked && !mapImgSrc) {
-        // Fallback: screen z mapy głównej
         btn.innerText = "⏳ Generowanie mapy...";
         const oldBounds = map.getBounds();
         map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
@@ -3262,7 +3265,7 @@ async function generatePDF() {
                 const ms = s.startTime.getMinutes().toString().padStart(2,'0');
                 const he = s.endTime.getHours().toString().padStart(2,'0');
                 const me = s.endTime.getMinutes().toString().padStart(2,'0');
-                tInfo = `${hs}:${ms} - ${he}:${me} (${s.duration}min)`;
+                tInfo = `${hs}:${ms} - ${he}:${me}`;
             }
             return `
             <div class="pdf-stop-item pdf-avoid-break">
@@ -3361,19 +3364,20 @@ async function generatePDF() {
     // --- USTAWIENIA BIBLIOTEKI html2pdf ---
     btn.innerText = "⏳ Generowanie pliku...";
     
-    // Kluczowa naprawa ucinania: marginesy na 0, skalowanie wyższe, dopasowanie szerokości
+    // Używamy formatu 'a4' i układu portrait - to najbardziej stabilna konfiguracja
+    // Ponieważ daliśmy .pdf-page { padding: 40px; }, to margines html2pdf musi wynosić równe 0.
     const opt = {
-        margin: 0, // Margines 0! Wszystko kontroluje padding w CSS (.pdf-page)
+        margin: 0, 
         filename: title.replace(/\s+/g, '_') + '.pdf',
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { 
             scale: 2, 
             useCORS: true, 
             letterRendering: true,
-            windowWidth: 800, // Zgadza się z szerokością kontenera
+            windowWidth: 800, // Zgadza się z szerokością renderContainer
             scrollY: 0
         },
-        jsPDF: { unit: 'px', format: [800, 1131], orientation: 'portrait' }, // Format idealnie dopasowany do pixeli, bez konwersji mm
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['css', 'legacy'] }
     };
 
@@ -3383,7 +3387,7 @@ async function generatePDF() {
         console.error("Błąd zapisu PDF:", err);
         showCustomAlert("Wystąpił błąd podczas generowania pliku PDF.");
     } finally {
-        // Sprzątanie zawartości ukrytego diva, żeby nie obciążał pamięci
+        // Sprzątanie zawartości
         renderContainer.innerHTML = '';
         btn.disabled = false;
         btn.innerText = "Generuj Elegancki PDF";
@@ -5491,12 +5495,26 @@ function saveStopToMyPoints(id, storageType) {
     const stop = routeStops.find(s => s.id === id);
     if(!stop) return;
 
+    // Bezpieczne formatowanie daty (bo teraz to obiekty Date, a nie Stringi)
+    let timeInfo = `Czas trwania: ${stop.duration} min`;
+    if (!isTimeSkipped && stop.startTime && stop.endTime) {
+        const hs = stop.startTime.getHours().toString().padStart(2, '0');
+        const ms = stop.startTime.getMinutes().toString().padStart(2, '0');
+        const he = stop.endTime.getHours().toString().padStart(2, '0');
+        const me = stop.endTime.getMinutes().toString().padStart(2, '0');
+        timeInfo = `Planowany czas: ${hs}:${ms} - ${he}:${me} (${stop.duration} min)`;
+    }
+
     const savedPoiObj = {
-        id: stop.id, lat: stop.latlng.lat, lng: stop.latlng.lng, name: stop.name, 
-        desc: `Planowany czas: ${stop.startTime.replace('T', ' ')} - ${stop.endTime.replace('T', ' ')} (${stop.duration} min)\n${stop.desc}`,
+        id: stop.id, 
+        lat: stop.latlng.lat, 
+        lng: stop.latlng.lng, 
+        name: stop.name, 
+        desc: `${timeInfo}\n${stop.desc}`,
         icon: stop.visualType === 'dot' ? '☕' : stop.icon, 
-        storage: storageType, rawTitle: stop.name, 
-        isStop: true, // WAŻNY TAG DLA FILTROWANIA
+        storage: storageType, 
+        rawTitle: stop.name, 
+        isStop: true, 
         snappedDist: stop.snappedDist
     };
 
