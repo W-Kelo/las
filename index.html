@@ -896,6 +896,75 @@ canvas#elevation {
 
 #time { cursor: pointer; text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 3px; }
 #time:hover { color: var(--accent); }
+        /* ================= EKRAN DO RENDEROWANIA PDF (UKRYTY) ================= */
+#pdfRenderContainer {
+    position: absolute;
+    top: 0;
+    left: -9999px; /* Schowany poza ekranem, ale przeglądarka go renderuje */
+    width: 800px; /* Sztywna szerokość zbliżona do A4 */
+    background: #ffffff;
+    z-index: -1;
+}
+
+.pdf-page {
+    padding: 40px; /* To zastępuje zbugowane marginesy w html2pdf */
+    background: #ffffff;
+    color: #0f172a;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.pdf-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 3px solid var(--pdf-accent, #16a34a);
+    padding-bottom: 15px;
+    margin-bottom: 25px;
+}
+
+.pdf-title { margin: 0; font-size: 28px; color: var(--pdf-accent, #16a34a); font-weight: bold; }
+.pdf-subtitle { margin: 5px 0 0 0; color: #64748b; font-size: 12px; }
+.pdf-stats { background: #f8fafc; padding: 10px 15px; border-radius: 8px; font-size: 12px; text-align: right; border: 1px solid #e2e8f0; }
+
+.pdf-custom-text {
+    background: #fefce8;
+    border-left: 4px solid #facc15;
+    padding: 15px;
+    font-size: 13px;
+    line-height: 1.6;
+    border-radius: 4px;
+    margin-bottom: 25px;
+}
+
+.pdf-section-title {
+    font-size: 18px;
+    border-bottom: 2px solid var(--pdf-accent, #16a34a);
+    padding-bottom: 5px;
+    margin: 30px 0 15px 0;
+    color: #1e293b;
+    font-weight: bold;
+}
+
+.pdf-map-container img { width: 100%; max-height: 450px; object-fit: contain; border-radius: 8px; border: 1px solid #cbd5e1; }
+.pdf-elev-container img { width: 100%; height: 100px; object-fit: cover; }
+
+/* Układy wielokolumnowe */
+.pdf-cols-2 { column-count: 2; column-gap: 25px; }
+.pdf-cols-3 { column-count: 3; column-gap: 20px; }
+
+/* Elementy zapobiegające ucinaniu w połowie na przełomie stron */
+.pdf-avoid-break { break-inside: avoid; page-break-inside: avoid; margin-bottom: 12px; }
+
+.pdf-stop-item {
+    border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; background: #f8fafc;
+}
+.pdf-point-item {
+    font-size: 11px; border-left: 2px solid var(--pdf-accent, #16a34a); padding-left: 8px;
+}
+.pdf-step-item {
+    font-size: 12px; padding: 8px; background: #f8fafc; border-left: 3px solid var(--pdf-accent, #16a34a); line-height: 1.4;
+}
     </style>
     
 </head>
@@ -989,7 +1058,8 @@ canvas#elevation {
         </div>
     </div>
 </div>
-
+<!-- UKRYTY KONTENER DO GENEROWANIA IDEALNEGO PDF -->
+<div id="pdfRenderContainer"></div>
 <!-- MODAL EDYCJI PUNKTÓW TRASY -->
 <div id="pointsModal" class="floating-modal" style="width: 420px;">
     <div class="modal-header">
@@ -3137,6 +3207,7 @@ function checkSessionMapForPdf() {
 }
 
 // --- NOWY, ELEGANCKI GENERATOR PDF ---
+// --- NOWY, NIEZAWODNY I ELEGANCKI GENERATOR PDF ---
 async function generatePDF() {
     const btn = document.getElementById('pdfGenBtn');
     const title = document.getElementById('pdfTitle').value || "Plan trasy";
@@ -3145,13 +3216,14 @@ async function generatePDF() {
     const customText = document.getElementById('pdfCustomDescEditor').innerHTML;
     
     btn.disabled = true;
-    btn.innerText = "⏳ Generowanie dokumentu...";
+    btn.innerText = "⏳ Przygotowywanie układu...";
 
     // Ustalanie źródła mapy
     let mapImgSrc = sessionStorage.getItem('custom_map_png');
     
     if (document.getElementById('pdfIncludeMap').checked && !mapImgSrc) {
-        // Fallback: robienie zwykłego screena mapy głównej
+        // Fallback: screen z mapy głównej
+        btn.innerText = "⏳ Generowanie mapy...";
         const oldBounds = map.getBounds();
         map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
         await new Promise(r => setTimeout(r, 1000)); 
@@ -3159,13 +3231,13 @@ async function generatePDF() {
         map.fitBounds(oldBounds, { animate: false });
     }
 
-    // Ekstrakcja danych
-    const stats = {
-        dist: document.getElementById('stats').innerText,
-        time: document.getElementById('time').innerText
-    };
+    btn.innerText = "⏳ Składanie dokumentu...";
 
-    // Formatter punktów z kolumnami CSS
+    // Ekstrakcja danych ze statystyk
+    const statsDist = document.getElementById('stats').innerText;
+    const statsTime = document.getElementById('time').innerText;
+
+    // Formatter: Lista punktów
     const pointsData = routePoints.map((p, i) => {
         const type = i === 0 ? "START" : (i === routePoints.length - 1 ? "META" : `Punkt ${i+1}`);
         const lat = p.latlng.lat.toFixed(5);
@@ -3173,13 +3245,13 @@ async function generatePDF() {
         const elev = p.elevation ? `${p.elevation.toFixed(0)}m` : "-";
         
         return `
-            <div style="margin-bottom: 8px; font-size: 11px; break-inside: avoid; border-left: 2px solid ${accentColor}; padding-left: 6px;">
-                <strong style="color: ${accentColor};">${type}</strong> <span style="color:#555;">(⛰️ ${elev})</span><br>
-                <code>${lat}, ${lng}</code>
+            <div class="pdf-point-item pdf-avoid-break">
+                <strong style="color: ${accentColor};">${type}</strong> <span style="color:#64748b;">(⛰️ ${elev})</span><br>
+                <code style="font-size:10px;">${lat}, ${lng}</code>
             </div>`;
     }).join('');
 
-    // Formatter postojów
+    // Formatter: Lista postojów
     let stopsHtml = '';
     if (document.getElementById('pdfIncludeStops').checked && routeStops.length > 0) {
         const sortedStops = [...routeStops].sort((a,b) => a.snappedDist - b.snappedDist);
@@ -3193,125 +3265,130 @@ async function generatePDF() {
                 tInfo = `${hs}:${ms} - ${he}:${me} (${s.duration}min)`;
             }
             return `
-            <div style="margin-bottom: 10px; font-size: 12px; border: 1px solid #ddd; padding: 8px; border-radius: 4px; break-inside: avoid;">
-                <div style="display:flex; justify-content: space-between; margin-bottom: 4px;">
-                    <strong style="color: ${accentColor};">${s.icon==='dot'?'☕':s.icon} ${s.name}</strong>
-                    <span style="background: #f1f5f9; padding: 2px 5px; border-radius: 3px; font-size: 10px;">${tInfo}</span>
+            <div class="pdf-stop-item pdf-avoid-break">
+                <div style="display:flex; justify-content: space-between; margin-bottom: 5px;">
+                    <strong style="color: ${accentColor}; font-size: 13px;">${s.icon==='dot'?'☕':s.icon} ${s.name}</strong>
+                    <span style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold;">${tInfo}</span>
                 </div>
-                ${s.desc ? `<div style="color: #475569; font-style: italic;">${s.desc}</div>` : ''}
+                ${s.desc ? `<div style="color: #475569; font-size: 11px;">${s.desc}</div>` : ''}
             </div>`;
         }).join('');
         
         stopsHtml = `
-            <h2 style="font-size: 16px; border-bottom: 2px solid ${accentColor}; padding-bottom: 4px; margin-top: 25px;">Przystanki na trasie</h2>
-            <div style="column-count: 2; column-gap: 20px;">
-                ${stopsList}
-            </div>`;
+            <div class="pdf-section-title" style="color: ${accentColor};">Przystanki na trasie</div>
+            <div class="pdf-cols-2">${stopsList}</div>`;
     }
 
-    // Instrukcja przejścia
+    // Formatter: Instrukcja (Nawigacja)
     let rawDescHtml = '';
     if (document.getElementById('pdfIncludeDesc').checked) {
-        // Wyciągamy zawartość jako HTML, ale obieramy ją ze skomplikowanych klas
         const cloneDesc = document.createElement('div');
         cloneDesc.innerHTML = document.getElementById('routeDescText').innerHTML;
         
-        // Transformacja divów ".route-step" w proste akapity do PDF
         const steps = cloneDesc.querySelectorAll('.route-step');
         let compactSteps = '';
         steps.forEach(st => {
-            compactSteps += `<div style="margin-bottom: 10px; font-size: 11px; padding: 6px; background: #f8fafc; border-left: 3px solid ${accentColor}; break-inside: avoid;">${st.innerHTML}</div>`;
+            compactSteps += `<div class="pdf-step-item pdf-avoid-break">${st.innerHTML}</div>`;
         });
         
         if (compactSteps) {
             rawDescHtml = `
-            <h2 style="font-size: 16px; border-bottom: 2px solid ${accentColor}; padding-bottom: 4px; margin-top: 25px;">Nawigacja</h2>
-            <div style="column-count: 2; column-gap: 20px;">
-                ${compactSteps}
-            </div>`;
+            <div class="pdf-section-title" style="color: ${accentColor};">Nawigacja krok po kroku</div>
+            <div class="pdf-cols-2">${compactSteps}</div>`;
         }
     }
 
-    // --- BUDOWANIE SZABLONU (Compact, Nowoczesny HTML) ---
-    const element = document.createElement('div');
-    element.style.width = "800px"; 
-    element.style.padding = "25px 40px";
-    element.style.fontFamily = fontFam;
-    element.style.color = "#1e293b";
+    // --- BUDOWANIE FIZYCZNEGO KONTENERA ---
+    const renderContainer = document.getElementById('pdfRenderContainer');
     
-    element.innerHTML = `
-        <header style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid ${accentColor}; padding-bottom: 10px; margin-bottom: 20px;">
-            <div>
-                <h1 style="font-size: 28px; margin: 0; color: ${accentColor};">${title}</h1>
-                <p style="margin: 5px 0 0 0; color: #64748b; font-size: 12px;">Planer Tras Puszczy Wkrzańskiej</p>
-            </div>
-            <div style="text-align: right; font-size: 11px; background: #f1f5f9; padding: 8px; border-radius: 6px;">
-                <strong>Dystans:</strong> ${stats.dist}<br>
-                ${stats.time}
-            </div>
-        </header>
+    // Przekazanie zmiennych CSS do kontenera
+    renderContainer.style.setProperty('--pdf-accent', accentColor);
+    renderContainer.style.fontFamily = fontFam;
 
-        ${customText.trim().length > 0 ? `
-            <div style="margin-bottom: 20px; font-size: 12px; line-height: 1.5; padding: 15px; background: #fefce8; border-left: 4px solid #facc15; border-radius: 4px;">
-                ${customText}
+    renderContainer.innerHTML = `
+        <div class="pdf-page">
+            <!-- Nagłówek -->
+            <div class="pdf-header">
+                <div>
+                    <h1 class="pdf-title">${title}</h1>
+                    <p class="pdf-subtitle">Wygenerowano z: Planer Tras Puszczy Wkrzańskiej</p>
+                </div>
+                <div class="pdf-stats">
+                    <strong>Dystans:</strong> ${statsDist}<br>
+                    ${statsTime}
+                </div>
             </div>
-        ` : ''}
 
-        ${document.getElementById('pdfIncludeMap').checked && mapImgSrc ? `
-            <div style="margin-bottom: 20px; text-align: center;">
-                <img src="${mapImgSrc}" style="width: 100%; max-height: 400px; object-fit: contain; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <!-- Własny opis -->
+            ${customText.trim().length > 0 ? `
+                <div class="pdf-custom-text">${customText}</div>
+            ` : ''}
+
+            <!-- Mapa -->
+            ${document.getElementById('pdfIncludeMap').checked && mapImgSrc ? `
+                <div class="pdf-map-container" style="margin-bottom: 20px;">
+                    <img src="${mapImgSrc}">
+                </div>
+            ` : ''}
+
+            <!-- Profil Wysokości -->
+            ${document.getElementById('pdfIncludeElev').checked && routeGeometry.length > 1 ? `
+                <div class="pdf-elev-container" style="margin-bottom: 20px;">
+                    <div style="font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #475569;">Profil Wysokości</div>
+                    <img src="${document.getElementById('elevation').toDataURL()}">
+                </div>
+            ` : ''}
+
+            <!-- Postoje -->
+            ${stopsHtml}
+
+            <!-- Punkty -->
+            ${document.getElementById('pdfIncludePoints').checked && pointsData ? `
+                <div class="pdf-section-title" style="color: ${accentColor};">Współrzędne trasy</div>
+                <div class="pdf-cols-3">${pointsData}</div>
+            ` : ''}
+
+            <!-- Nawigacja -->
+            ${rawDescHtml}
+            
+            <!-- Stopka -->
+            <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; font-size: 10px; color: #94a3b8;">
+                Dokument wygenerowany w dniu: ${new Date().toLocaleString('pl-PL')}
             </div>
-        ` : ''}
-
-        ${document.getElementById('pdfIncludeElev').checked && routeGeometry.length > 1 ? `
-            <div style="margin-bottom: 20px;">
-                <h2 style="font-size: 14px; margin-bottom: 8px; color: #475569;">Profil Wysokości</h2>
-                <img src="${document.getElementById('elevation').toDataURL()}" style="width: 100%; height: 80px; object-fit: cover;">
-            </div>
-        ` : ''}
-
-        ${stopsHtml}
-
-        ${document.getElementById('pdfIncludePoints').checked && pointsData ? `
-            <h2 style="font-size: 16px; border-bottom: 2px solid ${accentColor}; padding-bottom: 4px; margin-top: 25px;">Punkty trasy (Koordynaty)</h2>
-            <div style="column-count: 3; column-gap: 15px;">
-                ${pointsData}
-            </div>
-        ` : ''}
-
-        ${rawDescHtml}
-        
-        <div style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 10px; text-align: center; font-size: 9px; color: #94a3b8;">
-            Wygenerowano: ${new Date().toLocaleString('pl-PL')}
         </div>
     `;
 
-    // Ustawienia Html2Pdf (Wysoka kompresja, Smart Page Breaking)
+    // --- USTAWIENIA BIBLIOTEKI html2pdf ---
+    btn.innerText = "⏳ Generowanie pliku...";
+    
+    // Kluczowa naprawa ucinania: marginesy na 0, skalowanie wyższe, dopasowanie szerokości
     const opt = {
-        margin: [10, 10, 10, 10], // Marginesy w mm
+        margin: 0, // Margines 0! Wszystko kontroluje padding w CSS (.pdf-page)
         filename: title.replace(/\s+/g, '_') + '.pdf',
-        image: { type: 'jpeg', quality: 0.95 },
+        image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { 
             scale: 2, 
             useCORS: true, 
             letterRendering: true,
-            windowWidth: 800
+            windowWidth: 800, // Zgadza się z szerokością kontenera
+            scrollY: 0
         },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        jsPDF: { unit: 'px', format: [800, 1131], orientation: 'portrait' }, // Format idealnie dopasowany do pixeli, bez konwersji mm
+        pagebreak: { mode: ['css', 'legacy'] }
     };
 
     try {
-        await html2pdf().set(opt).from(element).save();
+        await html2pdf().set(opt).from(renderContainer).save();
     } catch (err) {
         console.error("Błąd zapisu PDF:", err);
         showCustomAlert("Wystąpił błąd podczas generowania pliku PDF.");
     } finally {
+        // Sprzątanie zawartości ukrytego diva, żeby nie obciążał pamięci
+        renderContainer.innerHTML = '';
         btn.disabled = false;
         btn.innerText = "Generuj Elegancki PDF";
     }
 }
-
 
 // Niezawodna funkcja pozycjonująca okno (w miejsce CSS transform)
 function centerExportModal() {
