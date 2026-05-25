@@ -896,16 +896,25 @@ canvas#elevation {
 
 #time { cursor: pointer; text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 3px; }
 #time:hover { color: var(--accent); }
-       #pdfRenderContainer {
+ #pdfRenderContainer {
     position: relative !important;
     left: 0 !important;
     top: 0 !important;
-    margin: 0 !important;
-    padding: 20px !important; /* Estetyczny margines wewnątrz dokumentu */
-    width: 800px !important;  /* Stała szerokość eliminująca błędy responsywności na telefonach */
+    margin: 0 auto !important; /* Wyśrodkowanie elementu */
+    padding: 20px !important;  /* Bezpieczny wewnętrzny margines */
+    width: 794px !important;   /* Idealna szerokość dla formatu pionowego A4 */
+    max-width: 794px !important;
     box-sizing: border-box !important;
-    background: #ffffff !important; /* Wymuszenie białego tła dokumentu */
-    color: #000000 !important;     /* Czarny tekst niezależnie od motywu aplikacji */
+    background: #ffffff !important;
+    color: #000000 !important;
+    overflow: hidden !important; /* Zapobiega ucinaniu na krawędziach */
+}
+
+/* Dodatkowo zabezpiecz tabele wewnątrz kontenera PDF, aby nie rozpychały go w prawo */
+#pdfRenderContainer table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    word-wrap: break-word !important;
 }
     </style>
     
@@ -3293,12 +3302,13 @@ async function generatePDF() {
             margin: 0, 
             filename: title.replace(/\s+/g, '_') + '.pdf',
             image: { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { 
-        scale: 2,            // Odpowiednia jakość wydruku
-        useCORS: true,       // Wsparcie dla zewnętrznych ikon/map
-        scrollX: 0,          // WYMUSZENIE ZEROWANIA POZYCJI X (Kluczowe!)
-        scrollY: 0,          // WYMUSZENIE ZEROWANIA POZYCJI Y
-        x: 0,                // Wymuszenie renderowania od krawędzi 0 elementu
+           html2canvas:  { 
+        scale: 2,             // Odpowiednia jakość tekstu
+        useCORS: true,        // Obsługa zewnętrznych grafik/ikon
+        scrollX: 0,           // Blokada przesunięcia po osi X
+        scrollY: 0,           // Blokada przesunięcia po osi Y
+        windowWidth: 794,     // Kluczowe: Wymuszenie wirtualnego okna o szerokości A4
+        x: 0, 
         y: 0
     },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, 
