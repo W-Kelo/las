@@ -993,6 +993,33 @@ canvas#elevation {
 .detached-panel.draggable { cursor: grab; border: 2px dashed #3b82f6; }
 .detached-panel.draggable:active { cursor: grabbing; }
 .detached-panel.resizable { resize: both; overflow: auto; border: 2px dashed #a855f7; min-width: 100px; min-height: 50px; }
+        /* --- NAPRAWIONE ROZŁĄCZANIE PANELI --- */
+.detached-panel {
+    position: absolute !important;
+    z-index: 2000;
+    box-sizing: border-box;
+    border: 1px solid rgba(0,0,0,0.15);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+    backdrop-filter: blur(4px);
+    height: auto !important; /* GWARANCJA, że tekst nie wypadnie dołem */
+    min-width: 150px;
+    min-height: 40px;
+    word-wrap: break-word; /* Zabezpieczenie przed długim tekstem */
+}
+.detached-panel.draggable { cursor: grab; border: 2px dashed #3b82f6; }
+.detached-panel.draggable:active { cursor: grabbing; }
+.detached-panel.resizable { resize: both; overflow: auto; border: 2px dashed #a855f7; }
+
+/* --- NOWE PRZYCISKI FORMATOWANIA --- */
+.format-btn-group {
+    display: flex; gap: 5px; margin-top: 5px;
+}
+.format-btn {
+    flex: 1; padding: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); 
+    color: white; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 1.1rem;
+}
+.light .format-btn { background: rgba(0,0,0,0.05); color: black; border-color: #ccc; }
+.format-btn.active { background: #3b82f6; color: white; border-color: #2563eb; }
     </style>
     
 </head>
@@ -1383,73 +1410,90 @@ canvas#elevation {
     </div>
 </div>
 <!-- MODAL STYLU LINI I PANELU (EKSPORT) -->
-<div id="exportStyleModal" class="floating-modal" style="width: 380px; z-index: 3500;" data-html2canvas-ignore>
+<!-- POTĘŻNY MODAL STYLU EKRANU (EKSPORT) -->
+<div id="exportStyleModal" class="floating-modal" style="width: 420px; z-index: 3500;" data-html2canvas-ignore>
     <div class="modal-header">
-        <span style="color: #a855f7; font-weight: bold;">🎨 Edycja Stylu Eksportu</span>
+        <span style="color: #a855f7; font-weight: bold;">🎨 Zaawansowany Edytor Wyglądu</span>
         <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="document.getElementById('exportStyleModal').style.display='none'">X</button>
     </div>
     <div class="modal-body">
         
-        <div class="style-control-group">
-            <label style="color:var(--accent); font-weight:bold;">Formatowanie Paneli:</label>
-            
-            <label style="margin-top:10px;">Co chcesz edytować?</label>
-            <select id="expStyleTarget" class="style-select" style="margin-bottom: 10px; background: #334155;">
-                <option value="all">Wszystkie połączone panele</option>
-                <option value="miTitle">Tylko Tytuł</option>
-                <option value="miDate">Tylko Data</option>
-                <option value="miDesc">Tylko Opis</option>
-                <option value="miStats">Tylko Statystyki</option>
-                <option value="miLegendContainer">Tylko Legenda</option>
-            </select>
+        <label style="font-weight:bold; color:#eab308; display:block; margin-bottom:5px;">1. Wybierz element do edycji:</label>
+        <select id="expStyleTarget" class="style-select" style="margin-bottom: 15px; border-color:#eab308; font-size: 1rem; padding: 10px;" onchange="loadStyleToUI()">
+            <option value="mapInfoPanel">Główny Połączony Panel (Tło globalne)</option>
+            <option value="miTitle">Tytuł Mapy</option>
+            <option value="miDate">Data</option>
+            <option value="miDesc">Opis Trasy</option>
+            <option value="miStats">Kafelki Statystyk</option>
+            <option value="miLegendContainer">Panel Legendy</option>
+        </select>
 
-            <div style="display:flex; gap:10px;">
+        <div style="background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+            <label style="color:var(--accent); font-weight:bold;">Tło i Efekty:</label>
+            <div style="display:flex; gap:10px; margin-top:10px; align-items:center;">
                 <div style="flex:1;">
-                    <label>Tło:</label>
-                    <input type="color" id="expPanelBg" value="#ffffff" style="width:100%;">
+                    <label>Kolor tła:</label>
+                    <input type="color" id="valBgColor" value="#ffffff" style="width:100%; height:35px;" oninput="applyLiveStyle('bg')">
                 </div>
-                <div style="flex:1;">
-                    <label>Tekst:</label>
-                    <input type="color" id="expPanelText" value="#0f172a" style="width:100%;">
+                <div style="flex:2;">
+                    <label>Przezroczystość tła: <span id="lblOpacity">92</span>%</label>
+                    <input type="range" id="valOpacity" class="thick-slider" min="0" max="100" value="92" oninput="document.getElementById('lblOpacity').innerText=this.value; applyLiveStyle('bg');">
                 </div>
             </div>
 
-            <label style="margin-top:10px;">Przezroczystość tła: <span id="expPanelOpacityVal">92</span>%</label>
-            <input type="range" id="expPanelOpacity" class="thick-slider" min="0" max="100" value="92" oninput="document.getElementById('expPanelOpacityVal').innerText=this.value">
-            
-            <label style="margin-top:10px;">Zaokrąglenie rogów (Radius): <span id="expPanelRadiusVal">8</span>px</label>
-            <input type="range" id="expPanelRadius" class="thick-slider" min="0" max="30" value="8" oninput="document.getElementById('expPanelRadiusVal').innerText=this.value">
-
-            <hr>
-
-            <label style="margin-top:10px; color:#3b82f6;">Globalne opcje tekstowe:</label>
-            <label style="margin-top:5px;">Czcionka mapy:</label>
-            <select id="expFontFamily" class="style-select">
-                <option value="'Segoe UI', sans-serif">Segoe UI (Domyślna)</option>
-                <option value="Georgia, serif">Georgia (Elegancka)</option>
-                <option value="'Courier New', monospace">Courier (Maszynowa)</option>
-                <option value="Impact, sans-serif">Impact (Pogrubiona)</option>
-            </select>
-            
-            <label style="margin-top:10px;">Wielkość czcionki: <span id="expFontSizeVal">14</span>px</label>
-            <input type="range" id="expFontSize" class="thick-slider" min="10" max="24" value="14" oninput="document.getElementById('expFontSizeVal').innerText=this.value; document.getElementById('exportWrapper').style.setProperty('--exp-font', this.value + 'px');">
-
-            <label style="margin-top:10px;">Odstępy punktów legendy: <span id="expLegendGapVal">5</span>px</label>
-            <input type="range" id="expLegendGap" class="thick-slider" min="0" max="20" value="5" oninput="document.getElementById('expLegendGapVal').innerText=this.value; document.getElementById('exportWrapper').style.setProperty('--legend-gap', this.value + 'px');">
+            <div style="display:flex; gap:10px; margin-top:10px; align-items:center;">
+                <div style="flex:1;">
+                    <label>Zaokrąglenie: <span id="lblRadius">8</span>px</label>
+                    <input type="range" id="valRadius" class="thick-slider" min="0" max="40" value="8" oninput="document.getElementById('lblRadius').innerText=this.value; applyLiveStyle('radius');">
+                </div>
+                <div style="flex:1; display:flex; align-items:flex-end;">
+                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer; background:rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; width:100%;">
+                        <input type="checkbox" id="valShadow" onchange="applyLiveStyle('shadow')"> Cień bloku
+                    </label>
+                </div>
+            </div>
         </div>
 
-        <div class="style-control-group">
-            <label style="color:var(--accent); font-weight:bold;">Linia Trasy:</label>
+        <div style="background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+            <label style="color:#3b82f6; font-weight:bold;">Formatowanie Tekstu:</label>
+            
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <div style="flex:1;">
+                    <label>Kolor czcionki:</label>
+                    <input type="color" id="valTextColor" value="#0f172a" style="width:100%; height:35px;" oninput="applyLiveStyle('color')">
+                </div>
+                <div style="flex:2;">
+                    <label>Rozmiar: <span id="lblFontSize">14</span>px</label>
+                    <input type="range" id="valFontSize" class="thick-slider" min="10" max="40" value="14" oninput="document.getElementById('lblFontSize').innerText=this.value; applyLiveStyle('fontSize');">
+                </div>
+            </div>
+
+            <label style="margin-top:10px; display:block;">Rodzina czcionki:</label>
+            <select id="valFontFamily" class="style-select" onchange="applyLiveStyle('fontFamily')">
+                <option value="inherit">Domyślna (Dziedziczona)</option>
+                <option value="'Segoe UI', sans-serif">Nowoczesna (Segoe UI)</option>
+                <option value="Georgia, serif">Klasyczna (Georgia)</option>
+                <option value="'Courier New', monospace">Maszynowa (Courier)</option>
+                <option value="Impact, sans-serif">Plakatowa (Impact)</option>
+                <option value="'Comic Sans MS', cursive">Zabawna (Comic Sans)</option>
+            </select>
+
+            <div class="format-btn-group">
+                <button id="btnBold" class="format-btn" onclick="toggleFormatBtn(this, 'bold')"><b>B</b></button>
+                <button id="btnItalic" class="format-btn" onclick="toggleFormatBtn(this, 'italic')"><i>I</i></button>
+                <button id="btnStrike" class="format-btn" onclick="toggleFormatBtn(this, 'strike')"><s>S</s></button>
+            </div>
+        </div>
+
+        <div class="style-control-group" style="background: rgba(34, 197, 94, 0.1);">
+            <label style="color:var(--accent); font-weight:bold;">Główna Linia Trasy (GPX):</label>
             <div class="color-picker-wrap">
-                <input type="color" id="expStyleColor" value="#22c55e">
-                <!-- PRZYWRÓCONY ZNACZNIK, KTÓREGO BRAKOWAŁO: -->
-                <span id="expStyleColorHex" style="font-family: monospace; font-size: 0.9em; margin-left: 8px;">#22c55e</span>
+                <input type="color" id="expStyleColor" value="#22c55e" oninput="applyLineStyle()">
             </div>
-            <label style="margin-top:10px;">Grubość: <span id="expStyleWeightVal">6</span> px</label>
-            <input type="range" id="expStyleWeight" class="thick-slider" min="2" max="15" value="6" oninput="document.getElementById('expStyleWeightVal').innerText=this.value">
+            <label style="margin-top:10px;">Grubość linii: <span id="expStyleWeightVal">6</span> px</label>
+            <input type="range" id="expStyleWeight" class="thick-slider" min="2" max="15" value="6" oninput="document.getElementById('expStyleWeightVal').innerText=this.value; applyLineStyle();">
         </div>
 
-        <button onclick="applyExportStyle()" style="width:100%; background: #22c55e; padding:10px; font-weight:bold; margin-top:5px;">Zastosuj Styl</button>
     </div>
 </div>
 
@@ -4166,19 +4210,22 @@ function executeRefreshRoute() {
 
 
 function togglePanelDrag() {
-    const panel = document.getElementById('mapInfoPanel');
-    const btn = document.getElementById('btnDragPanel');
     isPanelDraggable = !isPanelDraggable;
+    const btn = document.getElementById('btnDragPanel');
+    btn.style.boxShadow = isPanelDraggable ? "0 0 10px white" : "none";
     
-    if(isPanelDraggable) {
-        panel.classList.add('draggable');
-        btn.style.boxShadow = "0 0 10px white";
-        makePanelDraggable(panel);
-    } else {
-        panel.classList.remove('draggable');
-        btn.style.boxShadow = "none";
-        removePanelDraggable(panel);
-    }
+    // Aplikuj do głównego i wszystkich oderwanych
+    const targets = [document.getElementById('mapInfoPanel'), ...document.querySelectorAll('.detached-panel')];
+    targets.forEach(el => {
+        if(!el) return;
+        if(isPanelDraggable) {
+            el.classList.add('draggable');
+            forceEnableDragAndResize(el);
+        } else {
+            el.classList.remove('draggable');
+            el.onmousedown = null;
+        }
+    });
 }
 
 function makePanelDraggable(el) {
@@ -4221,17 +4268,16 @@ function removePanelDraggable(el) {
 
 
 function togglePanelResize() {
-    const panel = document.getElementById('mapInfoPanel');
-    const btn = document.getElementById('btnResizePanel');
     isPanelResizable = !isPanelResizable;
+    const btn = document.getElementById('btnResizePanel');
+    btn.style.boxShadow = isPanelResizable ? "0 0 10px white" : "none";
     
-    if(isPanelResizable) {
-        panel.classList.add('resizable');
-        btn.style.boxShadow = "0 0 10px white";
-    } else {
-        panel.classList.remove('resizable');
-        btn.style.boxShadow = "none";
-    }
+    const targets = [document.getElementById('mapInfoPanel'), ...document.querySelectorAll('.detached-panel')];
+    targets.forEach(el => {
+        if(!el) return;
+        if(isPanelResizable) el.classList.add('resizable');
+        else el.classList.remove('resizable');
+    });
 }
     /* ================= STYLIZACJA TRASY ================= */
 function openStyleModal() {
@@ -4283,54 +4329,139 @@ function saveStyle(saveToLocal) {
 
 function openExportStyleModal() {
     const modal = document.getElementById('exportStyleModal');
-    // Odśwież widok dla obecnie wybranego dropdownu
-    loadStylesForTarget(document.getElementById('expStyleTarget').value);
-    
+    loadStyleToUI(); // Załaduj wartości dla wybranego na starcie elementu
     modal.style.display = 'flex';
     modal.style.left = '50%';
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
 }
-
-function applyExportStyle() {
-    // 1. Linia mapy (Ignoruje dropdown, stosuje się zawsze do linii)
-    const colorInput = document.getElementById('expStyleColor');
-    const weightInput = document.getElementById('expStyleWeight');
-    if(colorInput && weightInput) {
-        exportLineColor = colorInput.value;
-        exportLineWeight = parseInt(weightInput.value);
-        if (exportPolyline) exportPolyline.setStyle({ color: exportLineColor, weight: exportLineWeight });
-    }
-    
-    // 2. Przeliczanie wybranych wartości
-    const hexBg = document.getElementById('expPanelBg').value;
-    const opacity = document.getElementById('expPanelOpacity').value / 100;
-    let r = parseInt(hexBg.slice(1, 3), 16),
-        g = parseInt(hexBg.slice(3, 5), 16),
-        b = parseInt(hexBg.slice(5, 7), 16);
-    const rgbaBg = `rgba(${r}, ${g}, ${b}, ${opacity})`;
-    
-    const targetId = document.getElementById('expStyleTarget').value;
-    const fontColor = document.getElementById('expPanelText').value;
-    const radius = document.getElementById('expPanelRadius').value + 'px';
-    
-    // 3. APLIKACJA TYLKO DO WYBRANEGO TARGETU (Rozwiązanie Problemu 1)
-    const targetEl = document.getElementById(targetId);
-    if (targetEl) {
-        targetEl.style.backgroundColor = rgbaBg;
-        targetEl.style.color = fontColor;
-        targetEl.style.borderRadius = radius;
-        // Dodaj padding, jeśli to rozłączony klocek by tekst nie właził na rogi
-        if(targetId !== 'mapInfoPanel' && !targetEl.style.padding) {
-            targetEl.style.padding = "10px 15px";
+    function hexToRgbA(hex, opacity){
+    let c;
+    if(/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)){
+        c= hex.substring(1).split('');
+        if(c.length== 3){
+            c= [c[0], c[0], c[1], c[1], c[2], c[2]];
         }
+        c= '0x'+c.join('');
+        return 'rgba('+[(c>>16)&255, (c>>8)&255, c&255].join(',')+','+(opacity/100)+')';
+    }
+    return `rgba(255,255,255,${opacity/100})`;
+}
+    function loadStyleToUI() {
+    const targetId = document.getElementById('expStyleTarget').value;
+    const el = document.getElementById(targetId);
+    if(!el) return;
+
+    const comp = window.getComputedStyle(el);
+    
+    // Tło
+    const bgMatch = (el.style.backgroundColor || comp.backgroundColor).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if (bgMatch) {
+        const r = parseInt(bgMatch[1]), g = parseInt(bgMatch[2]), b = parseInt(bgMatch[3]);
+        const a = bgMatch[4] ? parseFloat(bgMatch[4]) : 1;
+        document.getElementById('valBgColor').value = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        document.getElementById('valOpacity').value = Math.round(a * 100);
+        document.getElementById('lblOpacity').innerText = Math.round(a * 100);
     }
     
-    // Czcionka globalna
-    const fontSelect = document.getElementById('expFontFamily');
-    if (fontSelect) document.getElementById('mapInfoPanel').style.fontFamily = fontSelect.value;
+    // Tekst
+    const txtMatch = (el.style.color || comp.color).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (txtMatch) {
+        const r = parseInt(txtMatch[1]), g = parseInt(txtMatch[2]), b = parseInt(txtMatch[3]);
+        document.getElementById('valTextColor').value = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
     
-    showCustomAlert("Zastosowano style do sekcji!");
+    // Reszta wartości
+    const fSize = parseInt(el.style.fontSize) || parseInt(comp.fontSize) || 14;
+    document.getElementById('valFontSize').value = fSize;
+    document.getElementById('lblFontSize').innerText = fSize;
+    
+    document.getElementById('valRadius').value = parseInt(el.style.borderRadius) || 0;
+    document.getElementById('lblRadius').innerText = parseInt(el.style.borderRadius) || 0;
+    
+    document.getElementById('valShadow').checked = (el.style.boxShadow && el.style.boxShadow !== 'none');
+    
+    const fontFamily = el.style.fontFamily || 'inherit';
+    const selectFont = document.getElementById('valFontFamily');
+    // Ustawia select, jeśli opcja istnieje
+    Array.from(selectFont.options).forEach(opt => {
+        if(fontFamily.includes(opt.value.replace(/'/g, ''))) selectFont.value = opt.value;
+    });
+
+    // Przyciski formatowania
+    updateFormatBtnState('btnBold', (el.style.fontWeight === 'bold' || parseInt(comp.fontWeight) > 600));
+    updateFormatBtnState('btnItalic', el.style.fontStyle === 'italic');
+    updateFormatBtnState('btnStrike', el.style.textDecoration.includes('line-through'));
+}
+ function updateFormatBtnState(btnId, isActive) {
+    const btn = document.getElementById(btnId);
+    if(isActive) btn.classList.add('active');
+    else btn.classList.remove('active');
+}
+ function toggleFormatBtn(btn, type) {
+    btn.classList.toggle('active');
+    applyLiveStyle(type);
+}
+
+
+function applyLiveStyle(property) {
+    const targetId = document.getElementById('expStyleTarget').value;
+    const el = document.getElementById(targetId);
+    if(!el) return;
+
+    // Aplikacja konkretnej właściwości
+    switch(property) {
+        case 'bg':
+            const hex = document.getElementById('valBgColor').value;
+            const op = document.getElementById('valOpacity').value;
+            el.style.backgroundColor = hexToRgbA(hex, op);
+            // Zapewniamy padding by na nowym tle tekst nie wrzynał się w boki
+            if(!el.style.padding && targetId !== 'mapInfoPanel') el.style.padding = "12px 18px";
+            break;
+        case 'color':
+            el.style.color = document.getElementById('valTextColor').value;
+            break;
+        case 'fontSize':
+            // Wymuszamy !important przez setProperty, aby nadpisać globalne zasady CSS mapy
+            el.style.setProperty('font-size', document.getElementById('valFontSize').value + 'px', 'important');
+            
+            // Jesli modyfikujemy całą legendę, nadpisujemy kaskadę CSS
+            if (targetId === 'miLegendContainer') {
+                const listItems = el.querySelectorAll('.leg-text');
+                listItems.forEach(li => li.style.setProperty('font-size', document.getElementById('valFontSize').value + 'px', 'important'));
+                
+                // Ikonki zawsze lekko większe
+                const icons = el.querySelectorAll('.leg-icon');
+                icons.forEach(ic => ic.style.setProperty('font-size', (parseInt(document.getElementById('valFontSize').value) + 6) + 'px', 'important'));
+            }
+            break;
+        case 'radius':
+            el.style.borderRadius = document.getElementById('valRadius').value + 'px';
+            break;
+        case 'shadow':
+            el.style.boxShadow = document.getElementById('valShadow').checked ? "0 10px 30px rgba(0,0,0,0.5)" : "none";
+            break;
+        case 'fontFamily':
+            el.style.fontFamily = document.getElementById('valFontFamily').value;
+            break;
+        case 'bold':
+            el.style.fontWeight = document.getElementById('btnBold').classList.contains('active') ? 'bold' : 'normal';
+            break;
+        case 'italic':
+            el.style.fontStyle = document.getElementById('btnItalic').classList.contains('active') ? 'italic' : 'normal';
+            break;
+        case 'strike':
+            const isStrike = document.getElementById('btnStrike').classList.contains('active');
+            el.style.textDecoration = isStrike ? 'line-through' : 'none';
+            break;
+    }
+}
+
+// Funkcja aplikująca style do samej linii GPX
+function applyLineStyle() {
+    exportLineColor = document.getElementById('expStyleColor').value;
+    exportLineWeight = parseInt(document.getElementById('expStyleWeight').value);
+    if (exportPolyline) exportPolyline.setStyle({ color: exportLineColor, weight: exportLineWeight });
 }
 /* ================= ANIMACJA TRASY ================= */
 function getPointAtDistance(geometry, targetDist) {
@@ -5883,69 +6014,103 @@ function activateScissorsMode() {
     const btn = document.getElementById('btnScissors');
     const parentPanel = document.getElementById('mapInfoPanel');
     
-    // Usuń stare dzielniki jeśli istnieją
     document.querySelectorAll('.split-divider').forEach(el => el.remove());
 
     if (isScissorsMode) {
         btn.style.boxShadow = "0 0 10px white";
         btn.innerText = "🛑 Zakończ cięcie";
         
-        // Szukamy widocznych paneli wewnątrz głównego kontenera
+        // Zabezpieczenie przezramkowania parenta, żeby widać było cięcie
+        parentPanel.style.border = "2px dashed #eab308";
+        
         const children = Array.from(parentPanel.children).filter(el => el.style.display !== 'none' && el.id !== '');
         
-        // Wstawiamy "przerywaną linię" przed każdym dzieckiem oprócz pierwszego
         for (let i = 1; i < children.length; i++) {
             const divider = document.createElement('div');
             divider.className = 'split-divider';
             divider.setAttribute('data-html2canvas-ignore', 'true');
-            // Przy kliknięciu w linię - odrywamy dolny element!
             divider.onclick = (e) => {
                 e.stopPropagation();
                 detachPanel(children[i].id, divider);
             };
             parentPanel.insertBefore(divider, children[i]);
         }
-        showCustomAlert("Tryb cięcia aktywny! Najedź myszką na przerwę między sekcjami w panelu i kliknij przerywaną linię, by oderwać dolną sekcję.");
+        showCustomAlert("✂️ Tryb cięcia włączony! Naciśnij przerywaną linię, aby oderwać panel dolny od reszty.");
     } else {
         btn.style.boxShadow = "none";
         btn.innerText = "✂️ Rozłącz panele";
+        parentPanel.style.border = parentPanel.style.backgroundColor !== 'transparent' ? "1px solid rgba(0,0,0,0.1)" : "none";
     }
 }
-    function detachPanel(targetId, dividerEl) {
+   function detachPanel(targetId, dividerEl) {
     const el = document.getElementById(targetId);
     const wrapper = document.getElementById('exportWrapper');
+    const parentPanel = document.getElementById('mapInfoPanel');
     
-    // 1. Zapisz oryginalne wymiary (magia braku przeskoku)
     const rect = el.getBoundingClientRect();
     const wrapperRect = wrapper.getBoundingClientRect();
     
-    // 2. Przenieś element do głównego wrappera (poza parentPanel)
+    // Przenosimy węzeł DOM
     wrapper.appendChild(el);
-    
-    // 3. Usuń linię tnącą
     dividerEl.remove();
     
-    // 4. Ustaw pozycję absolutną kalkulując koordynaty wewn. wrappera
+    // NADANIE KLAS I NIEZAWODNYCH WYMIARÓW
     el.classList.add('detached-panel');
-    el.style.top = (rect.top - wrapperRect.top) + 'px';
-    el.style.left = (rect.left - wrapperRect.left) + 'px';
-    el.style.width = rect.width + 'px';
-    el.style.height = rect.height + 'px';
+    el.style.top = (rect.top - wrapperRect.top + 10) + 'px'; // +10px dla efektu wizualnego oderwania
+    el.style.left = (rect.left - wrapperRect.left + 10) + 'px';
     
-    // Przenieś tło z parenta, jeśli oderwany element go nie ma
-    if(!el.style.backgroundColor) {
-        const parentBg = window.getComputedStyle(document.getElementById('mapInfoPanel')).backgroundColor;
-        el.style.backgroundColor = parentBg;
-        el.style.padding = "15px 20px"; // Odtworzenie paddingu
+    // Zabezpieczenie szerokości, ale WYŁĄCZENIE SZTYWNEJ WYSOKOŚCI (Wysokość 'auto' chroni przed wypadaniem tekstu)
+    el.style.width = Math.max(rect.width, 200) + 'px';
+    el.style.height = 'auto'; 
+    
+    // Zabezpieczenie stylów (Jeśli element nie miał tła, kopiuje je od matki)
+    if (!el.style.backgroundColor || el.style.backgroundColor === 'transparent' || el.style.backgroundColor === 'rgba(0, 0, 0, 0)') {
+        const parentBg = window.getComputedStyle(parentPanel).backgroundColor;
+        el.style.backgroundColor = parentBg !== 'rgba(0, 0, 0, 0)' ? parentBg : 'rgba(255,255,255,0.95)';
+        el.style.padding = "15px"; 
+        el.style.borderRadius = "8px";
     }
 
-    // Uaktywnij opcje przesuwania
+    // Uaktywnienie modyfikacji kadru i przeciągania dla KAŻDEGO oderwanego panelu
     document.getElementById('btnMerge').style.display = 'inline-block';
     
-    // Jeśli włączone jest przesuwanie/kadrowanie - dodaj klasy
-    if(isPanelDraggable) makePanelDraggable(el);
-    if(isPanelResizable) el.classList.add('resizable');
+    // Kluczowa poprawka: Wymuszenie podpięcia listenerów dla tego konkretnego elementu
+    forceEnableDragAndResize(el);
 }
+    function forceEnableDragAndResize(el) {
+    // Nadajemy klasy UI
+    if(isPanelDraggable) el.classList.add('draggable');
+    if(isPanelResizable) el.classList.add('resizable');
+    
+    // Podpinamy Drag&Drop do węzła w locie
+    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    el.onmousedown = (e) => {
+        if(!el.classList.contains('draggable')) return;
+        // Ignorowanie kliknięcia w róg do zmiany wielkości (Resize)
+        if(e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return;
+        
+        e.preventDefault();
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        document.onmouseup = closeDrag;
+        document.onmousemove = elementDrag;
+    };
+
+    function elementDrag(e) {
+        e.preventDefault();
+        pos1 = pos3 - e.clientX;
+        pos2 = pos4 - e.clientY;
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        el.style.top = (el.offsetTop - pos2) + "px";
+        el.style.left = (el.offsetLeft - pos1) + "px";
+    }
+    function closeDrag() {
+        document.onmouseup = null;
+        document.onmousemove = null;
+    }
+}
+
 function resetSplitPanels() {
     const parentPanel = document.getElementById('mapInfoPanel');
     const order = ['miTitle', 'miDate', 'miDesc', 'miStats', 'miLegendContainer'];
@@ -5959,13 +6124,13 @@ function resetSplitPanels() {
             el.style.left = '';
             el.style.width = '';
             el.style.height = '';
-            removePanelDraggable(el);
-            parentPanel.appendChild(el); // Wrzucamy z powrotem do matki
+            el.onmousedown = null; // usuń drag
+            parentPanel.appendChild(el); 
         }
     });
     
     document.getElementById('btnMerge').style.display = 'none';
-    if(isScissorsMode) activateScissorsMode(); // Wyłącz nożyczki
+    if(isScissorsMode) activateScissorsMode(); 
 }
     /* ================= ZAAWANSOWANE ZARZĄDZANIE STYLEM ================= */
 // Funkcja wywoływana przy zmianie w dropdownie - wczytuje stan
