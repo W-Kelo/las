@@ -960,6 +960,39 @@ canvas#elevation {
 .split-panel.draggable { cursor: grab; }
 .split-panel.draggable:active { cursor: grabbing; }
 .split-panel.resizable { resize: both; overflow: auto; }
+        /* --- MAGICZNE CIĘCIE PANELI --- */
+.split-divider {
+    height: 10px;
+    margin: -5px 0;
+    position: relative;
+    z-index: 1500;
+    cursor: row-resize;
+    opacity: 0;
+    transition: opacity 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.split-divider::before {
+    content: '';
+    width: 100%;
+    border-top: 2px dashed #eab308; /* Żółta przerywana linia */
+    box-shadow: 0 0 5px rgba(0,0,0,0.5);
+}
+.split-divider:hover { opacity: 1; }
+
+.detached-panel {
+    position: absolute !important;
+    z-index: 2000;
+    box-sizing: border-box;
+    /* Domyślne style dla oderwanego bloku, tło jest dziedziczone z inline-style */
+    border: 1px solid rgba(0,0,0,0.1);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    backdrop-filter: blur(4px);
+}
+.detached-panel.draggable { cursor: grab; border: 2px dashed #3b82f6; }
+.detached-panel.draggable:active { cursor: grabbing; }
+.detached-panel.resizable { resize: both; overflow: auto; border: 2px dashed #a855f7; min-width: 100px; min-height: 50px; }
     </style>
     
 </head>
@@ -1192,7 +1225,8 @@ canvas#elevation {
             <div class="toolbar-divider"></div>
             <button onclick="toggleLegendMode()" id="btnLegend">Własna Legenda</button>
             <button onclick="toggleEmptyLegend()">Pusta Legenda</button>
-            <button onclick="toggleSplitPanels()" style="background:#eab308; color:black;">✂️ Rozłącz panele</button>
+            <button onclick="activateScissorsMode()" id="btnScissors" >Rozłącz panele</button>
+            <button onclick="resetSplitPanels()" id="btnMerge ">Złącz wszystko</button>
             <button onclick="openExportDataModal()">Baza Punktów</button>
             <button onclick="syncExportPoints()" title="Przeładuj i zaktualizuj legendę w obecnym widoku">🔄 Legenda</button>
             <div class="toolbar-divider"></div>
@@ -1694,6 +1728,7 @@ let tripStartTime = null;
 let isTimeSkipped = true;
 let customPdfText = "";
 let isPanelsSplitMode = false;
+let isScissorsMode = false;
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
@@ -4248,25 +4283,8 @@ function saveStyle(saveToLocal) {
 
 function openExportStyleModal() {
     const modal = document.getElementById('exportStyleModal');
-    
-    // Inicjalizacja pól aktualnymi wartościami (Z bezpiecznym sprawdzaniem null)
-    const colorInput = document.getElementById('expStyleColor');
-    const colorHex = document.getElementById('expStyleColorHex');
-    const weightInput = document.getElementById('expStyleWeight');
-    const weightVal = document.getElementById('expStyleWeightVal');
-
-    if (colorInput) colorInput.value = exportLineColor;
-    if (colorHex) colorHex.innerText = exportLineColor;
-    if (weightInput) weightInput.value = exportLineWeight;
-    if (weightVal) weightVal.innerText = exportLineWeight;
-    
-    // Zabezpieczony listener na zmianę koloru
-    if (colorInput) {
-        // Usuwamy stary nasłuchiwacz (jeśli istnieje) żeby się nie dublował, przypisując do funkcji
-        colorInput.oninput = (e) => {
-            if (colorHex) colorHex.innerText = e.target.value;
-        };
-    }
+    // Odśwież widok dla obecnie wybranego dropdownu
+    loadStylesForTarget(document.getElementById('expStyleTarget').value);
     
     modal.style.display = 'flex';
     modal.style.left = '50%';
@@ -4275,57 +4293,44 @@ function openExportStyleModal() {
 }
 
 function applyExportStyle() {
-    // 1. Zastosowanie stylów linii trasy
+    // 1. Linia mapy (Ignoruje dropdown, stosuje się zawsze do linii)
     const colorInput = document.getElementById('expStyleColor');
     const weightInput = document.getElementById('expStyleWeight');
-    
     if(colorInput && weightInput) {
         exportLineColor = colorInput.value;
         exportLineWeight = parseInt(weightInput.value);
         if (exportPolyline) exportPolyline.setStyle({ color: exportLineColor, weight: exportLineWeight });
     }
     
-    // 2. Przeliczanie HEX i Opacity na RGBA
+    // 2. Przeliczanie wybranych wartości
     const hexBg = document.getElementById('expPanelBg').value;
     const opacity = document.getElementById('expPanelOpacity').value / 100;
-    
     let r = parseInt(hexBg.slice(1, 3), 16),
         g = parseInt(hexBg.slice(3, 5), 16),
         b = parseInt(hexBg.slice(5, 7), 16);
     const rgbaBg = `rgba(${r}, ${g}, ${b}, ${opacity})`;
     
-    // 3. Aplikowanie na konkretny panel (lub wszystkie naraz)
     const targetId = document.getElementById('expStyleTarget').value;
     const fontColor = document.getElementById('expPanelText').value;
     const radius = document.getElementById('expPanelRadius').value + 'px';
     
-    if (targetId === 'all') {
-        // Główny rodzic wszystkich paneli
-        const parentPanel = document.getElementById('mapInfoPanel');
-        if(parentPanel) {
-            parentPanel.style.backgroundColor = rgbaBg;
-            parentPanel.style.color = fontColor;
-            parentPanel.style.borderRadius = radius;
-        }
-    } else {
-        // Pojedynczy rozdzielony "klocek" (np. sama legenda)
-        const el = document.getElementById(targetId);
-        if (el) {
-            el.style.backgroundColor = rgbaBg;
-            el.style.color = fontColor;
-            el.style.borderRadius = radius;
-            // Dodajemy lekki padding do środka klocka, żeby tekst nie opierał się o brzeg nowego tła
-            el.style.padding = "10px 15px"; 
+    // 3. APLIKACJA TYLKO DO WYBRANEGO TARGETU (Rozwiązanie Problemu 1)
+    const targetEl = document.getElementById(targetId);
+    if (targetEl) {
+        targetEl.style.backgroundColor = rgbaBg;
+        targetEl.style.color = fontColor;
+        targetEl.style.borderRadius = radius;
+        // Dodaj padding, jeśli to rozłączony klocek by tekst nie właził na rogi
+        if(targetId !== 'mapInfoPanel' && !targetEl.style.padding) {
+            targetEl.style.padding = "10px 15px";
         }
     }
     
-    // Zmienna czcionki zawsze nakłada się globalnie na całą planszę
+    // Czcionka globalna
     const fontSelect = document.getElementById('expFontFamily');
-    if (fontSelect) {
-        document.getElementById('mapInfoPanel').style.fontFamily = fontSelect.value;
-    }
+    if (fontSelect) document.getElementById('mapInfoPanel').style.fontFamily = fontSelect.value;
     
-    document.getElementById('exportStyleModal').style.display = 'none';
+    showCustomAlert("Zastosowano style do sekcji!");
 }
 /* ================= ANIMACJA TRASY ================= */
 function getPointAtDistance(geometry, targetDist) {
@@ -5144,64 +5149,65 @@ function savePickerSelection() {
 
 // Główny silnik synchronizujący punkty na mapie i w legendzie
 function syncExportPoints() {
-    // Zabezpieczenie przed błędem Leafleta
     if (!exportMap || !exportMap._loaded) return; 
 
     const bounds = exportMap.getBounds();
     const shouldBeVisible = new Set(); 
-
-    // Sprawdzamy stan checkboxów "Pokaż w legendzie" z modalu ustawień
     const chkGas = document.getElementById('chkExpGasLegend');
     const chkUser = document.getElementById('chkExpUserLegend');
     const legendGas = chkGas ? chkGas.checked : false;
     const legendUser = chkUser ? chkUser.checked : false;
 
-    // Łączymy wszystkie punkty (GAS z global, Twoje z userSavedPois), aby niczego nie pominąć
-    const combinedPois = [...globalCustomPois.filter(p => p.isGas), ...userSavedPois];
+    // Łączymy bazę GS, Punkty Własne ORAZ Postoje (dodając im sztuczny atrybut)
+    const formattedStops = routeStops.map(s => ({
+        id: s.id, latlng: s.latlng, name: s.name, 
+        icon: s.visualType === 'dot' ? '☕' : s.icon, 
+        isUserSaved: true // By złapał się na checkbox "Moje punkty"
+    }));
+    
+    const combinedPois = [
+        ...globalCustomPois.filter(p => p.isGas), 
+        ...userSavedPois,
+        ...formattedStops
+    ];
 
     combinedPois.forEach(poi => {
-        const isGas = poi.isGas;
-        const isUser = !poi.isGas;
-
-        const isGasMatch = isGas && exportPointSettings.gas.ids.has(poi.id);
-        const isUserMatch = isUser && exportPointSettings.user.ids.has(poi.id);
+        // Sprawdzamy czy dany punkt jest zaznaczony w modalu wyboru (Pickerze)
+        const isGasMatch = poi.isGas && exportPointSettings.gas.ids.has(poi.id);
+        const isUserMatch = (poi.isUserSaved || poi.isStop) && exportPointSettings.user.ids.has(poi.id);
 
         if (isGasMatch || isUserMatch) {
             const autoId = 'auto_' + poi.id;
             const inLegendEnabled = (isGasMatch && legendGas) || (isUserMatch && legendUser);
             
-            // Konwersja współrzędnych, jeśli pochodzą bezpośrednio z userSavedPois (lat, lng zamiast obiektu L.latLng)
             const poiLatLng = poi.latlng || L.latLng(poi.lat, poi.lng);
             
-            // DYNAMICZNE SPRAWDZENIE: Czy punkt mieści się w widoku mapy eksportu?
+            // KLUCZOWE: Sprawdzamy czy punkt jest w zasięgu widoku mapy (BOUNDS)
             if (bounds.contains(poiLatLng)) {
                 shouldBeVisible.add(autoId);
 
-                // Tworzenie markera, jeśli jeszcze go nie ma na mapie eksportu
+                // Tworzymy pinezkę na mapie, jeśli jej tam nie ma
                 if (!exportLegendItems[autoId]) {
                     const marker = L.marker(poiLatLng, {
                         draggable: true,
                         icon: L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${poi.icon}</div>`, className: 'poi-icon' })
                     }).addTo(exportMap);
-                    
                     marker.on('click', function(e) { L.DomEvent.stopPropagation(e); });
-                    exportLegendItems[autoId] = { marker: marker, emoji: poi.icon, text: poi.name, isAuto: true, inList: false };
+                    exportLegendItems[autoId] = { marker: marker, emoji: poi.icon, text: poi.name, isAuto: true };
                 }
 
-                // Dodawanie/usuwanie tekstu z legendy panelu bocznego
+                // Wstrzykujemy do legendy bocznej
                 const hasDomNode = document.getElementById(autoId);
                 if (inLegendEnabled && !hasDomNode) {
                     addAutoLegendItemToDOM(autoId);
-                    exportLegendItems[autoId].inList = true;
                 } else if (!inLegendEnabled && hasDomNode) {
-                    hasDomNode.remove();
-                    exportLegendItems[autoId].inList = false;
+                    hasDomNode.remove(); // Usuwamy tekst, ale pinezka zostaje
                 }
             }
         }
     });
 
-    // Usuwanie punktów, które "wyjechały" za ekran lub zostały odznaczone
+    // Usuwamy sieroty (te które zjechały poza ekran po przemieszczeniu)
     Object.keys(exportLegendItems).forEach(id => {
         if (exportLegendItems[id].isAuto && !shouldBeVisible.has(id)) {
             exportMap.removeLayer(exportLegendItems[id].marker);
@@ -5211,15 +5217,14 @@ function syncExportPoints() {
         }
     });
 
-    // NATYCHMIASTOWA AKTUALIZACJA WIDOCZNOŚCI PANELU Z LEGENDĄ
-    const legendContainer = document.getElementById('miLegendContainer');
-    const legendList = document.getElementById('exportLegendList');
-    if(legendContainer && legendList) {
-        legendContainer.style.display = legendList.children.length > 0 ? 'block' : 'none';
+    // Jeśli pusta legenda ma placeholder, usuwamy go gdy wpadną punkty
+    const tempEmpty = document.getElementById('temp_empty_leg');
+    if (tempEmpty && document.getElementById('exportLegendList').children.length > 1) {
+        tempEmpty.remove();
     }
+
     updatePanelVisibility();
 }
-
 function addAutoLegendItemToDOM(id) {
     const item = exportLegendItems[id];
     const list = document.getElementById('exportLegendList');
@@ -5873,7 +5878,131 @@ function removeCompletelyFromExport(autoId) {
     
     delete exportLegendItems[autoId];
 }
+function activateScissorsMode() {
+    isScissorsMode = !isScissorsMode;
+    const btn = document.getElementById('btnScissors');
+    const parentPanel = document.getElementById('mapInfoPanel');
+    
+    // Usuń stare dzielniki jeśli istnieją
+    document.querySelectorAll('.split-divider').forEach(el => el.remove());
 
+    if (isScissorsMode) {
+        btn.style.boxShadow = "0 0 10px white";
+        btn.innerText = "🛑 Zakończ cięcie";
+        
+        // Szukamy widocznych paneli wewnątrz głównego kontenera
+        const children = Array.from(parentPanel.children).filter(el => el.style.display !== 'none' && el.id !== '');
+        
+        // Wstawiamy "przerywaną linię" przed każdym dzieckiem oprócz pierwszego
+        for (let i = 1; i < children.length; i++) {
+            const divider = document.createElement('div');
+            divider.className = 'split-divider';
+            divider.setAttribute('data-html2canvas-ignore', 'true');
+            // Przy kliknięciu w linię - odrywamy dolny element!
+            divider.onclick = (e) => {
+                e.stopPropagation();
+                detachPanel(children[i].id, divider);
+            };
+            parentPanel.insertBefore(divider, children[i]);
+        }
+        showCustomAlert("Tryb cięcia aktywny! Najedź myszką na przerwę między sekcjami w panelu i kliknij przerywaną linię, by oderwać dolną sekcję.");
+    } else {
+        btn.style.boxShadow = "none";
+        btn.innerText = "✂️ Rozłącz panele";
+    }
+}
+    function detachPanel(targetId, dividerEl) {
+    const el = document.getElementById(targetId);
+    const wrapper = document.getElementById('exportWrapper');
+    
+    // 1. Zapisz oryginalne wymiary (magia braku przeskoku)
+    const rect = el.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    
+    // 2. Przenieś element do głównego wrappera (poza parentPanel)
+    wrapper.appendChild(el);
+    
+    // 3. Usuń linię tnącą
+    dividerEl.remove();
+    
+    // 4. Ustaw pozycję absolutną kalkulując koordynaty wewn. wrappera
+    el.classList.add('detached-panel');
+    el.style.top = (rect.top - wrapperRect.top) + 'px';
+    el.style.left = (rect.left - wrapperRect.left) + 'px';
+    el.style.width = rect.width + 'px';
+    el.style.height = rect.height + 'px';
+    
+    // Przenieś tło z parenta, jeśli oderwany element go nie ma
+    if(!el.style.backgroundColor) {
+        const parentBg = window.getComputedStyle(document.getElementById('mapInfoPanel')).backgroundColor;
+        el.style.backgroundColor = parentBg;
+        el.style.padding = "15px 20px"; // Odtworzenie paddingu
+    }
+
+    // Uaktywnij opcje przesuwania
+    document.getElementById('btnMerge').style.display = 'inline-block';
+    
+    // Jeśli włączone jest przesuwanie/kadrowanie - dodaj klasy
+    if(isPanelDraggable) makePanelDraggable(el);
+    if(isPanelResizable) el.classList.add('resizable');
+}
+function resetSplitPanels() {
+    const parentPanel = document.getElementById('mapInfoPanel');
+    const order = ['miTitle', 'miDate', 'miDesc', 'miStats', 'miLegendContainer'];
+    
+    order.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.classList.contains('detached-panel')) {
+            el.classList.remove('detached-panel', 'draggable', 'resizable');
+            el.style.position = '';
+            el.style.top = '';
+            el.style.left = '';
+            el.style.width = '';
+            el.style.height = '';
+            removePanelDraggable(el);
+            parentPanel.appendChild(el); // Wrzucamy z powrotem do matki
+        }
+    });
+    
+    document.getElementById('btnMerge').style.display = 'none';
+    if(isScissorsMode) activateScissorsMode(); // Wyłącz nożyczki
+}
+    /* ================= ZAAWANSOWANE ZARZĄDZANIE STYLEM ================= */
+// Funkcja wywoływana przy zmianie w dropdownie - wczytuje stan
+function loadStylesForTarget(targetId) {
+    const el = document.getElementById(targetId);
+    if(!el) return;
+
+    // Próbujemy wyciągnąć style (najpierw inline, potem computed)
+    const compStyle = window.getComputedStyle(el);
+    const bgColor = el.style.backgroundColor || compStyle.backgroundColor;
+    const txtColor = el.style.color || compStyle.color;
+    
+    // Konwersja rgb/rgba na HEX i Opacity dla inputów
+    const rgbaMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if (rgbaMatch) {
+        const r = parseInt(rgbaMatch[1]);
+        const g = parseInt(rgbaMatch[2]);
+        const b = parseInt(rgbaMatch[3]);
+        const a = rgbaMatch[4] ? parseFloat(rgbaMatch[4]) : 1;
+        
+        document.getElementById('expPanelBg').value = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        document.getElementById('expPanelOpacity').value = Math.round(a * 100);
+        document.getElementById('expPanelOpacityVal').innerText = Math.round(a * 100);
+    }
+    
+    const rgbTxtMatch = txtColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (rgbTxtMatch) {
+        const r = parseInt(rgbTxtMatch[1]);
+        const g = parseInt(rgbTxtMatch[2]);
+        const b = parseInt(rgbTxtMatch[3]);
+        document.getElementById('expPanelText').value = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+
+    const radius = parseInt(el.style.borderRadius || compStyle.borderRadius) || 0;
+    document.getElementById('expPanelRadius').value = radius;
+    document.getElementById('expPanelRadiusVal').innerText = radius;
+}
 </script>
 
 </body>
