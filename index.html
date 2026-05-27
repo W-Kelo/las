@@ -192,44 +192,43 @@
 
 /* Wspólne wymuszanie responsywności WSZYSTKICH modali na telefonach */
 @media (max-width: 768px) {
-    /* 1. Ukrycie klasycznego paska bocznego i przycisku hamburgera */
     body { display: block !important; }
     aside#sidebar, #mobile-toggle { display: none !important; }
     
-    /* 2. Mapa na pełny ekran telefonu */
     #map { height: 100vh !important; width: 100vw !important; }
-    #gps-btn { bottom: 85px !important; right: 15px !important; } /* Nad dolnym paskiem */
+    #gps-btn { bottom: 95px !important; right: 15px !important; } 
 
-    /* 3. PANCERNA RESPONSYWNOŚĆ MODALI (Nadpisuje style JS) */
+    /* NAPRAWA 1: Odsunięcie przycisków Zoomu Leafleta od paska wyszukiwania */
+    .leaflet-control-zoom {
+        margin-top: 75px !important; /* Spychamy je w dół */
+        margin-right: 15px !important;
+    }
+
+    /* NAPRAWA 2: Pełna swoboda modali z zabezpieczeniem wyjścia za ekran w JS */
     .floating-modal, .inner-modal, .custom-alert-box {
         position: fixed !important;
-        top: 50% !important;
-        left: 50% !important;
-        transform: translate(-50%, -50%) !important;
+        /* Usuwamy sztywne !important z top/left/transform by JS mógł je przesuwać */
         width: 92% !important;
         max-width: none !important;
         max-height: 85vh !important;
         margin: 0 !important;
         border-radius: 12px !important;
-        display: none; /* Domyślnie ukryte, JS zmienia na flex */
+        display: none; 
         flex-direction: column !important;
     }
-    
-    /* Wyjątek dla Głównego Modalu Eksportu (zajmuje prawie cały ekran) */
+
     .map-export-modal {
         width: 96% !important;
         height: 96vh !important;
         max-height: 96vh !important;
     }
 
-    /* Gwarancja przewijania wnętrza modalu, jeśli treść jest długa */
     .modal-body {
         overflow-y: auto !important;
         -webkit-overflow-scrolling: touch;
         flex-grow: 1;
     }
 
-    /* Rozwiązanie problemu wylewania się zawartości wewnątrz opcji */
     .style-control-group, .search-save-form, .my-points-toolbar {
         width: 100%; box-sizing: border-box;
     }
@@ -1936,10 +1935,10 @@ let wasExportEmpty = false;
 let routeStops = []; 
 let isStopMode = false;
 let tripStartTime = null; 
-let isTimeSkipped = true;
 let customPdfText = "";
 let isPanelsSplitMode = false;
 let isScissorsMode = false;
+let isTimeSkipped = false; 
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
@@ -2090,29 +2089,29 @@ function loadUserSavedPois() {
 
 
 
-
-
-
-
-
-
-
     function toggleDrawMode() {
     isDrawMode = !isDrawMode;
-    const btn = document.getElementById('btnToggleDraw');
+    const btnPc = document.getElementById('btnToggleDraw');
+    const btnMobile = document.querySelector('.nav-item[onclick*="toggleDrawMode"]'); // Szukamy przycisku z paska
+
     if (isDrawMode) {
-        btn.classList.add('btn-draw-mode');
-        btn.innerText = "🛑 Zakończ rysowanie";
+        if(btnPc) { btnPc.classList.add('btn-draw-mode'); btnPc.innerText = "🛑 Zakończ rysowanie"; }
+        if(btnMobile) { btnMobile.style.background = 'rgba(236,72,153,0.2)'; btnMobile.style.borderRadius = '8px'; }
+        
         map.getContainer().style.cursor = 'crosshair';
         showCustomAlert("Tryb rysowania włączony. Klikaj na mapę, by stawiać punkty trasy.");
     } else {
-        btn.classList.remove('btn-draw-mode');
-        btn.innerText = "✏️ Włącz rysowanie trasy";
+        if(btnPc) { btnPc.classList.remove('btn-draw-mode'); btnPc.innerText = "✏️ Włącz rysowanie trasy"; }
+        if(btnMobile) { btnMobile.style.background = 'transparent'; }
+        
         map.getContainer().style.cursor = '';
     }
+    
+    // Zwijamy pasek mobilny, żeby użytkownik mógł rysować
+    if (window.innerWidth <= 768) toggleMobileNav(true);
 }
 
-// Zmodyfikowany Event Click na mapie
+
 // Zmodyfikowany Event Click na mapie
 map.on('click', async e => {
     // 1. Tryb dodawania własnego punktu
@@ -2165,6 +2164,13 @@ function triggerMobileSearch() {
 }
 
 // Dolny pasek nawigacyjny
+
+document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', function(e) {
+        e.stopPropagation(); // Zabezpieczenie!
+    });
+});
+
 function toggleMobileNav(forceClose = false) {
     const nav = document.getElementById('mobileBottomNav');
     if (forceClose) {
@@ -2184,23 +2190,35 @@ function toggleMobileNav(forceClose = false) {
 /* ================= OBSŁUGA MODALI (Floating) ================= */
 function makeDraggable(el) {
     const header = el.querySelector('.modal-header');
-    if(!header) return;
+    if (!header) return;
     
     let isDragging = false;
     let startX, startY, initialLeft, initialTop;
 
+    // Podpięcie eventów myszy ORAZ dotykowych
     header.onmousedown = header.ontouchstart = function(e) {
-        // BLOKADA: Nie pozwalamy na drag na ekranach < 768px
-        if (window.innerWidth <= 768) return; 
-
+        // Pozwalamy na przesuwanie WSZĘDZIE. Koniec blokad dla telefonów.
         isDragging = true;
+        
+        // Zabezpieczenie przed zachowaniem domyślnym (np. przewijaniem strony palcem pod modalem)
+        if (e.type === 'touchstart') e.preventDefault(); 
+
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
         
         startX = clientX;
         startY = clientY;
-        initialLeft = el.offsetLeft;
-        initialTop = el.offsetTop;
+        
+        // Zbieramy aktualne koordynaty modalu z ekranu
+        const rect = el.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+        
+        // Po oderwaniu upewniamy się, że transform: translate(-50%) nas nie trzyma
+        el.style.transform = "none";
+        // Ustalamy na sztywno jego pozycję na start przesuwania, aby nie "odskoczył"
+        el.style.left = initialLeft + "px";
+        el.style.top = initialTop + "px";
         
         document.onmousemove = document.ontouchmove = onMouseMove;
         document.onmouseup = document.ontouchend = stopDrag;
@@ -2213,9 +2231,27 @@ function makeDraggable(el) {
         
         const dx = clientX - startX;
         const dy = clientY - startY;
-        el.style.left = (initialLeft + dx) + "px";
-        el.style.top = (initialTop + dy) + "px";
-        el.style.transform = "none"; 
+        
+        // Nowa, tymczasowa pozycja
+        let newLeft = initialLeft + dx;
+        let newTop = initialTop + dy;
+
+        // OGRANICZNIKI KRAWĘDZI (Containment) - Magia, która nie pozwoli wyrzucić modalu poza ekran
+        const winW = window.innerWidth;
+        const winH = window.innerHeight;
+        const elW = el.offsetWidth;
+        const elH = el.offsetHeight;
+
+        // Limity poziome
+        if (newLeft < 0) newLeft = 0; // Krawędź lewa
+        if (newLeft + elW > winW) newLeft = winW - elW; // Krawędź prawa
+        
+        // Limity pionowe
+        if (newTop < 0) newTop = 0; // Krawędź górna
+        if (newTop + elH > winH) newTop = winH - elH; // Krawędź dolna
+
+        el.style.left = newLeft + "px";
+        el.style.top = newTop + "px";
     }
 
     function stopDrag() {
@@ -2247,16 +2283,19 @@ function openCenteredModal(id) {
     const modal = document.getElementById(id);
     modal.style.display = 'flex';
     
-    // Reset pozycji - przywraca modal na środek ekranu
-    modal.style.top = '50%';
+    // Wymuszamy wycentrowanie od nowa za każdym razem gdy otwieramy
     modal.style.left = '50%';
+    modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
-    
-    // Jeśli modal przekracza wysokość okna, upewnijmy się, że nie jest przyklejony poza ekranem
-    if(window.innerHeight < modal.offsetHeight) {
-        modal.style.top = '0px';
-        modal.style.transform = 'translate(-50%, 0)';
-    }
+
+    // Ochrona wysokości na małych ekranach:
+    setTimeout(() => {
+        const rect = modal.getBoundingClientRect();
+        if (rect.height > window.innerHeight) {
+            modal.style.top = '0px';
+            modal.style.transform = 'translate(-50%, 0)';
+        }
+    }, 10); // Czekamy chwilę aż przeglądarka ustali wymiary z Flexboxem
 }
 
 function openPointsModal() {
@@ -5596,13 +5635,22 @@ function addAutoLegendItemToDOM(id) {
 }
     /* ================= SILNIK POSTOJÓW (BREAKS) ================= */
 
+/* ================= NAPRAWIONA LOGIKA WYWOŁANIA CZASU POSTOJÓW ================= */
 function openStopsModal() {
-    if (tripStartTime === null && routeGeometry.length > 1) {
+    // 1. Zwijamy pasek mobilny jeśli jest otwarty
+    if (window.innerWidth <= 768) toggleMobileNav(true);
+
+    // 2. Jeśli nie podano jeszcze godziny startu ORAZ trasa istnieje
+    if (tripStartTime === null && isTimeSkipped === false && routeGeometry.length > 1) {
         openCenteredModal('departureTimeModal');
     } else {
+        // 3. Jeśli czas już jest lub został celowo pominięty, otwieramy właściwy panel
         openStopsUI();
     }
 }
+
+// Reszta zależy od tej nowej zmiennej
+
 function skipDepartureTime() {
     isTimeSkipped = true;
     tripStartTime = null;
