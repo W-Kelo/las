@@ -3111,10 +3111,10 @@ function drawElevation(hoverIdx = -1) {
         if (chartHoverMarker) {
             map.removeLayer(chartHoverMarker);
             chartHoverMarker = null;
-        }
-    }
 }
-                     }
+        }
+    }); 
+} 
 
 function updateStats(distMeters) {
     const km = distMeters / 1000;
