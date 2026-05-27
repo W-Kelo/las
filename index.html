@@ -191,6 +191,8 @@
         /* ================= PEŁNA RESPONSYWNOŚĆ I INTERFEJS MOBILNY (MOBILE FIRST) ================= */
 
 /* Wspólne wymuszanie responsywności WSZYSTKICH modali na telefonach */
+/* ================= PEŁNA RESPONSYWNOŚĆ I INTERFEJS MOBILNY (MOBILE FIRST) ================= */
+
 @media (max-width: 768px) {
     body { display: block !important; }
     aside#sidebar, #mobile-toggle { display: none !important; }
@@ -198,16 +200,14 @@
     #map { height: 100vh !important; width: 100vw !important; }
     #gps-btn { bottom: 95px !important; right: 15px !important; } 
 
-    /* NAPRAWA 1: Odsunięcie przycisków Zoomu Leafleta od paska wyszukiwania */
     .leaflet-control-zoom {
-        margin-top: 75px !important; /* Spychamy je w dół */
+        margin-top: 75px !important; 
         margin-right: 15px !important;
     }
 
-    /* NAPRAWA 2: Pełna swoboda modali z zabezpieczeniem wyjścia za ekran w JS */
-    .floating-modal, .inner-modal, .custom-alert-box {
+    /* TYLKO ZWYKŁE MODALE (Bez czarnego tła pod spodem) */
+    .floating-modal {
         position: fixed !important;
-        /* Usuwamy sztywne !important z top/left/transform by JS mógł je przesuwać */
         width: 92% !important;
         max-width: none !important;
         max-height: 85vh !important;
@@ -215,6 +215,18 @@
         border-radius: 12px !important;
         display: none; 
         flex-direction: column !important;
+    }
+
+    /* NAPRAWA: MODALE Z TŁEM (Alert/Potwierdzenie/Wybór) */
+    /* Zdejmujemy z nich ukrywanie i blokowanie, pozwalamy Flexboxowi je wycentrować! */
+    .custom-alert-box, .inner-modal {
+        width: 90% !important;
+        max-width: 340px !important;
+        display: flex !important; /* MUSI BYĆ WIDOCZNE! Tło (overlay) steruje ukrywaniem */
+        position: relative !important;
+        transform: none !important;
+        top: auto !important;
+        left: auto !important;
     }
 
     .map-export-modal {
