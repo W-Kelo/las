@@ -5998,79 +5998,100 @@ function activateScissorsMode() {
     const btn = document.getElementById('btnScissors');
     const parentPanel = document.getElementById('mapInfoPanel');
     
+    // Usuń stare dzielniki jeśli istnieją
     document.querySelectorAll('.split-divider').forEach(el => el.remove());
 
     if (isScissorsMode) {
         btn.style.boxShadow = "0 0 10px white";
         btn.innerText = "🛑 Zakończ cięcie";
         
-        // Zabezpieczenie przezramkowania parenta, żeby widać było cięcie
+        // Zabezpieczenie wizualne - obramowanie parenta
         parentPanel.style.border = "2px dashed #eab308";
         
-        const children = Array.from(parentPanel.children).filter(el => el.style.display !== 'none' && el.id !== '');
+        // Szukamy tylko faktycznie ISTNIEJĄCYCH i WIDOCZNYCH paneli
+        const children = Array.from(parentPanel.children).filter(el => 
+            el && el.style && el.style.display !== 'none' && el.id && el.id !== '' && el.innerHTML.trim() !== ''
+        );
         
+        // Jeśli nie ma nic do rozłączania (tylko 1 element widoczny)
+        if (children.length <= 1) {
+            showCustomAlert("Brak wystarczającej liczby sekcji do rozłączenia. Dodaj tytuł, opis lub legendę!");
+            activateScissorsMode(); // Wyłącz tryb
+            return;
+        }
+
         for (let i = 1; i < children.length; i++) {
             const divider = document.createElement('div');
             divider.className = 'split-divider';
             divider.setAttribute('data-html2canvas-ignore', 'true');
+            // Przy kliknięciu w linię - odrywamy!
             divider.onclick = (e) => {
                 e.stopPropagation();
+                // Przekazujemy dokładne ID klikniętego klocka
                 detachPanel(children[i].id, divider);
             };
             parentPanel.insertBefore(divider, children[i]);
         }
-        showCustomAlert("✂️ Tryb cięcia włączony! Naciśnij przerywaną linię, aby oderwać panel dolny od reszty.");
+        showCustomAlert("✂️ Tryb cięcia włączony! Naciśnij przerywaną linię między sekcjami, aby oderwać dolny panel.");
     } else {
         btn.style.boxShadow = "none";
         btn.innerText = "✂️ Rozłącz panele";
+        // Przywracamy domyślny wygląd ramki matki
         parentPanel.style.border = parentPanel.style.backgroundColor !== 'transparent' ? "1px solid rgba(0,0,0,0.1)" : "none";
     }
 }
-   function detachPanel(targetId, dividerEl) {
+  function detachPanel(targetId, dividerEl) {
     const el = document.getElementById(targetId);
     const wrapper = document.getElementById('exportWrapper');
     const parentPanel = document.getElementById('mapInfoPanel');
     
+    // KRYTYCZNE ZABEZPIECZENIE: Jeśli z jakiegoś powodu nie ma elementu, po prostu wyjdź
+    if (!el || !wrapper || !parentPanel) return;
+    
     const rect = el.getBoundingClientRect();
     const wrapperRect = wrapper.getBoundingClientRect();
     
-    // Przenosimy węzeł DOM
+    // 1. Przenosimy węzeł do głównego okna mapy (Odrywamy od matki)
     wrapper.appendChild(el);
-    dividerEl.remove();
+    if(dividerEl) dividerEl.remove();
     
-    // NADANIE KLAS I NIEZAWODNYCH WYMIARÓW
+    // 2. Pozycjonowanie i nadanie klas
     el.classList.add('detached-panel');
-    el.style.top = (rect.top - wrapperRect.top + 10) + 'px'; // +10px dla efektu wizualnego oderwania
+    el.style.top = (rect.top - wrapperRect.top + 10) + 'px'; // Leciutko w dół, by widać było oderwanie
     el.style.left = (rect.left - wrapperRect.left + 10) + 'px';
     
-    // Zabezpieczenie szerokości, ale WYŁĄCZENIE SZTYWNEJ WYSOKOŚCI (Wysokość 'auto' chroni przed wypadaniem tekstu)
+    // Zabezpieczamy szerokość. WYSOKOŚĆ MUST BE AUTO - by tekst sam łamał linie i się mieścił!
     el.style.width = Math.max(rect.width, 200) + 'px';
     el.style.height = 'auto'; 
     
-    // Zabezpieczenie stylów (Jeśli element nie miał tła, kopiuje je od matki)
-    if (!el.style.backgroundColor || el.style.backgroundColor === 'transparent' || el.style.backgroundColor === 'rgba(0, 0, 0, 0)') {
+    // 3. Jeśli oderwany klocek jest przezroczysty (nie ma nadanych własnych styli), kradnie tło od matki
+    const currentBg = el.style.backgroundColor;
+    if (!currentBg || currentBg === 'transparent' || currentBg === 'rgba(0, 0, 0, 0)') {
         const parentBg = window.getComputedStyle(parentPanel).backgroundColor;
         el.style.backgroundColor = parentBg !== 'rgba(0, 0, 0, 0)' ? parentBg : 'rgba(255,255,255,0.95)';
         el.style.padding = "15px"; 
         el.style.borderRadius = "8px";
     }
 
-    // Uaktywnienie modyfikacji kadru i przeciągania dla KAŻDEGO oderwanego panelu
-    document.getElementById('btnMerge').style.display = 'inline-block';
+    // Pokazujemy przycisk "Połącz wszystko" na pasku narzędzi
+    const mergeBtn = document.getElementById('btnMerge');
+    if(mergeBtn) mergeBtn.style.display = 'inline-block';
     
-    // Kluczowa poprawka: Wymuszenie podpięcia listenerów dla tego konkretnego elementu
+    // Aktywujemy drag & drop dla wyrwanego klocka
     forceEnableDragAndResize(el);
 }
-    function forceEnableDragAndResize(el) {
-    // Nadajemy klasy UI
+   function forceEnableDragAndResize(el) {
+    if(!el) return;
+    
     if(isPanelDraggable) el.classList.add('draggable');
     if(isPanelResizable) el.classList.add('resizable');
     
-    // Podpinamy Drag&Drop do węzła w locie
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    
     el.onmousedown = (e) => {
         if(!el.classList.contains('draggable')) return;
-        // Ignorowanie kliknięcia w róg do zmiany wielkości (Resize)
+        
+        // Zabezpieczenie - kliknięcie w prawy dolny róg służy do skalowania CSS, nie do przesuwania!
         if(e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return;
         
         e.preventDefault();
@@ -6089,6 +6110,7 @@ function activateScissorsMode() {
         el.style.top = (el.offsetTop - pos2) + "px";
         el.style.left = (el.offsetLeft - pos1) + "px";
     }
+    
     function closeDrag() {
         document.onmouseup = null;
         document.onmousemove = null;
@@ -6097,24 +6119,34 @@ function activateScissorsMode() {
 
 function resetSplitPanels() {
     const parentPanel = document.getElementById('mapInfoPanel');
+    if (!parentPanel) return;
+
+    // Musimy przywrócić elementy w konkretnej kolejności
     const order = ['miTitle', 'miDate', 'miDesc', 'miStats', 'miLegendContainer'];
     
     order.forEach(id => {
         const el = document.getElementById(id);
+        // ZABEZPIECZENIE: Sprawdzamy czy element istnieje ORAZ czy został oderwany
         if (el && el.classList.contains('detached-panel')) {
             el.classList.remove('detached-panel', 'draggable', 'resizable');
+            
+            // Czyścimy fizyczne style pozycjonujące na mapie
             el.style.position = '';
             el.style.top = '';
             el.style.left = '';
             el.style.width = '';
             el.style.height = '';
-            el.onmousedown = null; // usuń drag
+            el.onmousedown = null; // usuń zdarzenie przesuwania
+            
+            // Wrzucamy grzecznie z powrotem do matki
             parentPanel.appendChild(el); 
         }
     });
     
-    document.getElementById('btnMerge').style.display = 'none';
-    if(isScissorsMode) activateScissorsMode(); 
+    const mergeBtn = document.getElementById('btnMerge');
+    if(mergeBtn) mergeBtn.style.display = 'none';
+    
+    if(isScissorsMode) activateScissorsMode(); // Wyłącz bezpiecznie nożyczki
 }
     /* ================= ZAAWANSOWANE ZARZĄDZANIE STYLEM ================= */
 // Funkcja wywoływana przy zmianie w dropdownie - wczytuje stan
