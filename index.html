@@ -187,16 +187,131 @@
             z-index: 2000; font-weight: bold; display: none; pointer-events: none;
         }
 
-        @media (max-width: 768px) {
-            body { grid-template-columns: 1fr; }
-            aside {
-                position: absolute; top: 0; left: 0; width: 85%; height: 100%;
-                transform: translateX(-100%);
-            }
-            aside.open { transform: translateX(0); }
-            #mobile-toggle { display: flex; }
-            .floating-modal { width: 95%; left: 2.5% !important; top: 10% !important; height: auto; max-height: 60vh;}
-        }
+        /* ================= PEŁNA RESPONSYWNOŚĆ I INTERFEJS MOBILNY (MOBILE FIRST) ================= */
+
+/* Wspólne wymuszanie responsywności WSZYSTKICH modali na telefonach */
+@media (max-width: 768px) {
+    /* 1. Ukrycie klasycznego paska bocznego i przycisku hamburgera */
+    body { display: block !important; }
+    aside#sidebar, #mobile-toggle { display: none !important; }
+    
+    /* 2. Mapa na pełny ekran telefonu */
+    #map { height: 100vh !important; width: 100vw !important; }
+    #gps-btn { bottom: 85px !important; right: 15px !important; } /* Nad dolnym paskiem */
+
+    /* 3. PANCERNA RESPONSYWNOŚĆ MODALI (Nadpisuje style JS) */
+    .floating-modal, .inner-modal, .custom-alert-box {
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: 92% !important;
+        max-width: none !important;
+        max-height: 85vh !important;
+        margin: 0 !important;
+        border-radius: 12px !important;
+        display: none; /* Domyślnie ukryte, JS zmienia na flex */
+        flex-direction: column !important;
+    }
+    
+    /* Wyjątek dla Głównego Modalu Eksportu (zajmuje prawie cały ekran) */
+    .map-export-modal {
+        width: 96% !important;
+        height: 96vh !important;
+        max-height: 96vh !important;
+    }
+
+    /* Gwarancja przewijania wnętrza modalu, jeśli treść jest długa */
+    .modal-body {
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+        flex-grow: 1;
+    }
+
+    /* Rozwiązanie problemu wylewania się zawartości wewnątrz opcji */
+    .style-control-group, .search-save-form, .my-points-toolbar {
+        width: 100%; box-sizing: border-box;
+    }
+    input, select, textarea { max-width: 100%; box-sizing: border-box; }
+}
+
+/* --- ELEMENTY UI TYLKO DLA MOBILE --- */
+
+/* Pływająca wyszukiwarka na górze */
+.mobile-top-bar {
+    display: none; /* Domyślnie ukryte na PC */
+    position: fixed;
+    top: 15px; left: 50%; transform: translateX(-50%);
+    width: 90%; background: var(--panel);
+    border-radius: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 1000; align-items: center; padding: 5px 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+@media (max-width: 768px) { .mobile-top-bar { display: flex; } }
+
+.mobile-top-bar input {
+    flex-grow: 1; border: none; background: transparent; color: var(--text);
+    padding: 10px; outline: none; font-size: 1rem; width: 100%;
+}
+.mobile-top-bar button {
+    background: transparent; color: var(--text); border: none; font-size: 1.2rem;
+    padding: 5px 10px; margin: 0; box-shadow: none;
+}
+.mobile-top-bar button:hover { opacity: 0.7; }
+
+/* Dolny pasek nawigacji (Bottom Sheet) */
+.mobile-bottom-nav {
+    display: none; /* Domyślnie ukryte na PC */
+    position: fixed;
+    bottom: 0; left: 0; width: 100%;
+    background: var(--panel);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+    z-index: 1000;
+    flex-direction: column;
+    transition: max-height 0.3s ease-in-out, padding 0.3s;
+    overflow: hidden;
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+@media (max-width: 768px) { .mobile-bottom-nav { display: flex; } }
+
+/* Stan zwinięty (Tylko 5 ikon poziomo) */
+.mobile-bottom-nav.collapsed {
+    max-height: 80px; padding-bottom: env(safe-area-inset-bottom, 15px);
+}
+.mobile-bottom-nav.collapsed .nav-grid {
+    display: flex; overflow-x: auto; scrollbar-width: none; padding: 0 10px; gap: 15px;
+    justify-content: space-around;
+}
+.mobile-bottom-nav.collapsed .nav-grid::-webkit-scrollbar { display: none; }
+.mobile-bottom-nav.collapsed .nav-item span { display: none; } /* Ukrywa teksty */
+
+/* Stan rozwinięty (Wszystkie ikony + tekst) */
+.mobile-bottom-nav.expanded {
+    max-height: 70vh; padding-bottom: 20px; overflow-y: auto;
+}
+.mobile-bottom-nav.expanded .nav-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px 10px; padding: 10px 15px;
+}
+
+/* Uchwyt do wysuwania */
+.nav-drag-handle {
+    width: 40px; height: 5px; background: rgba(150,150,150,0.5);
+    border-radius: 5px; margin: 8px auto; cursor: pointer;
+}
+
+/* Pojedynczy przycisk w dolnym pasku */
+.nav-item {
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    background: transparent; border: none; color: var(--text); gap: 5px;
+    font-size: 0.75rem; text-align: center; padding: 5px; box-shadow: none;
+}
+.nav-item i {
+    font-size: 1.4rem; background: rgba(0,0,0,0.1); width: 45px; height: 45px;
+    display: flex; align-items: center; justify-content: center; border-radius: 50%;
+    color: var(--accent);
+}
+.light .nav-item i { background: rgba(0,0,0,0.05); }
 /* --- RESPONSILWNY I KLASYCZNY MODAL EKSPORTU --- */
 .map-export-modal {
     /* Modal dostosowuje się dynamicznie do KAŻDEGO ekranu, zostawiając 20px marginesu z każdej strony */
@@ -1033,7 +1148,59 @@ canvas#elevation {
     </div>
     <button onclick="document.getElementById('outageBanner').style.display='none'" style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.4); color:white; font-weight:bold; cursor:pointer; padding:8px 15px; border-radius:6px; white-space: nowrap; margin-left: 15px; transition: 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.4)'" onmouseout="this.style.background='rgba(0,0,0,0.2)'">✖ Ukryj</button>
 </div>
+<!-- WERSJA MOBILNA: Pływająca Wyszukiwarka -->
+<div id="mobileTopSearch" class="mobile-top-bar">
+    <input type="text" id="mobileSearchInput" placeholder="Szukaj miejsca lub wpisz współrzędne..." onkeypress="if(event.key === 'Enter') triggerMobileSearch()">
+    <button onclick="triggerMobileSearch()">🔍</button>
+    <button onclick="hideMobileSearch()" style="color: #ef4444;" title="Ukryj na stałe w tej sesji">✖</button>
+</div>
 
+<!-- WERSJA MOBILNA: Dolny pasek nawigacyjny -->
+<div id="mobileBottomNav" class="mobile-bottom-nav collapsed">
+    <div class="nav-drag-handle" onclick="toggleMobileNav()"></div>
+    <div class="nav-grid">
+        <!-- 5 GŁÓWNYCH IKON (Widoczne po zwinięciu) -->
+        <button class="nav-item" onclick="toggleDrawMode(); toggleMobileNav(false)"><i style="color:#ec4899;">✏️</i> <span>Rysuj</span></button>
+        <button class="nav-item" onclick="openStopsModal(); toggleMobileNav(false)"><i style="color:#f59e0b;">☕</i> <span>Postoje</span></button>
+        <button class="nav-item" onclick="openMobileStatsModal(); toggleMobileNav(false)"><i style="color:#3b82f6;">📊</i> <span>Profil</span></button>
+        <button class="nav-item" onclick="openDescModal(); toggleMobileNav(false)"><i>📜</i> <span>Opis</span></button>
+        <button class="nav-item" onclick="openMapExportModal(); toggleMobileNav(false)"><i style="color:#0ea5e9;">🗺️</i> <span>Eksport</span></button>
+        
+        <!-- RESZTA IKON (Widoczne po rozwinięciu) -->
+        <button class="nav-item" onclick="openPointsModal(); toggleMobileNav(false)"><i>📑</i> <span>Punkty GPX</span></button>
+        <button class="nav-item" onclick="openMyPointsModal(); toggleMobileNav(false)"><i style="color:#10b981;">📋</i> <span>Moje Punkty</span></button>
+        <button class="nav-item" onclick="openStyleModal(); toggleMobileNav(false)"><i style="color:#f59e0b;">🎨</i> <span>Styl Trasy</span></button>
+        <button class="nav-item" onclick="openPdfModal(); toggleMobileNav(false)"><i style="color:#a855f7;">📄</i> <span>Pobierz PDF</span></button>
+        
+        <button class="nav-item" onclick="toggleTheme()"><i>🌓</i> <span>Motyw</span></button>
+        <button class="nav-item" onclick="takeScreenshot(); toggleMobileNav(false)"><i>📸</i> <span>Zrzut mapy</span></button>
+        <button class="nav-item" onclick="exportGPX(); toggleMobileNav(false)"><i>⬇️</i> <span>Zapisz GPX</span></button>
+        <button class="nav-item" onclick="document.getElementById('fileInput').click(); toggleMobileNav(false)"><i>⬆️</i> <span>Import GPX</span></button>
+        
+        <button class="nav-item" onclick="playRouteAnimation(); toggleMobileNav(false)"><i style="color:#ec4899;">▶️</i> <span>Animuj</span></button>
+        <button class="nav-item" onclick="recordRouteGIF(); toggleMobileNav(false)"><i style="color:#8b5cf6;">🎞️</i> <span>Wideo GIF</span></button>
+        <button class="nav-item" onclick="clearAll(); toggleMobileNav(false)"><i style="color:#ef4444;">🗑️</i> <span>Wyczyść</span></button>
+    </div>
+</div>
+
+<!-- WERSJA MOBILNA: Dedykowany Modal ze Statystykami i Wykresem -->
+<div id="mobileStatsModal" class="floating-modal" style="width: 95%; max-width: 400px; z-index: 3000;">
+    <div class="modal-header">
+        <span style="color: #3b82f6; font-weight:bold;">📊 Profil Trasy</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('mobileStatsModal')">X</button>
+    </div>
+    <div class="modal-body" style="text-align: center;">
+        <div style="background: rgba(0,0,0,0.05); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+            <div style="font-size: 1.8rem; font-weight: bold; color: var(--accent);" id="mobileStatsDist">0.00 km</div>
+            <div style="font-size: 0.9rem; color: #64748b; margin-top: 5px;" id="mobileStatsTime">Czas: 0 min | ⬆️ 0m</div>
+        </div>
+        
+        <button onclick="openTimeSummaryModal()" style="width: 100%; background: #3b82f6; margin-bottom: 20px;">⏱️ Zobacz szczegóły czasu postojów</button>
+
+        <div style="text-align: left; font-size: 0.85rem; font-weight: bold; color: #64748b; margin-bottom: 5px;">Profil wysokości:</div>
+        <canvas id="mobileElevation" style="width: 100%; height: 120px; background: rgba(0,0,0,0.03); border-radius: 8px; border: 1px solid rgba(0,0,0,0.1);"></canvas>
+    </div>
+</div>
 <button id="mobile-toggle" onclick="toggleSidebar()">☰</button>
 
 <aside id="sidebar">
@@ -1796,6 +1963,12 @@ document.body.className = "light";
     // Ładowanie zapisanych punktów
     loadUserSavedPois();
     loadGoogleSheetsPOIs();
+        document.addEventListener('DOMContentLoaded', () => {
+    // Sprawdzanie czy użytkownik zamknął wyszukiwarkę w tej sesji
+    if (sessionStorage.getItem('hideMobileSearch') === 'true') {
+        document.getElementById('mobileTopSearch').style.display = 'none';
+    }
+});
     
     // Sprawienie, że wszystkie modale są pływające
     const modals = [
@@ -1977,28 +2150,68 @@ function clearAll() {
     });
 }
 
+// Pływająca wyszukiwarka
+function hideMobileSearch() {
+    document.getElementById('mobileTopSearch').style.display = 'none';
+    sessionStorage.setItem('hideMobileSearch', 'true');
+    showCustomAlert("Pasek wyszukiwania ukryty. Możesz wyszukiwać miejsca korzystając z ekranu komputera.");
+}
 
+function triggerMobileSearch() {
+    const val = document.getElementById('mobileSearchInput').value;
+    document.getElementById('searchInput').value = val; // Synchronizacja z głównym polem
+    searchLocation(); // Wywołanie istniejącej funkcji
+}
+
+// Dolny pasek nawigacyjny
+function toggleMobileNav(forceClose = false) {
+    const nav = document.getElementById('mobileBottomNav');
+    if (forceClose) {
+        nav.classList.remove('expanded');
+        nav.classList.add('collapsed');
+    } else {
+        if (nav.classList.contains('collapsed')) {
+            nav.classList.remove('collapsed');
+            nav.classList.add('expanded');
+        } else {
+            nav.classList.remove('expanded');
+            nav.classList.add('collapsed');
+        }
+    }
+}
     
 /* ================= OBSŁUGA MODALI (Floating) ================= */
 function makeDraggable(el) {
     const header = el.querySelector('.modal-header');
+    if(!header) return;
+    
     let isDragging = false;
     let startX, startY, initialLeft, initialTop;
 
-    header.onmousedown = function(e) {
+    header.onmousedown = header.ontouchstart = function(e) {
+        // BLOKADA: Nie pozwalamy na drag na ekranach < 768px
+        if (window.innerWidth <= 768) return; 
+
         isDragging = true;
-        startX = e.clientX;
-        startY = e.clientY;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        
+        startX = clientX;
+        startY = clientY;
         initialLeft = el.offsetLeft;
         initialTop = el.offsetTop;
-        document.onmousemove = onMouseMove;
-        document.onmouseup = stopDrag;
+        
+        document.onmousemove = document.ontouchmove = onMouseMove;
+        document.onmouseup = document.ontouchend = stopDrag;
     };
 
     function onMouseMove(e) {
         if (!isDragging) return;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        
+        const dx = clientX - startX;
+        const dy = clientY - startY;
         el.style.left = (initialLeft + dx) + "px";
         el.style.top = (initialTop + dy) + "px";
         el.style.transform = "none"; 
@@ -2006,10 +2219,20 @@ function makeDraggable(el) {
 
     function stopDrag() {
         isDragging = false;
-        document.onmousemove = null;
-        document.onmouseup = null;
+        document.onmousemove = document.ontouchmove = null;
+        document.onmouseup = document.ontouchend = null;
     }
 }
+function openMobileStatsModal() {
+    openCenteredModal('mobileStatsModal');
+    // Wymuszone przerysowanie wykresu na canvasie w modalu po jego otwarciu
+    if (routeGeometry.length > 1) {
+        drawElevation(-1); 
+    } else {
+        drawEmptyElevationAnimation();
+    }
+}
+
 
 // Inicjalizacja drag
 makeDraggable(document.getElementById('pointsModal'));
@@ -2733,16 +2956,20 @@ function clearElevation() {
 function drawElevation(hoverIdx = -1) {
     if (!globalElevationData || globalElevationData.length === 0) return;
     
-    const c = document.getElementById('elevation');
-    const ctx = c.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
+    // Rysowanie na obu canvasach jednocześnie
+    const canvases = ['elevation', 'mobileElevation'];
     
-    // Dopasowanie do wysokiej rozdzielczości ekranów
-    const displayWidth = c.offsetWidth;
-    const displayHeight = c.offsetHeight;
-    c.width = displayWidth * dpr;
-    c.height = displayHeight * dpr;
-    ctx.scale(dpr, dpr);
+    canvases.forEach(canvasId => {
+        const c = document.getElementById(canvasId);
+        if(!c || c.offsetParent === null) return; // Rysuj tylko na widocznym
+
+        const ctx = c.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const displayWidth = c.offsetWidth;
+        const displayHeight = c.offsetHeight;
+        c.width = displayWidth * dpr;
+        c.height = displayHeight * dpr;
+        ctx.scale(dpr, dpr);
     
     // Marginesy na wartości liczbowe
     const padL = 35; // Miejsce na liczby z lewej
@@ -2889,28 +3116,30 @@ function drawElevation(hoverIdx = -1) {
 
 function updateStats(distMeters) {
     const km = distMeters / 1000;
-    document.getElementById('stats').innerText = `${km.toFixed(2)} km`;
+    const distText = `${km.toFixed(2)} km`;
     
     const walkMinutes = (km / 4.2) * 60 + (totalAscent / 100 * 10);
-    
-    // Obliczanie czasu postojów
     let stopsMinutes = 0;
     routeStops.forEach(s => stopsMinutes += s.duration);
     
     const totalMinutes = walkMinutes + stopsMinutes;
     
     let timeText = `Czas: ~${Math.floor(totalMinutes/60)}h ${Math.round(totalMinutes%60)}m`;
-    if (stopsMinutes > 0) {
-        timeText += ` (w tym ${stopsMinutes} min postojów)`;
-    }
+    if (stopsMinutes > 0) timeText += ` (w tym ${stopsMinutes} min postojów)`;
+    const fullTimeText = `${timeText} | ⬆️ ${totalAscent}m`;
     
-    document.getElementById('time').innerText = `${timeText} | ⬆️ ${totalAscent}m`;
+    // Zapis do paska bocznego (PC)
+    document.getElementById('stats').innerText = distText;
+    document.getElementById('time').innerText = fullTimeText;
     
-    // Przechowujemy dane do modalu podsumowania
+    // Zapis do modalu (Mobile)
+    const mDist = document.getElementById('mobileStatsDist');
+    const mTime = document.getElementById('mobileStatsTime');
+    if (mDist) mDist.innerText = distText;
+    if (mTime) mTime.innerText = fullTimeText;
+    
     window._timeStats = {
-        walkMins: Math.round(walkMinutes),
-        stopsMins: stopsMinutes,
-        totalMins: Math.round(totalMinutes)
+        walkMins: Math.round(walkMinutes), stopsMins: stopsMinutes, totalMins: Math.round(totalMinutes)
     };
 }
 // Podpięcie eventu click do #time
