@@ -1147,6 +1147,33 @@ canvas#elevation {
 }
 .light .format-btn { background: rgba(0,0,0,0.05); color: black; border-color: #ccc; }
 .format-btn.active { background: #3b82f6; color: white; border-color: #2563eb; }
+        /* --- NAPRAWA WARSTW I NOWY PRZYCISK WYSZUKIWARKI --- */
+#timeSummaryModal {
+    z-index: 4000 !important; /* Gwarancja bycia NAD modalem statystyk (z-index:3000) */
+}
+
+/* Przycisk przywracania paska wyszukiwarki */
+#mobileRestoreSearch {
+    display: none;
+    position: fixed;
+    top: 15px; 
+    left: 15px; 
+    width: 45px; 
+    height: 45px;
+    background: var(--panel);
+    border-radius: 50%; 
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 1000; 
+    align-items: center; 
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,0.1);
+    font-size: 1.2rem;
+    color: var(--text);
+    cursor: pointer;
+}
+@media (max-width: 768px) { 
+    /* Styl wymuszany dynamicznie przez JS, ale tu definicja bazowa */
+}
     </style>
     
 </head>
@@ -1166,6 +1193,8 @@ canvas#elevation {
     <button onclick="triggerMobileSearch()">🔍</button>
     <button onclick="hideMobileSearch()" style="color: #ef4444;" title="Ukryj na stałe w tej sesji">✖</button>
 </div>
+    <!-- WERSJA MOBILNA: Przycisk przywracania wyszukiwarki -->
+<button id="mobileRestoreSearch" onclick="showMobileSearch()" title="Pokaż wyszukiwarkę">🔍</button>
 
 <!-- WERSJA MOBILNA: Dolny pasek nawigacyjny -->
 <div id="mobileBottomNav" class="mobile-bottom-nav collapsed">
@@ -1977,8 +2006,9 @@ document.body.className = "light";
     loadGoogleSheetsPOIs();
         document.addEventListener('DOMContentLoaded', () => {
     // Sprawdzanie czy użytkownik zamknął wyszukiwarkę w tej sesji
-    if (sessionStorage.getItem('hideMobileSearch') === 'true') {
+    if (window.innerWidth <= 768 && sessionStorage.getItem('hideMobileSearch') === 'true') {
         document.getElementById('mobileTopSearch').style.display = 'none';
+        document.getElementById('mobileRestoreSearch').style.display = 'flex';
     }
 });
     
@@ -2165,8 +2195,15 @@ function clearAll() {
 // Pływająca wyszukiwarka
 function hideMobileSearch() {
     document.getElementById('mobileTopSearch').style.display = 'none';
+    document.getElementById('mobileRestoreSearch').style.display = 'flex';
     sessionStorage.setItem('hideMobileSearch', 'true');
-    showCustomAlert("Pasek wyszukiwania ukryty. Możesz wyszukiwać miejsca korzystając z ekranu komputera.");
+    showCustomAlert("Pasek ukryty. Możesz go przywrócić klikając lupę w lewym górnym rogu.");
+}
+
+function showMobileSearch() {
+    document.getElementById('mobileTopSearch').style.display = 'flex';
+    document.getElementById('mobileRestoreSearch').style.display = 'none';
+    sessionStorage.setItem('hideMobileSearch', 'false');
 }
 
 function triggerMobileSearch() {
@@ -3724,10 +3761,23 @@ async function generatePDF() {
         }
 
         console.log("[PDF] 3. Tworzenie kontenera dla html2pdf...");
+
+        // --- DOSTOSOWANIE DO WERSJI MOBILNEJ ---
+        const isMobile = window.innerWidth <= 768;
+        
+        // Wykres z poprawnego źródła (na telefonach pasek boczny nie istnieje, więc bierzemy z modalu)
+        const elevationCanvasId = isMobile ? 'mobileElevation' : 'elevation';
+        const elevationCanvas = document.getElementById(elevationCanvasId);
+        const elevDataUrl = elevationCanvas ? elevationCanvas.toDataURL() : null;
+
+        // Zapobiega nienaturalnemu ściśnięciu mapy w PDF wygenerowanym z wąskiego ekranu
+        const mapStyle = isMobile 
+            ? "width: 100%; height: 350px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1;" 
+            : "width: 100%; max-height: 450px; object-fit: contain; border-radius: 8px; border: 1px solid #cbd5e1;";
         
         // Nie dodajemy tego do DOM, html2pdf sklonuje to bez problemu i obliczy poprawną wysokość
         const renderContainer = document.createElement('div');
-        renderContainer.style.width = '800px'; 
+        renderContainer.style.width = '794px'; // Idealna szerokość kartki
         renderContainer.style.backgroundColor = '#ffffff';
         renderContainer.style.color = '#0f172a';
         renderContainer.style.fontFamily = fontFam;
@@ -3745,8 +3795,17 @@ async function generatePDF() {
                 </div>
 
                 ${customText.trim().length > 0 ? `<div style="background: #fefce8; border-left: 4px solid #facc15; padding: 15px; font-size: 13px; line-height: 1.6; border-radius: 4px; margin-bottom: 25px;">${customText}</div>` : ''}
-                ${document.getElementById('pdfIncludeMap').checked && mapImgSrc ? `<div style="margin-bottom: 20px;"><img src="${mapImgSrc}" style="width: 100%; max-height: 450px; object-fit: contain; border-radius: 8px; border: 1px solid #cbd5e1;"></div>` : ''}
-                ${document.getElementById('pdfIncludeElev').checked && routeGeometry.length > 1 ? `<div style="margin-bottom: 20px;"><div style="font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #475569;">Profil Wysokości</div><img src="${document.getElementById('elevation').toDataURL()}" style="width: 100%; height: 100px; object-fit: cover;"></div>` : ''}
+                
+                ${document.getElementById('pdfIncludeMap').checked && mapImgSrc ? `
+                    <div style="margin-bottom: 20px;"><img src="${mapImgSrc}" style="${mapStyle}"></div>
+                ` : ''}
+                
+                ${document.getElementById('pdfIncludeElev').checked && routeGeometry.length > 1 && elevDataUrl ? `
+                    <div style="margin-bottom: 20px;">
+                        <div style="font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #475569;">Profil Wysokości</div>
+                        <img src="${elevDataUrl}" style="width: 100%; height: 100px; object-fit: cover;">
+                    </div>
+                ` : ''}
                 
                 ${stopsHtml}
                 
@@ -3756,6 +3815,11 @@ async function generatePDF() {
                 ` : ''}
 
                 ${rawDescHtml}
+
+                <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; display: flex; justify-content: space-between; font-size: 10px; color: #94a3b8;">
+                    <span>Wygenerowano: ${new Date().toLocaleString('pl-PL')}</span>
+                    <span>&copy; Autorzy OpenStreetMap (Dane mapy)</span>
+                </div>
             </div>
         `;
 
@@ -3765,15 +3829,15 @@ async function generatePDF() {
             margin: 0, 
             filename: title.replace(/\s+/g, '_') + '.pdf',
             image: { type: 'jpeg', quality: 0.98 },
-           html2canvas:  { 
-        scale: 2,             // Odpowiednia jakość tekstu
-        useCORS: true,        // Obsługa zewnętrznych grafik/ikon
-        scrollX: 0,           // Blokada przesunięcia po osi X
-        scrollY: 0,           // Blokada przesunięcia po osi Y
-        windowWidth: 794,     // Kluczowe: Wymuszenie wirtualnego okna o szerokości A4
-        x: 0, 
-        y: 0
-    },
+            html2canvas:  { 
+                scale: 2,             
+                useCORS: true,        
+                scrollX: 0,           
+                scrollY: 0,           
+                windowWidth: 794,     
+                x: 0, 
+                y: 0
+            },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, 
             pagebreak: { mode: ['css', 'legacy'] }
         };
