@@ -1410,7 +1410,6 @@ canvas#elevation {
     </div>
 </div>
 <!-- MODAL STYLU LINI I PANELU (EKSPORT) -->
-<!-- POTĘŻNY MODAL STYLU EKRANU (EKSPORT) -->
 <div id="exportStyleModal" class="floating-modal" style="width: 420px; z-index: 3500;" data-html2canvas-ignore>
     <div class="modal-header">
         <span style="color: #a855f7; font-weight: bold;">🎨 Zaawansowany Edytor Wyglądu</span>
@@ -5218,22 +5217,7 @@ function deleteAllUserPois() {
         renderMyPointsList();
     });
 }
-   function openExportStyleModal() {
-    const modal = document.getElementById('exportStyleModal');
-    
-    // Inicjalizacja pól aktualnymi wartościami
-    document.getElementById('expStyleColor').value = exportLineColor;
-    document.getElementById('expStyleColorHex').innerText = exportLineColor;
-    document.getElementById('expStyleWeight').value = exportLineWeight;
-    document.getElementById('expStyleWeightVal').innerText = exportLineWeight;
-    
-    document.getElementById('expStyleColor').addEventListener('input', e => document.getElementById('expStyleColorHex').innerText = e.target.value);
-    
-    modal.style.display = 'flex';
-    modal.style.left = '50%';
-    modal.style.top = '50%';
-    modal.style.transform = 'translate(-50%, -50%)';
-}
+  
 
 function applyExportStyle() {
     // 1. Zastosowanie stylów linii trasy
