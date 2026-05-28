@@ -1174,6 +1174,28 @@ canvas#elevation {
 @media (max-width: 768px) { 
     /* Styl wymuszany dynamicznie przez JS, ale tu definicja bazowa */
 }
+        /* Przycisk warstw na mobile pod zoomem Leafleta */
+#mobileLayersBtn {
+    display: none;
+    position: absolute;
+    top: 145px; /* Pod przyciskami +/- Leafleta */
+    right: 15px;
+    z-index: 900;
+    width: 34px;
+    height: 34px;
+    background: var(--panel);
+    border: 2px solid rgba(0,0,0,0.2);
+    border-radius: 4px;
+    font-size: 18px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+    color: var(--text);
+}
+@media (max-width: 768px) {
+    #mobileLayersBtn { display: flex; }
+}
     </style>
     
 </head>
@@ -1195,7 +1217,22 @@ canvas#elevation {
 </div>
     <!-- WERSJA MOBILNA: Przycisk przywracania wyszukiwarki -->
 <button id="mobileRestoreSearch" onclick="showMobileSearch()" title="Pokaż wyszukiwarkę">🔍</button>
+<!-- Przycisk warstw (Mobile) -->
+<button id="mobileLayersBtn" onclick="openCenteredModal('mobileLayersModal')" title="Warstwy mapy">📚</button>
 
+<!-- Modal wyboru warstw (Mobile) -->
+<div id="mobileLayersModal" class="floating-modal" style="width: 300px; z-index: 3000;">
+    <div class="modal-header">
+        <span>📚 Warstwy mapy</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('mobileLayersModal')">X</button>
+    </div>
+    <div class="modal-body controls" style="font-size: 1.1rem; line-height: 1.8;">
+        <label><input type="checkbox" checked onchange="toggleLayer(hikingLayer, this)"> Szlaki turystyczne</label><br>
+        <label><input type="checkbox" checked onchange="toggleLayer(poiLayer, this)"> Punkty z OSM</label><br>
+        <label><input type="checkbox" checked onchange="toggleLayer(customPoiLayer, this)"> Punkty Bazy GS</label><br>
+        <label><input type="checkbox" checked onchange="toggleLayer(userSavedLayer, this)"> Moje zapisane punkty</label>
+    </div>
+</div>
 <!-- WERSJA MOBILNA: Dolny pasek nawigacyjny -->
 <div id="mobileBottomNav" class="mobile-bottom-nav collapsed">
     <div class="nav-drag-handle" onclick="toggleMobileNav()"></div>
@@ -2244,12 +2281,16 @@ function makeDraggable(el) {
     let isDragging = false;
     let startX, startY, initialLeft, initialTop;
 
-    // Podpięcie eventów myszy ORAZ dotykowych
     header.onmousedown = header.ontouchstart = function(e) {
-        // Pozwalamy na przesuwanie WSZĘDZIE. Koniec blokad dla telefonów.
+        // ZABEZPIECZENIE: Nie blokuj dotyku, jeśli użytkownik klika w X lub suwak!
+        const tag = e.target.tagName.toLowerCase();
+        if (tag === 'button' || tag === 'input' || e.target.closest('button') || e.target.closest('.opacity-control')) {
+            return; // Pozwól przeglądarce normalnie kliknąć/przesunąć suwak
+        }
+
         isDragging = true;
         
-        // Zabezpieczenie przed zachowaniem domyślnym (np. przewijaniem strony palcem pod modalem)
+        // Zatrzymujemy domyślne przewijanie strony TYLKO dla przeciągania tła nagłówka
         if (e.type === 'touchstart') e.preventDefault(); 
 
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -2258,14 +2299,11 @@ function makeDraggable(el) {
         startX = clientX;
         startY = clientY;
         
-        // Zbieramy aktualne koordynaty modalu z ekranu
         const rect = el.getBoundingClientRect();
         initialLeft = rect.left;
         initialTop = rect.top;
         
-        // Po oderwaniu upewniamy się, że transform: translate(-50%) nas nie trzyma
         el.style.transform = "none";
-        // Ustalamy na sztywno jego pozycję na start przesuwania, aby nie "odskoczył"
         el.style.left = initialLeft + "px";
         el.style.top = initialTop + "px";
         
@@ -2281,23 +2319,19 @@ function makeDraggable(el) {
         const dx = clientX - startX;
         const dy = clientY - startY;
         
-        // Nowa, tymczasowa pozycja
         let newLeft = initialLeft + dx;
         let newTop = initialTop + dy;
 
-        // OGRANICZNIKI KRAWĘDZI (Containment) - Magia, która nie pozwoli wyrzucić modalu poza ekran
+        // Ograniczniki wyjazdu poza ekran
         const winW = window.innerWidth;
         const winH = window.innerHeight;
         const elW = el.offsetWidth;
         const elH = el.offsetHeight;
 
-        // Limity poziome
-        if (newLeft < 0) newLeft = 0; // Krawędź lewa
-        if (newLeft + elW > winW) newLeft = winW - elW; // Krawędź prawa
-        
-        // Limity pionowe
-        if (newTop < 0) newTop = 0; // Krawędź górna
-        if (newTop + elH > winH) newTop = winH - elH; // Krawędź dolna
+        if (newLeft < 0) newLeft = 0; 
+        if (newLeft + elW > winW) newLeft = winW - elW; 
+        if (newTop < 0) newTop = 0; 
+        if (newTop + elH > winH) newTop = winH - elH; 
 
         el.style.left = newLeft + "px";
         el.style.top = newTop + "px";
@@ -3675,8 +3709,6 @@ function checkSessionMapForPdf() {
     }
 }
 
-// --- NOWY, ELEGANCKI GENERATOR PDF ---
-// --- NOWY, NIEZAWODNY I ELEGANCKI GENERATOR PDF ---
 async function generatePDF() {
     const btn = document.getElementById('pdfGenBtn');
     const title = document.getElementById('pdfTitle').value || "Plan trasy";
@@ -3692,7 +3724,6 @@ async function generatePDF() {
 
         let mapImgSrc = sessionStorage.getItem('custom_map_png');
         if (document.getElementById('pdfIncludeMap').checked && !mapImgSrc) {
-            console.log("[PDF] Tworzenie zrzutu mapy z okna głównego...");
             const oldBounds = map.getBounds();
             map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
             await new Promise(r => setTimeout(r, 1200)); 
@@ -3701,7 +3732,6 @@ async function generatePDF() {
         }
 
         btn.innerText = "⏳ Składanie dokumentu...";
-        console.log("[PDF] 2. Pobieranie statystyk i punktów...");
 
         const statsDist = document.getElementById('stats').innerText;
         const statsTime = document.getElementById('time').innerText;
@@ -3744,7 +3774,6 @@ async function generatePDF() {
 
         let rawDescHtml = '';
         if (document.getElementById('pdfIncludeDesc').checked) {
-            // Upewniamy się, że opis jest najświeższy przed wrzuceniem do PDF
             generateRouteDescription(); 
             const cloneDesc = document.createElement('div');
             cloneDesc.innerHTML = document.getElementById('routeDescText').innerHTML;
@@ -3760,24 +3789,64 @@ async function generatePDF() {
             }
         }
 
-        console.log("[PDF] 3. Tworzenie kontenera dla html2pdf...");
+        // ==========================================
+        // GWARANTOWANY PROFIL WYSOKOŚCI DLA PDF
+        // ==========================================
+        let elevDataUrl = null;
+        if (document.getElementById('pdfIncludeElev').checked && globalElevationData && globalElevationData.length > 1) {
+            // Rysujemy profil w pamięci - niezależnie od tego czy ekran to mobile czy PC
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 1600; 
+            tempCanvas.height = 300;
+            const ctx = tempCanvas.getContext('2d');
+            
+            const minRaw = Math.min(...globalElevationData);
+            const maxRaw = Math.max(...globalElevationData);
+            const min = Math.max(0, Math.floor(minRaw / 10) * 10 - 10);
+            const max = Math.ceil(maxRaw / 10) * 10 + 10;
+            const range = (max - min) < 10 ? 10 : (max - min);
 
-        // --- DOSTOSOWANIE DO WERSJI MOBILNEJ ---
+            // Wypełnienie
+            const grad = ctx.createLinearGradient(0, 0, 0, 300);
+            grad.addColorStop(0, 'rgba(34, 197, 94, 0.4)');
+            grad.addColorStop(1, 'rgba(34, 197, 94, 0.0)');
+            
+            ctx.beginPath();
+            ctx.moveTo(0, 300);
+            globalElevationData.forEach((v, i) => {
+                const x = (i / (globalElevationData.length - 1)) * 1600;
+                const y = 300 - ((v - min) / range) * 300;
+                ctx.lineTo(x, y);
+            });
+            ctx.lineTo(1600, 300);
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // Linia
+            ctx.beginPath();
+            globalElevationData.forEach((v, i) => {
+                const x = (i / (globalElevationData.length - 1)) * 1600;
+                const y = 300 - ((v - min) / range) * 300;
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.strokeStyle = '#22c55e';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            elevDataUrl = tempCanvas.toDataURL();
+        }
+
+        // ==========================================
+        // PROPORCJE MAPY ZABEZPIECZAJĄCE TELEFONY
+        // ==========================================
         const isMobile = window.innerWidth <= 768;
-        
-        // Wykres z poprawnego źródła (na telefonach pasek boczny nie istnieje, więc bierzemy z modalu)
-        const elevationCanvasId = isMobile ? 'mobileElevation' : 'elevation';
-        const elevationCanvas = document.getElementById(elevationCanvasId);
-        const elevDataUrl = elevationCanvas ? elevationCanvas.toDataURL() : null;
-
-        // Zapobiega nienaturalnemu ściśnięciu mapy w PDF wygenerowanym z wąskiego ekranu
+        // Na mobile mapa otrzymuje wysokość 600px zamiast ściskać się do 450px
         const mapStyle = isMobile 
-            ? "width: 100%; height: 350px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1;" 
+            ? "width: 100%; height: 600px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1;" 
             : "width: 100%; max-height: 450px; object-fit: contain; border-radius: 8px; border: 1px solid #cbd5e1;";
-        
-        // Nie dodajemy tego do DOM, html2pdf sklonuje to bez problemu i obliczy poprawną wysokość
+
         const renderContainer = document.createElement('div');
-        renderContainer.style.width = '794px'; // Idealna szerokość kartki
+        renderContainer.style.width = '794px'; 
         renderContainer.style.backgroundColor = '#ffffff';
         renderContainer.style.color = '#0f172a';
         renderContainer.style.fontFamily = fontFam;
@@ -3800,7 +3869,7 @@ async function generatePDF() {
                     <div style="margin-bottom: 20px;"><img src="${mapImgSrc}" style="${mapStyle}"></div>
                 ` : ''}
                 
-                ${document.getElementById('pdfIncludeElev').checked && routeGeometry.length > 1 && elevDataUrl ? `
+                ${elevDataUrl ? `
                     <div style="margin-bottom: 20px;">
                         <div style="font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #475569;">Profil Wysokości</div>
                         <img src="${elevDataUrl}" style="width: 100%; height: 100px; object-fit: cover;">
