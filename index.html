@@ -781,8 +781,8 @@
 </div>
 
 <!-- NAKŁADKA DO ZDJĘĆ NA PEŁNYM EKRANIE (LIGHTBOX) -->
-<div id="lightboxOverlay" class="lightbox-overlay" onclick="window.closeLightbox(event)">
-    <button class="lightbox-close" onclick="window.closeLightbox(event)">✖</button>
+<div id="lightboxOverlay" class="lightbox-overlay" onclick="forceCloseLightbox(event)" style="z-index: 9999999 !important;">
+    <button class="lightbox-close" onclick="forceCloseLightbox(event)" style="z-index: 9999999 !important;">✖</button>
     <img id="lightboxImage" src="" alt="Pełny ekran" onclick="event.stopPropagation()">
 </div>
 
