@@ -3265,7 +3265,7 @@ function openCustomPoiModal(poiData) {
     document.getElementById('cpoiCategory').innerText = poiData.category || "Inne";
     document.getElementById('cpoiDesc').innerHTML = poiData.description || "Brak opisu.";
 
-    // Renderowanie Galerii Głównej
+    // Renderowanie Galerii Głównej (Niezawodna metoda HTML)
     const galleryContainer = document.getElementById('cpoiGallery');
     galleryContainer.innerHTML = ''; 
     galleryContainer.style.display = 'none';
@@ -3274,22 +3274,14 @@ function openCustomPoiModal(poiData) {
         const photoUrls = poiData.photos.split(';').map(u => u.trim()).filter(u => u.length > 0);
         if (photoUrls.length > 0) {
             galleryContainer.style.display = 'grid';
+            let imagesHtml = '';
+            
+            // Wklejamy komendę kliknięcia bezpośrednio w tekst HTML
             photoUrls.forEach(url => {
-                const img = document.createElement('img');
-                img.src = url;
-                img.alt = poiData.name;
-                
-                // BEZPIECZNE PRZYPISANIE KLIKNIĘCIA
-                img.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation(); // Zatrzymuje kliknięcie przed aktywowaniem innych zdarzeń
-                    if (typeof window.openLightbox === 'function') {
-                        window.openLightbox(url);
-                    }
-                });
-                
-                galleryContainer.appendChild(img);
+                imagesHtml += `<img src="${url}" alt="${poiData.name}" style="cursor: zoom-in;" onclick="forceOpenLightbox('${url}')">`;
             });
+            
+            galleryContainer.innerHTML = imagesHtml;
         }
     }
 
@@ -4733,28 +4725,30 @@ function makePinchZoomable(el) {
         }
     });
 }
-/* --- LIGHTBOX (PEŁNY EKRAN DLA ZDJĘĆ) - WERSJA GLOBALNA --- */
-window.openLightbox = function(imageUrl) {
+/* --- LIGHTBOX (PEŁNY EKRAN DLA ZDJĘĆ) - WERSJA WYMUSZONA --- */
+window.forceOpenLightbox = function(url) {
+    console.log("Próba otwarcia zdjęcia:", url); // Diagnostyka dla F12
+    
     const overlay = document.getElementById('lightboxOverlay');
     const imgElement = document.getElementById('lightboxImage');
     
-    if(!overlay || !imgElement) {
-        console.error("Brak elementów Lightboxa w HTML!");
+    if (!overlay || !imgElement) {
+        console.error("Błąd: Elementy Lightboxa nie istnieją w pliku HTML!");
         return;
     }
 
-    imgElement.src = imageUrl;
+    imgElement.src = url;
     overlay.style.display = 'flex';
-    document.body.style.overflow = 'hidden'; // Blokada scrollowania pod spodem
+    document.body.style.overflow = 'hidden'; 
 };
 
-window.closeLightbox = function(e) {
+window.forceCloseLightbox = function(e) {
     if (e) e.stopPropagation(); 
     
     const overlay = document.getElementById('lightboxOverlay');
     const imgElement = document.getElementById('lightboxImage');
     
-    if(overlay) overlay.style.display = 'none';
-    if(imgElement) imgElement.src = ''; 
-    document.body.style.overflow = ''; // Odblokowanie scrollowania
+    if (overlay) overlay.style.display = 'none';
+    if (imgElement) imgElement.src = ''; 
+    document.body.style.overflow = ''; 
 };
