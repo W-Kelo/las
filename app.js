@@ -3278,7 +3278,16 @@ function openCustomPoiModal(poiData) {
                 const img = document.createElement('img');
                 img.src = url;
                 img.alt = poiData.name;
-                img.onclick = () => openLightbox(url); 
+                
+                // BEZPIECZNE PRZYPISANIE KLIKNIĘCIA
+                img.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation(); // Zatrzymuje kliknięcie przed aktywowaniem innych zdarzeń
+                    if (typeof window.openLightbox === 'function') {
+                        window.openLightbox(url);
+                    }
+                });
+                
                 galleryContainer.appendChild(img);
             });
         }
@@ -3398,25 +3407,7 @@ function removeSearchMarkerAndClose() {
     }
     closeModal('customPoiModal');
 }
-/* --- LIGHTBOX (PEŁNY EKRAN DLA ZDJĘĆ) --- */
-function openLightbox(imageUrl) {
-    const overlay = document.getElementById('lightboxOverlay');
-    const imgElement = document.getElementById('lightboxImage');
-    
-    imgElement.src = imageUrl;
-    overlay.style.display = 'flex';
-    document.body.style.overflow = 'hidden'; // Blokuje scroll strony pod spodem
-}
 
-function closeLightbox(e) {
-    if (e) e.stopPropagation(); // Blokuje propagację, jeśli wywołano z przycisku
-    const overlay = document.getElementById('lightboxOverlay');
-    const imgElement = document.getElementById('lightboxImage');
-    
-    overlay.style.display = 'none';
-    imgElement.src = ''; // zwalnia pamięć
-    document.body.style.overflow = ''; // Odblokowuje scroll
-}
 
 // Obsługa klawisza ESC do zamykania Lightboxa i innych modali
 document.addEventListener('keydown', (e) => {
@@ -4742,3 +4733,28 @@ function makePinchZoomable(el) {
         }
     });
 }
+/* --- LIGHTBOX (PEŁNY EKRAN DLA ZDJĘĆ) - WERSJA GLOBALNA --- */
+window.openLightbox = function(imageUrl) {
+    const overlay = document.getElementById('lightboxOverlay');
+    const imgElement = document.getElementById('lightboxImage');
+    
+    if(!overlay || !imgElement) {
+        console.error("Brak elementów Lightboxa w HTML!");
+        return;
+    }
+
+    imgElement.src = imageUrl;
+    overlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden'; // Blokada scrollowania pod spodem
+};
+
+window.closeLightbox = function(e) {
+    if (e) e.stopPropagation(); 
+    
+    const overlay = document.getElementById('lightboxOverlay');
+    const imgElement = document.getElementById('lightboxImage');
+    
+    if(overlay) overlay.style.display = 'none';
+    if(imgElement) imgElement.src = ''; 
+    document.body.style.overflow = ''; // Odblokowanie scrollowania
+};
