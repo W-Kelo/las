@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <title>Planer tras w Puszczy Wkrzańskiej</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    
+    <meta name="description" content="Interaktywny planer tras po Puszczy Wkrzańskiej. Rysuj własne ścieżki, planuj postoje, przeglądaj profile wysokościowe i generuj eleganckie mapy PDF do druku.">
+    <meta name="keywords" content="Puszcza Wkrzańska, planer tras, mapa, szlaki turystyczne, GPX, wycieczki, rower, piesze">
+    <meta name="author" content="Blog LAs">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -776,9 +781,10 @@
 </div>
 
 <!-- NAKŁADKA DO ZDJĘĆ NA PEŁNYM EKRANIE (LIGHTBOX) -->
-<div id="lightboxOverlay" class="lightbox-overlay" onclick="closeLightbox()">
-    <button class="lightbox-close" onclick="closeLightbox()">✖</button>
-    <img id="lightboxImage" src="" alt="Pełny ekran">
+<div id="lightboxOverlay" class="lightbox-overlay" onclick="closeLightbox(event)">
+    <button class="lightbox-close" onclick="closeLightbox(event)">✖</button>
+    <!-- Dodane event.stopPropagation() zapobiega zamknięciu po kliknięciu w same zdjęcie -->
+    <img id="lightboxImage" src="" alt="Pełny ekran" onclick="event.stopPropagation()">
 </div>
 
 <script src="app.js"></script>
