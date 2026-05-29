@@ -125,7 +125,10 @@ document.body.className = "light";
     
     modals.forEach(id => {
         const el = document.getElementById(id);
-        if (el) makeDraggable(el);
+        if (el) {
+            makeDraggable(el);
+            makePinchZoomable(el); 
+        }
     });
     
     // Uruchomienie animacji radaru 
@@ -3402,14 +3405,17 @@ function openLightbox(imageUrl) {
     
     imgElement.src = imageUrl;
     overlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden'; // Blokuje scroll strony pod spodem
 }
 
-function closeLightbox() {
+function closeLightbox(e) {
+    if (e) e.stopPropagation(); // Blokuje propagację, jeśli wywołano z przycisku
     const overlay = document.getElementById('lightboxOverlay');
     const imgElement = document.getElementById('lightboxImage');
     
     overlay.style.display = 'none';
     imgElement.src = ''; // zwalnia pamięć
+    document.body.style.overflow = ''; // Odblokowuje scroll
 }
 
 // Obsługa klawisza ESC do zamykania Lightboxa i innych modali
@@ -4672,4 +4678,67 @@ function loadStylesForTarget(targetId) {
     const radius = parseInt(el.style.borderRadius || compStyle.borderRadius) || 0;
     document.getElementById('expPanelRadius').value = radius;
     document.getElementById('expPanelRadiusVal').innerText = radius;
+}
+/* --- SKALOWANIE MODALI DWOMA PALCAMI (PINCH-TO-ZOOM) --- */
+function makePinchZoomable(el) {
+    let initialDistance = null;
+    let currentScale = 1;
+    const MIN_SCALE = 0.8;  // Maksymalne pomniejszenie (80%)
+    const MAX_SCALE = 1.4;  // Maksymalne powiększenie (140%)
+
+    // Nasłuchuj tylko na urządzeniach dotykowych
+    el.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            // Zablokuj domyślne zachowanie (np. scrollowanie strony/mapy)
+            e.stopPropagation();
+            
+            // Oblicz początkowy dystans między dwoma palcami
+            initialDistance = Math.hypot(
+                e.touches[0].pageX - e.touches[1].pageX,
+                e.touches[0].pageY - e.touches[1].pageY
+            );
+            
+            // Pobierz aktualną skalę (jeśli była już modyfikowana)
+            currentScale = el.dataset.scale ? parseFloat(el.dataset.scale) : 1;
+            
+            // Włącz płynne przejście tylko przy puszczeniu palców, podczas gestu wyłączamy dla płynności
+            el.style.transition = 'none';
+        }
+    }, { passive: false });
+
+    el.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && initialDistance !== null) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const currentDistance = Math.hypot(
+                e.touches[0].pageX - e.touches[1].pageX,
+                e.touches[0].pageY - e.touches[1].pageY
+            );
+
+            // Oblicz mnożnik skali
+            const distanceRatio = currentDistance / initialDistance;
+            let newScale = currentScale * distanceRatio;
+
+            // Ogranicz zakres skalowania
+            newScale = Math.max(MIN_SCALE, Math.min(newScale, MAX_SCALE));
+
+            // Zastosuj skalę używając niezależnej właściwości CSS scale (działa obok transform)
+            el.style.scale = newScale;
+            // Zapisz w zmiennej roboczej do użycia przy puszczeniu ekranu
+            el.dataset.tempScale = newScale; 
+        }
+    }, { passive: false });
+
+    el.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2 && initialDistance !== null) {
+            initialDistance = null;
+            // Zapisz nową skalę na stałe po puszczeniu palców
+            if (el.dataset.tempScale) {
+                el.dataset.scale = el.dataset.tempScale;
+            }
+            // Przywróć ewentualne przejścia CSS
+            el.style.transition = 'scale 0.2s ease-out';
+        }
+    });
 }
