@@ -1739,7 +1739,8 @@ function translateOSM(val) {
         bench: 'Ławka',
         drinking_water: 'Poidełko',
         viewpoint: 'Punkt widokowy',
-        information: 'Tablica informacyjna'
+        information: 'Tablica informacyjna',
+        picnic_site: 'Miejsce piknikowe'
     };
     return dict[val] || val;
 }
@@ -2193,43 +2194,63 @@ async function printExportMap() {
 /* ================= WYSZUKIWARKA MIEJSC ================= */
 
 
+// Główna wyszukiwarka mapy (POPRAWIONA hierarchia)
 async function searchLocation() {
     const val = document.getElementById('searchInput').value.trim();
     if(!val) return;
     const valLower = val.toLowerCase();
 
-    // Szukamy wg współrzędnych (Match regex)
     const isCoords = val.match(/^([-+]?\d{1,2}(?:\.\d+)?)[,\s]+([-+]?\d{1,3}(?:\.\d+)?)$/);
 
-    // HIERARCHIA 1: Baza Google Sheets
+    // HIERARCHIA 1: Baza Google Sheets (Najwyższy priorytet)
     let found = globalCustomPois.find(p => p.isGas && (
         (p.id && p.id.toLowerCase() === valLower) || p.name.toLowerCase().includes(valLower) ||
         (isCoords && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
     ));
 
-    // HIERARCHIA 2: Własne punkty użytkownika (Szukamy po własnej nazwie LUB oryginalnej OSM)
+    // HIERARCHIA 2: Własne punkty użytkownika (Bezpośrednio z tablicy userSavedPois)
     if (!found) {
-        found = globalCustomPois.find(p => p.isUserSaved && (
+        // Szukamy w bezpośrednim zbiorze użytkownika (gwarancja że nic nie zniknęło przez filtry widoku)
+        const userFound = userSavedPois.find(p => (
             p.name.toLowerCase().includes(valLower) || 
             (p.rawTitle && p.rawTitle.toLowerCase().includes(valLower)) ||
-            (isCoords && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
+            (isCoords && p.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
         ));
+
+        // Jeśli znalazł punkt w pamięci użytkownika, musimy ujednolicić jego format 
+        // dla funkcji otwierającej modal (dla której przygotowana jest baza globalna)
+        if (userFound) {
+            found = {
+                id: userFound.id,
+                latlng: L.latLng(userFound.lat, userFound.lng),
+                name: userFound.name,
+                icon: userFound.icon,
+                category: userFound.storage === 'local' ? "Zapisane na stałe" : "Zapisane w tej sesji",
+                description: userFound.desc,
+                isUserSaved: true,
+                storage: userFound.storage,
+                rawLat: userFound.lat,
+                rawLng: userFound.lng,
+                rawTitle: userFound.rawTitle || userFound.name
+            };
+        }
     }
 
+    // JEŚLI ZNALEZIONO (Baza GS lub Moje Punkty)
     if (found) {
         map.setView(found.latlng, 15);
         openCustomPoiModal(found);
-        highlightAndShowMarker(found); // Wywołanie migania i obejścia widoczności
+        highlightAndShowMarker(found); // Wywołanie migania
         return; 
     }
 
-    // HIERARCHIA 3: Zwykłe OSM po współrzędnych (tworzy nowy obiekt poszukiwań)
+    // HIERARCHIA 3: Zwykłe OSM po wpisanych współrzędnych
     if(isCoords) {
         placeSearchMarker(parseFloat(isCoords[1]), parseFloat(isCoords[2]), "Wyszukane współrzędne: " + val);
         return;
     }
 
-    // HIERARCHIA 4: Zwykłe OSM (Nominatim API)
+    // HIERARCHIA 4: Zwykłe OSM (Zewnętrzne API)
     document.body.style.cursor = 'wait';
     try {
         const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=1`);
@@ -2237,11 +2258,11 @@ async function searchLocation() {
         if(data && data.length > 0) {
             placeSearchMarker(data[0].lat, data[0].lon, data[0].display_name);
         } else {
-            showCustomAlert("Nie znaleziono miejsca.");
+            showCustomAlert("Nie znaleziono miejsca w bazie GS, Twoich punktach ani w OpenStreetMap.");
         }
     } catch(e) {
         console.error(e);
-        showCustomAlert("Wystąpił błąd podczas wyszukiwania.");
+        showCustomAlert("Wystąpił błąd sieci podczas wyszukiwania w globalnej bazie map.");
     } finally {
         document.body.style.cursor = 'default';
     }
@@ -3767,6 +3788,7 @@ function applyExportStyle() {
 
 
 // Główny silnik synchronizujący punkty na mapie i w legendzie
+// Główny silnik synchronizujący punkty na mapie i w legendzie (POPRAWIONY)
 function syncExportPoints() {
     if (!exportMap || !exportMap._loaded) return; 
 
@@ -3777,21 +3799,28 @@ function syncExportPoints() {
     const legendGas = chkGas ? chkGas.checked : false;
     const legendUser = chkUser ? chkUser.checked : false;
 
-    // Łączymy bazę GS, Punkty Własne ORAZ Postoje (dodając im sztuczny atrybut)
+    // 1. Zbieramy ujednolicone postoje
     const formattedStops = routeStops.map(s => ({
         id: s.id, latlng: s.latlng, name: s.name, 
         icon: s.visualType === 'dot' ? '☕' : s.icon, 
-        isUserSaved: true // By złapał się na checkbox "Moje punkty"
+        isUserSaved: true, isStop: true
     }));
     
+    // 2. Pobieramy "Moje Punkty" i wymuszamy poprawny format współrzędnych
+    const formattedUserPois = userSavedPois.map(p => ({
+        id: p.id, latlng: L.latLng(p.lat, p.lng), name: p.name, 
+        icon: p.icon, isUserSaved: true, isStop: false
+    }));
+
+    // 3. Złączenie WSZYSTKICH 3 źródeł
     const combinedPois = [
         ...globalCustomPois.filter(p => p.isGas), 
-        ...userSavedPois,
+        ...formattedUserPois,
         ...formattedStops
     ];
 
     combinedPois.forEach(poi => {
-        // Sprawdzamy czy dany punkt jest zaznaczony w modalu wyboru (Pickerze)
+        // Sprawdzanie czy dany punkt istnieje w zapisanym secie ID
         const isGasMatch = poi.isGas && exportPointSettings.gas.ids.has(poi.id);
         const isUserMatch = (poi.isUserSaved || poi.isStop) && exportPointSettings.user.ids.has(poi.id);
 
@@ -3799,15 +3828,13 @@ function syncExportPoints() {
             const autoId = 'auto_' + poi.id;
             const inLegendEnabled = (isGasMatch && legendGas) || (isUserMatch && legendUser);
             
-            const poiLatLng = poi.latlng || L.latLng(poi.lat, poi.lng);
-            
             // KLUCZOWE: Sprawdzamy czy punkt jest w zasięgu widoku mapy (BOUNDS)
-            if (bounds.contains(poiLatLng)) {
+            if (bounds.contains(poi.latlng)) {
                 shouldBeVisible.add(autoId);
 
                 // Tworzymy pinezkę na mapie, jeśli jej tam nie ma
                 if (!exportLegendItems[autoId]) {
-                    const marker = L.marker(poiLatLng, {
+                    const marker = L.marker(poi.latlng, {
                         draggable: true,
                         icon: L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${poi.icon}</div>`, className: 'poi-icon' })
                     }).addTo(exportMap);
@@ -3836,7 +3863,7 @@ function syncExportPoints() {
         }
     });
 
-    // Jeśli pusta legenda ma placeholder, usuwamy go gdy wpadną punkty
+    // Usuwamy placeholder "Legenda pusta"
     const tempEmpty = document.getElementById('temp_empty_leg');
     if (tempEmpty && document.getElementById('exportLegendList').children.length > 1) {
         tempEmpty.remove();
