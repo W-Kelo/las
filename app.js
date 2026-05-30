@@ -4725,30 +4725,46 @@ function makePinchZoomable(el) {
         }
     });
 }
-/* --- LIGHTBOX (PEŁNY EKRAN DLA ZDJĘĆ) - WERSJA WYMUSZONA --- */
+/* --- LIGHTBOX (PEŁNY EKRAN DLA ZDJĘĆ) - WERSJA NOWA --- */
 window.forceOpenLightbox = function(url) {
-    console.log("Próba otwarcia zdjęcia:", url); // Diagnostyka dla F12
+    console.log("Otwieram zdjęcie (wymuszony root):", url);
     
-    const overlay = document.getElementById('lightboxOverlay');
-    const imgElement = document.getElementById('lightboxImage');
+    let overlay = document.getElementById('lightboxOverlay');
     
-    if (!overlay || !imgElement) {
-        console.error("Błąd: Elementy Lightboxa nie istnieją w pliku HTML!");
-        return;
+    // 1. Jeśli kod HTML nakładki nie istnieje LUB utknął wewnątrz innego modalu:
+    if (!overlay) {
+        // Tworzymy go w locie
+        overlay = document.createElement('div');
+        overlay.id = 'lightboxOverlay';
+        overlay.innerHTML = `
+            <button onclick="window.forceCloseLightbox(event)" style="position:absolute; top:20px; right:20px; background:rgba(255,255,255,0.2); color:white; border:none; width:45px; height:45px; border-radius:50%; font-size:24px; cursor:pointer; z-index:9999999; display:flex; align-items:center; justify-content:center; transition:0.2s;">✖</button>
+            <img id="lightboxImage" src="" alt="Zoom" style="max-width:95vw; max-height:95vh; object-fit:contain; border-radius:8px; box-shadow:0 10px 50px rgba(0,0,0,0.9); cursor:default;" onclick="event.stopPropagation()">
+        `;
+        overlay.onclick = window.forceCloseLightbox;
+        document.body.appendChild(overlay); // Wrzucamy bezpośrednio do <body>
+    } else if (overlay.parentNode !== document.body) {
+        // Jeśli istnieje, ale utknął w innym oknie - przenosimy go prosto do <body>
+        document.body.appendChild(overlay);
     }
 
-    imgElement.src = url;
-    overlay.style.display = 'flex';
-    document.body.style.overflow = 'hidden'; 
+    // 2. Twarde wstrzyknięcie stylów CSS bez pytania
+    Object.assign(overlay.style, {
+        position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
+        background: 'rgba(0,0,0,0.95)', zIndex: '9999998',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out'
+    });
+
+    // 3. Ładowanie obrazu
+    const imgElement = document.getElementById('lightboxImage');
+    if(imgElement) imgElement.src = url;
+    
+    // Blokada scrollowania strony w tle
+    document.body.style.overflow = 'hidden';
 };
 
 window.forceCloseLightbox = function(e) {
     if (e) e.stopPropagation(); 
-    
     const overlay = document.getElementById('lightboxOverlay');
-    const imgElement = document.getElementById('lightboxImage');
-    
     if (overlay) overlay.style.display = 'none';
-    if (imgElement) imgElement.src = ''; 
     document.body.style.overflow = ''; 
 };
