@@ -12,6 +12,32 @@ const OSM_BLACKLIST = {
         'utility_pole'
     ]
 };
+/* --- CZARNA LISTA OSM (KLUCZ: [LISTA WARTOŚCI]) --- */
+const OSM_HIDE_RULES = {
+    "access": ["private", "no", "customers", "prywatny", "zamknięty"], // Ukryj prywatne/brak dostępu
+    "parking": ["private", "multi-storey", "underground"],             // Ukryj parkingi prywatne/piętrowe
+    "amenity": ["vending_machine", "waste_disposal", "atm"],          // Ukryj automaty, śmietniska, bankomaty
+    "abandoned": ["yes"],                                             // Ukryj obiekty opuszczone
+    "construction": ["yes"]                                           // Ukryj obiekty w budowie
+};
+
+// Funkcja sprawdzająca, czy dany punkt powinien zostać ukryty
+function isForbiddenOSM(tags) {
+    if (!tags) return false;
+
+    for (const key in tags) {
+        const value = tags[key].toLowerCase();
+        
+        // Sprawdzamy, czy dla tego klucza (np. "access") mamy jakieś zakazane wartości
+        if (OSM_HIDE_RULES[key]) {
+            if (OSM_HIDE_RULES[key].includes(value)) {
+                console.log(`[Filtr OSM] Ukryto obiekt: ${tags.name || 'bez nazwy'} z powodu ${key}=${value}`);
+                return true; // Znaleziono zakazaną parę - ukryj!
+            }
+        }
+    }
+    return false;
+}
 
 /* ================= KONFIGURACJA MAPY ================= */
 const map = L.map('map', { 
@@ -1666,8 +1692,11 @@ async function loadOSMData(externalData = null) {
         });
 
         data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
-            if (typeof isBlacklistedOSM === 'function' && isBlacklistedOSM(e)) return;
-
+    // 1. Stary filtr kategorii (jeśli go używasz)
+    if (typeof isBlacklistedOSM === 'function' && isBlacklistedOSM(e)) return;
+    
+    // 2. NOWY FILTR WARTOŚCI (np. parking=private)
+    if (isForbiddenOSM(e.tags)) return; 
             let icon = '📍';
             if (e.tags.amenity === 'shelter') icon = '🏠';
             else if (e.tags.tourism === 'viewpoint') icon = '🔭';
@@ -1768,9 +1797,25 @@ const OSM_DICT = {
     "material": "Materiał",
     "description": "Opis",
     "map_type": "Typ mapy",
+    "map_size": "Rozmiar mapy"
+    "Name:de": "Nazwa w j. niemieckim",
+    "Bicycle": "Rowerowa",
     "shelter_type": "Typ wiaty",
     "fee": "Opłata",
     "surface": "Nawierzchnia",
+    "image": "Zdjęcie",
+    "nature": "Natura",
+    "hiking": "Wędrowanie",
+    "picnic_site": "Miejsce piknikowe",
+    "public transport": "Transport publiczny",
+    "access": "Dostępne",
+    "stele": "Stela",
+    "private": "Prywatny",
+    "underground": "Podziemny",
+    "picnic_shelter": "Wiata piknikowa",
+    "citymap": "Mapa miasta",
+    
+    
 
     // WARTOŚCI (Lewa strona)
     "shelter": "Wiata / Schronienie",
@@ -1794,6 +1839,7 @@ const OSM_DICT = {
     "memorial": "Miejsce pamięci",
     "weather_shelter": "Wiata przeciwdeszczowa",
     "picnic_table": "Stół piknikowy",
+    "topo": "Topograficzna",
     "bicycle_parking": "Parking rowerowy"
 };
 
