@@ -2461,16 +2461,7 @@ function savePickerSelection() {
     syncExportPoints(); 
 }
 
-function savePickerSelection() {
-    const selectedIds = new Set();
-    document.querySelectorAll('.picker-cb:checked').forEach(cb => selectedIds.add(cb.value));
-    exportPointSettings[tempPickerType].ids = selectedIds;
-    
-    document.getElementById('exportPickerModal').style.display = 'none';
-    
-    // Po zamknięciu wyboru natychmiast wrzucamy je na mapę i legendę
-    syncExportPoints(); 
-}
+
 
 
 function openStatsModal() {
