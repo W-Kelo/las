@@ -82,6 +82,8 @@ let customPdfText = "";
 let isPanelsSplitMode = false;
 let isScissorsMode = false;
 let isTimeSkipped = false; 
+let lbCurrentIndex = 0;
+let lbCurrentZoom = 1;
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
@@ -92,6 +94,7 @@ const WALK_SPEED_M_PER_MIN = 70; // 4.2 km/h;
 const STOP_EMOJIS = ["☕", "🍔", "⛺", "🔥", "📸", "🛌", "🔋", "🚾", "🥪", "🪑"];
 const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
+window._currentGalleryData = [];
 const polyline = L.polyline([], {
     color: routePrefColor, 
     weight: routePrefWeight, 
@@ -4766,73 +4769,84 @@ function makePinchZoomable(el) {
 /* ================= ZAAWANSOWANA GALERIA I LIGHTBOX ================= */
 
 function openFullGalleryModal(poiName) {
-    document.getElementById('fgmTitle').innerText = `📸 Galeria: ${poiName}`;
-    const grid = document.getElementById('fgmGrid');
-    grid.innerHTML = '';
+    const titleEl = document.getElementById('fgmTitle');
+    const gridEl = document.getElementById('fgmGrid');
+    
+    if(!titleEl || !gridEl) {
+        console.error("Błąd: Brak okna 'fullGalleryModal' w pliku HTML!");
+        return;
+    }
+
+    titleEl.innerText = `📸 Galeria: ${poiName}`;
+    gridEl.innerHTML = '';
     
     window._currentGalleryData.forEach((photoObj, idx) => {
-        grid.innerHTML += `<img src="${photoObj.url}" style="width: 100%; height: 120px; object-fit: cover; border-radius: 6px; cursor: zoom-in; box-shadow: 0 2px 5px rgba(0,0,0,0.3);" onclick="openAdvancedLightbox(${idx})">`;
+        gridEl.innerHTML += `<img src="${photoObj.url}" style="width: 100%; height: 120px; object-fit: cover; border-radius: 6px; cursor: zoom-in; box-shadow: 0 2px 5px rgba(0,0,0,0.3);" onclick="openAdvancedLightbox(${idx})">`;
     });
     
     openCenteredModal('fullGalleryModal');
 }
 
 // Zmienne stanowe Lightboxa
-let lbCurrentIndex = 0;
-let lbCurrentZoom = 1;
-
 window.openAdvancedLightbox = function(startIndex) {
     lbCurrentIndex = startIndex;
     lbCurrentZoom = 1;
     
     let overlay = document.getElementById('advLightboxOverlay');
+    
     if (!overlay) {
         overlay = document.createElement('div');
         overlay.id = 'advLightboxOverlay';
-        // Tworzymy szkielet z UI
+        
+        // NOWY UKŁAD (FLEXBOX) - Gwarantuje brak nakładania się tekstu na zdjęcie
+        // event.stopPropagation() bezpośrednio w przyciskach blokuje zamykanie
         overlay.innerHTML = `
-            <!-- Górny pasek kontrolny -->
-            <div style="position: absolute; top: 15px; right: 15px; display: flex; gap: 10px; z-index: 9999999;">
-                <button onclick="lbZoom(-0.2)" style="background:rgba(0,0,0,0.5); color:white; border:1px solid #fff; border-radius:6px; padding: 5px 15px; font-size:18px; cursor:pointer;">➖</button>
-                <button onclick="lbZoom(0.2)" style="background:rgba(0,0,0,0.5); color:white; border:1px solid #fff; border-radius:6px; padding: 5px 15px; font-size:18px; cursor:pointer;">➕</button>
-                <button onclick="closeAdvancedLightbox(event)" style="background:rgba(239, 68, 68, 0.8); color:white; border:none; border-radius:6px; padding: 5px 15px; font-size:18px; cursor:pointer;">✖</button>
-            </div>
-            
-            <!-- Strzałki Nawigacji -->
-            <button id="lbPrevBtn" onclick="lbNavigate(-1, event)" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.2); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:24px; cursor:pointer; z-index: 9999999; backdrop-filter: blur(5px);">❮</button>
-            <button id="lbNextBtn" onclick="lbNavigate(1, event)" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.2); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:24px; cursor:pointer; z-index: 9999999; backdrop-filter: blur(5px);">❯</button>
-
-            <!-- Główny kontener obrazu -->
-            <div id="lbImageWrapper" style="overflow: auto; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center;">
-                <img id="advLightboxImage" src="" style="max-width:95vw; max-height:90vh; object-fit:contain; border-radius:4px; transition: transform 0.2s ease-out; cursor: grab;" onclick="event.stopPropagation()">
-            </div>
-
-            <!-- Panel Metadanych (Info) -->
-            <div id="lbInfoPanel" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 500px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; color: white; padding: 15px; z-index: 9999999; transition: max-height 0.3s ease; overflow: hidden; max-height: 500px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                    <strong id="lbTitle" style="font-size: 1.1rem; color: #3b82f6;"></strong>
-                    <button onclick="toggleLbInfo()" id="lbToggleBtn" style="background:transparent; color:#94a3b8; border:none; font-size:1.2rem; cursor:pointer;">▼</button>
-                </div>
-                <div id="lbInfoDetails">
-                    <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 10px;">
-                        <span>👤 <span id="lbAuthor"></span></span> &nbsp;|&nbsp; <span>📅 <span id="lbDate"></span></span>
+            <div style="display: flex; flex-direction: column; width: 100vw; height: 100vh;">
+                
+                <!-- STREFA OBRAZU (Zajmuje całą wolną przestrzeń) -->
+                <div id="lbImageArea" style="flex-grow: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden;" onclick="window.closeAdvancedLightbox(event)">
+                    
+                    <!-- Przyciski Top-Right -->
+                    <div style="position: absolute; top: 15px; right: 15px; display: flex; gap: 10px; z-index: 9999999;" onclick="event.stopPropagation()">
+                        <button onclick="window.lbZoom(-0.2)" style="background:rgba(0,0,0,0.5); color:white; border:1px solid #fff; border-radius:6px; padding: 5px 15px; font-size:18px; cursor:pointer;">➖</button>
+                        <button onclick="window.lbZoom(0.2)" style="background:rgba(0,0,0,0.5); color:white; border:1px solid #fff; border-radius:6px; padding: 5px 15px; font-size:18px; cursor:pointer;">➕</button>
+                        <button onclick="window.closeAdvancedLightbox(event)" style="background:rgba(239, 68, 68, 0.8); color:white; border:none; border-radius:6px; padding: 5px 15px; font-size:18px; cursor:pointer;">✖</button>
                     </div>
-                    <div id="lbDesc" style="font-size: 0.9rem; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;"></div>
+                    
+                    <!-- Strzałki Nawigacji -->
+                    <button id="lbPrevBtn" onclick="event.stopPropagation(); window.lbNavigate(-1);" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.2); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:24px; cursor:pointer; z-index: 9999999; backdrop-filter: blur(5px);">❮</button>
+                    <button id="lbNextBtn" onclick="event.stopPropagation(); window.lbNavigate(1);" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.2); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:24px; cursor:pointer; z-index: 9999999; backdrop-filter: blur(5px);">❯</button>
+
+                    <!-- Samo Zdjęcie -->
+                    <img id="advLightboxImage" src="" style="max-width:98%; max-height:98%; object-fit:contain; border-radius:4px; transition: transform 0.2s ease-out; cursor: grab;" onclick="event.stopPropagation()">
+                </div>
+
+                <!-- STREFA METADANYCH (Zawsze pod zdjęciem, solidne tło) -->
+                <div id="lbInfoPanel" style="flex-shrink: 0; width: 100%; background: #0f172a; border-top: 1px solid rgba(255,255,255,0.1); color: white; padding: 15px; box-sizing: border-box; overflow-y: auto; max-height: 250px; transition: max-height 0.3s ease;" onclick="event.stopPropagation()">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; max-width: 800px; margin-left: auto; margin-right: auto;">
+                        <strong id="lbTitle" style="font-size: 1.1rem; color: #3b82f6;"></strong>
+                        <button onclick="event.stopPropagation(); window.toggleLbInfo();" id="lbToggleBtn" style="background:transparent; color:#94a3b8; border:none; font-size:1.2rem; cursor:pointer;">▼</button>
+                    </div>
+                    <div id="lbInfoDetails" style="max-width: 800px; margin-left: auto; margin-right: auto;">
+                        <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 10px;">
+                            <span>👤 <span id="lbAuthor"></span></span> &nbsp;|&nbsp; <span>📅 <span id="lbDate"></span></span>
+                        </div>
+                        <div id="lbDesc" style="font-size: 0.9rem; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;"></div>
+                    </div>
                 </div>
             </div>
         `;
         document.body.appendChild(overlay);
 
-        // Zdarzenia dotykowe (Swipe) dla całej nakładki
+        // Zdarzenia dotykowe (Swipe)
         let touchStartX = 0;
-        overlay.addEventListener('touchstart', e => touchStartX = e.changedTouches[0].screenX);
-        overlay.addEventListener('touchend', e => {
+        const imgArea = document.getElementById('lbImageArea');
+        imgArea.addEventListener('touchstart', e => touchStartX = e.changedTouches[0].screenX);
+        imgArea.addEventListener('touchend', e => {
             const touchEndX = e.changedTouches[0].screenX;
-            if (touchEndX < touchStartX - 50) lbNavigate(1); // Swipe w lewo -> następne
-            if (touchEndX > touchStartX + 50) lbNavigate(-1); // Swipe w prawo -> poprzednie
+            if (touchEndX < touchStartX - 50) window.lbNavigate(1); // Lewo -> następne
+            if (touchEndX > touchStartX + 50) window.lbNavigate(-1); // Prawo -> poprzednie
         });
-        
-        overlay.onclick = window.closeAdvancedLightbox;
     }
 
     Object.assign(overlay.style, {
@@ -4841,13 +4855,12 @@ window.openAdvancedLightbox = function(startIndex) {
     });
     
     document.body.style.overflow = 'hidden';
-    updateLightboxView();
+    window.updateLightboxView();
     
-    // Obsługa klawiatury (tylko na czas otwarcia modalu)
     document.addEventListener('keydown', lbKeyboardHandler);
 };
 
-function updateLightboxView() {
+window.updateLightboxView = function() {
     const data = window._currentGalleryData;
     if(!data || data.length === 0) return;
     
@@ -4859,19 +4872,25 @@ function updateLightboxView() {
     img.style.transform = `scale(1)`;
     img.src = photo.url;
 
-    // Nawigacja (ukrywanie strzałek przy 1 zdjęciu)
+    // Strzałki
     document.getElementById('lbPrevBtn').style.display = data.length > 1 ? 'block' : 'none';
     document.getElementById('lbNextBtn').style.display = data.length > 1 ? 'block' : 'none';
 
-    // Aktualizacja metadanych
+    // Oczyszczanie daty (odrzucenie godziny 'T' lub spacji)
+    let cleanDate = '-';
+    if (photo.date) {
+        cleanDate = String(photo.date).split('T')[0].split(' ')[0];
+    }
+
+    // Metadane
     document.getElementById('lbTitle').innerText = photo.title || 'Brak tytułu';
     document.getElementById('lbAuthor').innerText = photo.author || 'Nieznany';
-    document.getElementById('lbDate').innerText = photo.date || '-';
+    document.getElementById('lbDate').innerText = cleanDate;
     
     const descEl = document.getElementById('lbDesc');
     descEl.innerText = photo.description || 'Brak dodatkowego opisu.';
     
-    // Jeśli nie ma ani tytułu ani opisu - zwiń panel
+    // Autoukrywanie panelu jeśli pusto
     if (!photo.title && !photo.description) {
         document.getElementById('lbInfoDetails').style.display = 'none';
         document.getElementById('lbToggleBtn').innerText = '▲';
@@ -4879,24 +4898,27 @@ function updateLightboxView() {
         document.getElementById('lbInfoDetails').style.display = 'block';
         document.getElementById('lbToggleBtn').innerText = '▼';
     }
-}
+};
 
-function lbNavigate(dir, e) {
-    if(e) e.stopPropagation();
+window.lbNavigate = function(dir) {
     const data = window._currentGalleryData;
+    if(!data || data.length === 0) return;
+    
     lbCurrentIndex = (lbCurrentIndex + dir + data.length) % data.length;
-    updateLightboxView();
-}
+    window.updateLightboxView();
+};
 
-function lbZoom(val) {
+window.lbZoom = function(val) {
     const img = document.getElementById('advLightboxImage');
-    lbCurrentZoom = Math.max(0.5, Math.min(lbCurrentZoom + val, 4)); // Ograniczenie zoomu 0.5x do 4x
+    lbCurrentZoom = Math.max(0.5, Math.min(lbCurrentZoom + val, 4)); 
     img.style.transform = `scale(${lbCurrentZoom})`;
-}
+};
 
-function toggleLbInfo() {
+window.toggleLbInfo = function() {
     const details = document.getElementById('lbInfoDetails');
     const btn = document.getElementById('lbToggleBtn');
+    
+    // Używamy ukrywania zamiast max-height dla stabilności Flexboxa
     if (details.style.display === 'none') {
         details.style.display = 'block';
         btn.innerText = '▼';
@@ -4904,7 +4926,24 @@ function toggleLbInfo() {
         details.style.display = 'none';
         btn.innerText = '▲';
     }
-}
+};
+
+
+window.closeAdvancedLightbox = function(e) {
+    if (e) e.stopPropagation(); 
+    const overlay = document.getElementById('advLightboxOverlay');
+    if (overlay) overlay.style.display = 'none';
+    document.body.style.overflow = ''; 
+    document.removeEventListener('keydown', lbKeyboardHandler);
+};
+
+// ZABEZPIECZENIE: Ulepszony makeDraggable
+const oryginalnyMakeDraggable = makeDraggable;
+window.makeDraggable = function(el) {
+    if (!el) return;
+    oryginalnyMakeDraggable(el);
+};
+
 
 function lbKeyboardHandler(e) {
     if (e.key === 'ArrowRight') lbNavigate(1);
