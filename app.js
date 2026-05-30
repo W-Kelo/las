@@ -25,7 +25,12 @@ const tiles = {
     dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OSM', crossOrigin: true }),
     light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', crossOrigin: true })
 };
+const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri',
+    maxZoom: 19
+});
 let dark = false; 
+let isSatellite = false;
 let brouterOutageNotified = false; 
 let routePoints = []; 
 let routeGeometry = []; 
@@ -2122,10 +2127,29 @@ function executeRefreshRoute() {
 function toggleScale() {
     if (!exportMap) return;
     scaleVisible = !scaleVisible;
-    scaleVisible ? scaleControl.addTo(exportMap)
-                 : exportMap.removeControl(scaleControl);
+    
+    if (scaleVisible) {
+        const isMobile = window.innerWidth <= 768;
+        // Na mobile ładujemy ją domyślnie na dół z lewej
+        scaleControl = L.control.scale({ imperial: false, position: isMobile ? 'bottomleft' : 'bottomright' });
+        scaleControl.addTo(exportMap);
+        
+        // Na PC uwalniamy ją z klatki i pozwalamy przesuwać
+        if (!isMobile) {
+            setTimeout(() => {
+                const scaleEl = document.querySelector('.leaflet-control-scale');
+                if (scaleEl) {
+                    scaleEl.style.position = 'absolute';
+                    scaleEl.style.cursor = 'grab';
+                    scaleEl.style.zIndex = '3000';
+                    makePanelDraggable(scaleEl); 
+                }
+            }, 100);
+        }
+    } else {
+        exportMap.removeControl(scaleControl);
+    }
 }
-
 
 /* --- ZRZUTY EKRANU DLA EKSPORTU (NAPRAWIONE) --- */
 
@@ -2195,37 +2219,42 @@ async function printExportMap() {
 
 
 // Główna wyszukiwarka mapy (POPRAWIONA hierarchia)
+// Główna wyszukiwarka mapy (POPRAWIONA)
 async function searchLocation() {
     const val = document.getElementById('searchInput').value.trim();
     if(!val) return;
     const valLower = val.toLowerCase();
-
     const isCoords = val.match(/^([-+]?\d{1,2}(?:\.\d+)?)[,\s]+([-+]?\d{1,3}(?:\.\d+)?)$/);
 
-    // HIERARCHIA 1: Baza Google Sheets (Najwyższy priorytet)
+    // HIERARCHIA 1: Baza Google Sheets
     let found = globalCustomPois.find(p => p.isGas && (
         (p.id && p.id.toLowerCase() === valLower) || p.name.toLowerCase().includes(valLower) ||
         (isCoords && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
     ));
 
-    // HIERARCHIA 2: Własne punkty użytkownika (Bezpośrednio z tablicy userSavedPois)
+    // HIERARCHIA 2: Własne punkty użytkownika ORAZ Postoje trasy
     if (!found) {
-        // Szukamy w bezpośrednim zbiorze użytkownika (gwarancja że nic nie zniknęło przez filtry widoku)
-        const userFound = userSavedPois.find(p => (
+        // Złączenie własnych i postojów w jedną strukturę roboczą
+        const combinedMyPoints = [
+            ...userSavedPois.map(p => ({...p, isStop: false})),
+            ...routeStops.map(s => ({
+                id: s.id, lat: s.latlng.lat, lng: s.latlng.lng, name: s.name, desc: s.desc, icon: s.visualType==='dot'?'☕':s.icon, storage:'session', isStop: true
+            }))
+        ];
+
+        const userFound = combinedMyPoints.find(p => (
             p.name.toLowerCase().includes(valLower) || 
             (p.rawTitle && p.rawTitle.toLowerCase().includes(valLower)) ||
             (isCoords && p.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
         ));
 
-        // Jeśli znalazł punkt w pamięci użytkownika, musimy ujednolicić jego format 
-        // dla funkcji otwierającej modal (dla której przygotowana jest baza globalna)
         if (userFound) {
             found = {
                 id: userFound.id,
                 latlng: L.latLng(userFound.lat, userFound.lng),
                 name: userFound.name,
                 icon: userFound.icon,
-                category: userFound.storage === 'local' ? "Zapisane na stałe" : "Zapisane w tej sesji",
+                category: userFound.isStop ? "Postój trasy" : (userFound.storage === 'local' ? "Zapisane na stałe" : "Zapisane w tej sesji"),
                 description: userFound.desc,
                 isUserSaved: true,
                 storage: userFound.storage,
@@ -2236,21 +2265,20 @@ async function searchLocation() {
         }
     }
 
-    // JEŚLI ZNALEZIONO (Baza GS lub Moje Punkty)
     if (found) {
         map.setView(found.latlng, 15);
         openCustomPoiModal(found);
-        highlightAndShowMarker(found); // Wywołanie migania
+        highlightAndShowMarker(found); 
         return; 
     }
 
-    // HIERARCHIA 3: Zwykłe OSM po wpisanych współrzędnych
+    // HIERARCHIA 3: Zwykłe OSM po współrzędnych
     if(isCoords) {
         placeSearchMarker(parseFloat(isCoords[1]), parseFloat(isCoords[2]), "Wyszukane współrzędne: " + val);
         return;
     }
 
-    // HIERARCHIA 4: Zwykłe OSM (Zewnętrzne API)
+    // HIERARCHIA 4: Zwykłe OSM (Nominatim API)
     document.body.style.cursor = 'wait';
     try {
         const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=1`);
@@ -2258,11 +2286,11 @@ async function searchLocation() {
         if(data && data.length > 0) {
             placeSearchMarker(data[0].lat, data[0].lon, data[0].display_name);
         } else {
-            showCustomAlert("Nie znaleziono miejsca w bazie GS, Twoich punktach ani w OpenStreetMap.");
+            showCustomAlert("Nie znaleziono miejsca w bazie, Twoich punktach ani w OpenStreetMap.");
         }
     } catch(e) {
         console.error(e);
-        showCustomAlert("Wystąpił błąd sieci podczas wyszukiwania w globalnej bazie map.");
+        showCustomAlert("Wystąpił błąd sieci podczas wyszukiwania.");
     } finally {
         document.body.style.cursor = 'default';
     }
@@ -2946,50 +2974,65 @@ function applyLiveStyle(property) {
     const el = document.getElementById(targetId);
     if(!el) return;
 
-    // Aplikacja konkretnej właściwości
     switch(property) {
         case 'bg':
             const hex = document.getElementById('valBgColor').value;
             const op = document.getElementById('valOpacity').value;
             el.style.backgroundColor = hexToRgbA(hex, op);
-            // Zapewniamy padding by na nowym tle tekst nie wrzynał się w boki
-            if(!el.style.padding && targetId !== 'mapInfoPanel') el.style.padding = "12px 18px";
-            break;
-        case 'color':
-            el.style.color = document.getElementById('valTextColor').value;
-            break;
-        case 'fontSize':
-            // Wymuszamy !important przez setProperty, aby nadpisać globalne zasady CSS mapy
-            el.style.setProperty('font-size', document.getElementById('valFontSize').value + 'px', 'important');
+            break; // USUNIĘTO PADDING POWODUJĄCY SKAKANIE!
             
-            // Jesli modyfikujemy całą legendę, nadpisujemy kaskadę CSS
-            if (targetId === 'miLegendContainer') {
-                const listItems = el.querySelectorAll('.leg-text');
-                listItems.forEach(li => li.style.setProperty('font-size', document.getElementById('valFontSize').value + 'px', 'important'));
-                
-                // Ikonki zawsze lekko większe
-                const icons = el.querySelectorAll('.leg-icon');
-                icons.forEach(ic => ic.style.setProperty('font-size', (parseInt(document.getElementById('valFontSize').value) + 6) + 'px', 'important'));
+        case 'color':
+            const colorVal = document.getElementById('valTextColor').value;
+            el.style.setProperty('color', colorVal, 'important');
+            
+            // Wymuszenie koloru na kafelkach statystyk
+            if (targetId === 'miStats') {
+                el.querySelectorAll('.mi-stat-item').forEach(item => item.style.setProperty('color', colorVal, 'important'));
             }
             break;
+            
+        case 'fontSize':
+            const fSize = document.getElementById('valFontSize').value + 'px';
+            el.style.setProperty('font-size', fSize, 'important');
+            
+            if (targetId === 'miLegendContainer') {
+                el.querySelectorAll('.leg-text').forEach(li => li.style.setProperty('font-size', fSize, 'important'));
+                el.querySelectorAll('.leg-icon').forEach(ic => ic.style.setProperty('font-size', (parseInt(fSize) + 6) + 'px', 'important'));
+            }
+            if (targetId === 'miStats') {
+                el.querySelectorAll('.mi-stat-item').forEach(item => item.style.setProperty('font-size', fSize, 'important'));
+            }
+            break;
+            
         case 'radius':
             el.style.borderRadius = document.getElementById('valRadius').value + 'px';
             break;
+            
         case 'shadow':
             el.style.boxShadow = document.getElementById('valShadow').checked ? "0 10px 30px rgba(0,0,0,0.5)" : "none";
             break;
+            
         case 'fontFamily':
-            el.style.fontFamily = document.getElementById('valFontFamily').value;
+            const fontVal = document.getElementById('valFontFamily').value;
+            el.style.setProperty('font-family', fontVal, 'important');
+            if (targetId === 'miStats') {
+                el.querySelectorAll('.mi-stat-item').forEach(item => item.style.setProperty('font-family', fontVal, 'important'));
+            }
             break;
+            
         case 'bold':
-            el.style.fontWeight = document.getElementById('btnBold').classList.contains('active') ? 'bold' : 'normal';
+            const weight = document.getElementById('btnBold').classList.contains('active') ? 'bold' : 'normal';
+            el.style.setProperty('font-weight', weight, 'important');
             break;
+            
         case 'italic':
-            el.style.fontStyle = document.getElementById('btnItalic').classList.contains('active') ? 'italic' : 'normal';
+            const style = document.getElementById('btnItalic').classList.contains('active') ? 'italic' : 'normal';
+            el.style.setProperty('font-style', style, 'important');
             break;
+            
         case 'strike':
-            const isStrike = document.getElementById('btnStrike').classList.contains('active');
-            el.style.textDecoration = isStrike ? 'line-through' : 'none';
+            const decor = document.getElementById('btnStrike').classList.contains('active') ? 'line-through' : 'none';
+            el.style.setProperty('text-decoration', decor, 'important');
             break;
     }
 }
@@ -4508,9 +4551,15 @@ function toggleEmptyLegend() {
 
 
 // Nowe funkcje ukrywania
-function hideFromLegendOnly(id) {
-    const li = document.getElementById(id);
-    if(li) li.style.display = 'none';
+function hideFromLegendOnly(autoId) {
+    const realId = autoId.replace('auto_', '');
+    
+    // Usuń ID z pamięci Pickera
+    if(exportPointSettings.gas.ids.has(realId)) exportPointSettings.gas.ids.delete(realId);
+    if(exportPointSettings.user.ids.has(realId)) exportPointSettings.user.ids.delete(realId);
+    
+    // Przeładuj mapę i legendę, co usunie też pinezkę z mapy w trybie automatycznym
+    syncExportPoints();
 }
 
 function removeCompletelyFromExport(autoId) {
@@ -5093,3 +5142,45 @@ window.makeDraggable = function(el) {
     if (!el) return;
     oryginalnyMakeDraggable(el);
 };
+function toggleSatelliteMap() {
+    isSatellite = !isSatellite;
+    const btnPc = document.getElementById('btnSatTogglePc');
+    const btnMob = document.getElementById('btnSatToggleMob');
+
+    if (isSatellite) {
+        map.removeLayer(dark ? tiles.dark : tiles.light);
+        satelliteLayer.addTo(map);
+        if(btnPc) btnPc.innerText = "🗺️ Przełącz na zwykłą mapę";
+        if(btnMob) btnMob.innerText = "🗺️ Zwykła mapa";
+    } else {
+        map.removeLayer(satelliteLayer);
+        (dark ? tiles.dark : tiles.light).addTo(map);
+        if(btnPc) btnPc.innerText = "🛰️ Przełącz na satelitę";
+        if(btnMob) btnMob.innerText = "🛰️ Mapa satelitarna";
+    }
+}
+/* --- USUWANIE PANELI PRAWYM PRZYCISKIEM --- */
+document.addEventListener('DOMContentLoaded', () => {
+    const exportWrapper = document.getElementById('exportWrapper');
+    if(exportWrapper) {
+        exportWrapper.addEventListener('contextmenu', function(e) {
+            const panel = e.target.closest('.map-info-panel, .split-panel, .detached-panel');
+            
+            // Reagujemy tylko na Pływające Panele (Oderwane) lub główny matczyny
+            if(panel && panel.id !== 'exportWrapper' && panel.id !== 'mapExport') {
+                e.preventDefault(); // Blokuje domyślne menu przeglądarki
+                showCustomConfirm("Czy chcesz usunąć ten element z mapy?", () => {
+                    // Jeśli to statystyki - odznaczamy checkboxy
+                    if (panel.id === 'miStats' || panel.querySelector('#miStats')) {
+                        document.getElementById('statCheckDist').checked = false;
+                        document.getElementById('statCheckTime').checked = false;
+                    }
+                    
+                    panel.innerHTML = '';
+                    panel.style.display = 'none';
+                    updatePanelVisibility();
+                });
+            }
+        });
+    }
+});
