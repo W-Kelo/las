@@ -1971,7 +1971,7 @@ async function generatePDF() {
 
                 <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; display: flex; justify-content: space-between; font-size: 10px; color: #94a3b8;">
                     <span>Wygenerowano: ${new Date().toLocaleString('pl-PL')}</span>
-                    <span>&copy; Autorzy OpenStreetMap (Dane mapy)</span>
+                    <span>&copy; Autorzy OpenStreetMap (Dane mapy), &copy; Google Maps (Mapa satelitarna)</span>
                 </div>
             </div>
         `;
