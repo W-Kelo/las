@@ -2128,66 +2128,83 @@ function executeRefreshRoute() {
     syncExportPoints();
 }
 /* --- INTELIGENTNA SKALA (PRZESUWANIE BEZ BŁĘDÓW) --- */
+/* --- INTELIGENTNA SKALA (BEZ TELEPORTACJI) --- */
 function toggleScale() {
     if (!exportMap) return;
     
-    // Jeśli była na mapie, usuń ją (Toggle OFF)
+    // Jeśli skala już istnieje, wyłącz ją
     if (scaleControl) {
+        const existingCustom = document.getElementById('custom-draggable-scale');
+        if (existingCustom) existingCustom.remove(); // Usuwamy nasz wyrwany element
         exportMap.removeControl(scaleControl);
         scaleControl = null;
         return;
     }
     
-    // Tworzenie (Toggle ON)
-    const isMobile = window.innerWidth <= 768;
-    scaleControl = L.control.scale({ imperial: false, position: isMobile ? 'bottomleft' : 'bottomright' });
+    // Włącz skalę w Leaflecie
+    scaleControl = L.control.scale({ imperial: false });
     scaleControl.addTo(exportMap);
     
-    // Na PC zwalniamy skalę z blokad Leafleta i pozwalamy przesuwać
+    // Jeśli jesteśmy na komputerze, po 100ms wyrywamy ją i robimy draggable
+    const isMobile = window.innerWidth <= 768;
     if (!isMobile) {
         setTimeout(() => {
-            const scaleEl = document.querySelector('.leaflet-control-scale');
-            if (scaleEl) {
-                // Wyrywamy skalę z klatki Leafleta
-                scaleEl.style.position = 'absolute';
-                scaleEl.style.cursor = 'grab';
-                scaleEl.style.zIndex = '3500';
-                
-                // Ustawiamy sztywne piksele by uniknąć teleportacji
-                const rect = scaleEl.getBoundingClientRect();
-                const mapRect = document.getElementById('mapExport').getBoundingClientRect();
-                scaleEl.style.bottom = 'auto';
-                scaleEl.style.right = 'auto';
-                scaleEl.style.left = (rect.left - mapRect.left) + 'px';
-                scaleEl.style.top = (rect.top - mapRect.top) + 'px';
+            const scaleEl = document.querySelector('#mapExport .leaflet-control-scale');
+            if (!scaleEl) return;
 
-                // Specjalny Drag & Drop tylko dla skali (bez szukania modal-header)
-                let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-                scaleEl.onmousedown = (e) => {
-                    e.preventDefault();
-                    scaleEl.style.cursor = 'grabbing';
-                    pos3 = e.clientX;
-                    pos4 = e.clientY;
-                    document.onmouseup = () => {
-                        document.onmouseup = null;
-                        document.onmousemove = null;
-                        scaleEl.style.cursor = 'grab';
-                    };
-                    document.onmousemove = (e2) => {
-                        e2.preventDefault();
-                        pos1 = pos3 - e2.clientX;
-                        pos2 = pos4 - e2.clientY;
-                        pos3 = e2.clientX;
-                        pos4 = e2.clientY;
-                        scaleEl.style.top = (scaleEl.offsetTop - pos2) + "px";
-                        scaleEl.style.left = (scaleEl.offsetLeft - pos1) + "px";
-                    };
+            const wrapper = document.getElementById('exportWrapper');
+            
+            // Wyciągamy element ze standardowych blokad Leafleta do głównego okna
+            scaleEl.id = 'custom-draggable-scale';
+            wrapper.appendChild(scaleEl);
+
+            // Wymuszamy bezpieczną i widoczną pozycję startową
+            scaleEl.style.position = 'absolute';
+            scaleEl.style.bottom = '30px'; 
+            scaleEl.style.left = '30px'; 
+            scaleEl.style.zIndex = '3500';
+            scaleEl.style.cursor = 'grab';
+            scaleEl.style.background = 'rgba(255,255,255,0.8)';
+            scaleEl.style.padding = '2px 6px';
+            scaleEl.style.borderRadius = '4px';
+            scaleEl.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+
+            // Czysty i bezpieczny Drag & Drop
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            scaleEl.onmousedown = (e) => {
+                e.preventDefault();
+                scaleEl.style.cursor = 'grabbing';
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+
+                document.onmouseup = () => {
+                    document.onmouseup = null;
+                    document.onmousemove = null;
+                    scaleEl.style.cursor = 'grab';
                 };
-            }
-        }, 100); // 100ms opóźnienia, by DOM zdążył narysować
+
+                document.onmousemove = (e2) => {
+                    e2.preventDefault();
+                    pos1 = pos3 - e2.clientX;
+                    pos2 = pos4 - e2.clientY;
+                    pos3 = e2.clientX;
+                    pos4 = e2.clientY;
+                    
+                    // Usuwamy bottom/right by nie blokowały ruchu przez top/left
+                    scaleEl.style.bottom = 'auto';
+                    scaleEl.style.right = 'auto';
+                    
+                    scaleEl.style.top = (scaleEl.offsetTop - pos2) + "px";
+                    scaleEl.style.left = (scaleEl.offsetLeft - pos1) + "px";
+                };
+            };
+            
+            // Oczyszczamy martwe strefy Leafleta, by nie blokowały klikania w mapę pod spodem
+            document.querySelectorAll('#mapExport .leaflet-bottom').forEach(el => el.style.pointerEvents = 'none');
+
+        }, 100);
     }
 }
-
 /* --- ZRZUTY EKRANU DLA EKSPORTU (NAPRAWIONE) --- */
 
 async function exportMapPNG() {
@@ -2255,60 +2272,56 @@ async function printExportMap() {
 /* ================= WYSZUKIWARKA MIEJSC ================= */
 
 
-// Główna wyszukiwarka mapy (NIEZAWODNA HIERARCHIA)
+/// Główna wyszukiwarka mapy (NIEZAWODNA HIERARCHIA - WERSJA BRUTE-FORCE)
 async function searchLocation() {
     const val = document.getElementById('searchInput').value.trim();
     if(!val) return;
     const valLower = val.toLowerCase();
     const isCoords = val.match(/^([-+]?\d{1,2}(?:\.\d+)?)[,\s]+([-+]?\d{1,3}(?:\.\d+)?)$/);
 
+    let found = null;
+
     // HIERARCHIA 1: Baza Google Sheets
-    let found = globalCustomPois.find(p => p.isGas && (
+    found = globalCustomPois.find(p => p.isGas && (
         (p.id && p.id.toLowerCase() === valLower) || p.name.toLowerCase().includes(valLower) ||
         (isCoords && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
     ));
 
-    // HIERARCHIA 2: Własne punkty użytkownika (Wczytywanie świeżych z LocalStorage!) ORAZ Postoje
+    // HIERARCHIA 2: Moje Punkty (LocalStorage + Sesja) ORAZ Postoje
     if (!found) {
-        // 1. Świeże pobranie z dysku gwarantuje najnowszą bazę
-        const lsData = localStorage.getItem('gpx_user_pois');
-        let freshUserPois = lsData ? JSON.parse(lsData) : [];
-        
-        // 2. Dodajemy punkty, które użytkownik stworzył "Na sesję" (są tylko w RAM)
-        const sessionPois = userSavedPois.filter(p => p.storage === 'session');
-        
-        // 3. Połączenie wszystkich (Dysk + Sesja + Postoje)
-        const combinedMyPoints = [
-            ...freshUserPois.map(p => ({...p, isStop: false})),
-            ...sessionPois.map(p => ({...p, isStop: false})),
-            ...routeStops.map(s => ({
-                id: s.id, lat: s.latlng.lat, lng: s.latlng.lng, name: s.name, desc: s.desc, icon: s.visualType==='dot'?'☕':s.icon, storage:'session', isStop: true
-            }))
-        ];
+        const allMyPoints = [...userSavedPois, ...routeStops];
 
-        const userFound = combinedMyPoints.find(p => (
-            p.name.toLowerCase().includes(valLower) || 
-            (p.rawTitle && p.rawTitle.toLowerCase().includes(valLower)) ||
-            (isCoords && p.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
-        ));
+        for (let p of allMyPoints) {
+            const pName = p.name ? p.name.toLowerCase() : '';
+            const rawName = p.rawTitle ? p.rawTitle.toLowerCase() : '';
+            
+            // Wydobycie współrzędnych niezależnie od struktury obiektu
+            const pLat = p.lat !== undefined ? p.lat : (p.latlng ? p.latlng.lat : null);
+            const pLng = p.lng !== undefined ? p.lng : (p.latlng ? p.latlng.lng : null);
 
-        if (userFound) {
-            found = {
-                id: userFound.id,
-                latlng: L.latLng(userFound.lat, userFound.lng),
-                name: userFound.name,
-                icon: userFound.icon,
-                category: userFound.isStop ? "Postój trasy" : (userFound.storage === 'local' ? "Zapisane na stałe" : "Zapisane w tej sesji"),
-                description: userFound.desc,
-                isUserSaved: true,
-                storage: userFound.storage,
-                rawLat: userFound.lat,
-                rawLng: userFound.lng,
-                rawTitle: userFound.rawTitle || userFound.name
-            };
+            // Sprawdzanie zgodności tekstu lub współrzędnych
+            if (pName.includes(valLower) || rawName.includes(valLower) ||
+               (isCoords && pLat !== null && pLat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))) {
+
+                found = {
+                    id: p.id,
+                    latlng: L.latLng(pLat, pLng),
+                    name: p.name,
+                    icon: p.icon || (p.visualType === 'dot' ? '☕' : '📍'),
+                    category: p.isStop ? "Postój trasy" : (p.storage === 'local' ? "Zapisane na stałe" : "Zapisane w tej sesji"),
+                    description: p.desc || p.description || '',
+                    isUserSaved: true,
+                    storage: p.storage || 'session',
+                    rawLat: pLat,
+                    rawLng: pLng,
+                    rawTitle: p.rawTitle || p.name
+                };
+                break; // Znaleziono, przerywamy pętlę!
+            }
         }
     }
 
+    // JEŚLI ZNALEZIONO W GAS LUB MOICH PUNKTACH:
     if (found) {
         map.setView(found.latlng, 15);
         openCustomPoiModal(found);
@@ -2316,7 +2329,7 @@ async function searchLocation() {
         return; 
     }
 
-    // HIERARCHIA 3: Zwykłe OSM po współrzędnych
+    // HIERARCHIA 3: Zwykłe OSM po wpisanych współrzędnych
     if(isCoords) {
         placeSearchMarker(parseFloat(isCoords[1]), parseFloat(isCoords[2]), "Wyszukane współrzędne: " + val);
         return;
@@ -2330,11 +2343,11 @@ async function searchLocation() {
         if(data && data.length > 0) {
             placeSearchMarker(data[0].lat, data[0].lon, data[0].display_name);
         } else {
-            showCustomAlert("Nie znaleziono miejsca w bazie, Twoich punktach ani w OpenStreetMap.");
+            showCustomAlert("Nie znaleziono miejsca w bazie GS, Twoich punktach ani w OpenStreetMap.");
         }
     } catch(e) {
         console.error(e);
-        showCustomAlert("Wystąpił błąd sieci podczas wyszukiwania.");
+        showCustomAlert("Wystąpił błąd sieci podczas wyszukiwania w globalnej bazie.");
     } finally {
         document.body.style.cursor = 'default';
     }
