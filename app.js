@@ -16,6 +16,8 @@ const OSM_BLACKLIST = {
 const OSM_HIDE_RULES = {
     "access": ["private", "no", "customers", "prywatny", "zamknięty"], // Ukryj prywatne/brak dostępu
     "parking": ["private", "multi-storey", "underground"],             // Ukryj parkingi prywatne/piętrowe
+    "parking_space": ["disabled"],
+    "shelter_type": ["public_transport"],                             // Ukrywam wiaty przystnakowe
     "amenity": ["vending_machine", "waste_disposal", "atm"],          // Ukryj automaty, śmietniska, bankomaty
     "abandoned": ["yes"],                                             // Ukryj obiekty opuszczone
     "construction": ["yes"]                                           // Ukryj obiekty w budowie
@@ -1807,7 +1809,7 @@ const OSM_DICT = {
     "nature": "Natura",
     "hiking": "Wędrowanie",
     "picnic_site": "Miejsce piknikowe",
-    "public transport": "Transport publiczny",
+    "public_transport": "Transport publiczny",
     "access": "Dostępne",
     "stele": "Stela",
     "private": "Prywatny",
