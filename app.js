@@ -91,6 +91,9 @@ let lbCurrentIndex = 0;
 let lbCurrentZoom = 1;
 let lbPanX = 0;
 let lbPanY = 0;
+let isExportSatellite = false;
+let exportSatelliteLayer = null;
+let isPanelScaleMode = false;
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
@@ -2124,30 +2127,64 @@ function executeRefreshRoute() {
     // Na koniec odświeżamy punkty (żeby wskoczyły na nowe współrzędne trasy)
     syncExportPoints();
 }
+/* --- INTELIGENTNA SKALA (PRZESUWANIE BEZ BŁĘDÓW) --- */
 function toggleScale() {
     if (!exportMap) return;
-    scaleVisible = !scaleVisible;
     
-    if (scaleVisible) {
-        const isMobile = window.innerWidth <= 768;
-        // Na mobile ładujemy ją domyślnie na dół z lewej
-        scaleControl = L.control.scale({ imperial: false, position: isMobile ? 'bottomleft' : 'bottomright' });
-        scaleControl.addTo(exportMap);
-        
-        // Na PC uwalniamy ją z klatki i pozwalamy przesuwać
-        if (!isMobile) {
-            setTimeout(() => {
-                const scaleEl = document.querySelector('.leaflet-control-scale');
-                if (scaleEl) {
-                    scaleEl.style.position = 'absolute';
-                    scaleEl.style.cursor = 'grab';
-                    scaleEl.style.zIndex = '3000';
-                    makePanelDraggable(scaleEl); 
-                }
-            }, 100);
-        }
-    } else {
+    // Jeśli była na mapie, usuń ją (Toggle OFF)
+    if (scaleControl) {
         exportMap.removeControl(scaleControl);
+        scaleControl = null;
+        return;
+    }
+    
+    // Tworzenie (Toggle ON)
+    const isMobile = window.innerWidth <= 768;
+    scaleControl = L.control.scale({ imperial: false, position: isMobile ? 'bottomleft' : 'bottomright' });
+    scaleControl.addTo(exportMap);
+    
+    // Na PC zwalniamy skalę z blokad Leafleta i pozwalamy przesuwać
+    if (!isMobile) {
+        setTimeout(() => {
+            const scaleEl = document.querySelector('.leaflet-control-scale');
+            if (scaleEl) {
+                // Wyrywamy skalę z klatki Leafleta
+                scaleEl.style.position = 'absolute';
+                scaleEl.style.cursor = 'grab';
+                scaleEl.style.zIndex = '3500';
+                
+                // Ustawiamy sztywne piksele by uniknąć teleportacji
+                const rect = scaleEl.getBoundingClientRect();
+                const mapRect = document.getElementById('mapExport').getBoundingClientRect();
+                scaleEl.style.bottom = 'auto';
+                scaleEl.style.right = 'auto';
+                scaleEl.style.left = (rect.left - mapRect.left) + 'px';
+                scaleEl.style.top = (rect.top - mapRect.top) + 'px';
+
+                // Specjalny Drag & Drop tylko dla skali (bez szukania modal-header)
+                let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+                scaleEl.onmousedown = (e) => {
+                    e.preventDefault();
+                    scaleEl.style.cursor = 'grabbing';
+                    pos3 = e.clientX;
+                    pos4 = e.clientY;
+                    document.onmouseup = () => {
+                        document.onmouseup = null;
+                        document.onmousemove = null;
+                        scaleEl.style.cursor = 'grab';
+                    };
+                    document.onmousemove = (e2) => {
+                        e2.preventDefault();
+                        pos1 = pos3 - e2.clientX;
+                        pos2 = pos4 - e2.clientY;
+                        pos3 = e2.clientX;
+                        pos4 = e2.clientY;
+                        scaleEl.style.top = (scaleEl.offsetTop - pos2) + "px";
+                        scaleEl.style.left = (scaleEl.offsetLeft - pos1) + "px";
+                    };
+                };
+            }
+        }, 100); // 100ms opóźnienia, by DOM zdążył narysować
     }
 }
 
@@ -2218,8 +2255,7 @@ async function printExportMap() {
 /* ================= WYSZUKIWARKA MIEJSC ================= */
 
 
-// Główna wyszukiwarka mapy (POPRAWIONA hierarchia)
-// Główna wyszukiwarka mapy (POPRAWIONA)
+// Główna wyszukiwarka mapy (NIEZAWODNA HIERARCHIA)
 async function searchLocation() {
     const val = document.getElementById('searchInput').value.trim();
     if(!val) return;
@@ -2232,11 +2268,19 @@ async function searchLocation() {
         (isCoords && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
     ));
 
-    // HIERARCHIA 2: Własne punkty użytkownika ORAZ Postoje trasy
+    // HIERARCHIA 2: Własne punkty użytkownika (Wczytywanie świeżych z LocalStorage!) ORAZ Postoje
     if (!found) {
-        // Złączenie własnych i postojów w jedną strukturę roboczą
+        // 1. Świeże pobranie z dysku gwarantuje najnowszą bazę
+        const lsData = localStorage.getItem('gpx_user_pois');
+        let freshUserPois = lsData ? JSON.parse(lsData) : [];
+        
+        // 2. Dodajemy punkty, które użytkownik stworzył "Na sesję" (są tylko w RAM)
+        const sessionPois = userSavedPois.filter(p => p.storage === 'session');
+        
+        // 3. Połączenie wszystkich (Dysk + Sesja + Postoje)
         const combinedMyPoints = [
-            ...userSavedPois.map(p => ({...p, isStop: false})),
+            ...freshUserPois.map(p => ({...p, isStop: false})),
+            ...sessionPois.map(p => ({...p, isStop: false})),
             ...routeStops.map(s => ({
                 id: s.id, lat: s.latlng.lat, lng: s.latlng.lng, name: s.name, desc: s.desc, icon: s.visualType==='dot'?'☕':s.icon, storage:'session', isStop: true
             }))
@@ -2295,7 +2339,6 @@ async function searchLocation() {
         document.body.style.cursor = 'default';
     }
 }
-
 function placeSearchMarker(lat, lon, title) {
     const numericLat = parseFloat(lat);
     const numericLon = parseFloat(lon);
@@ -5184,3 +5227,80 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+function toggleExportSatellite() {
+    if(!exportMap) return;
+    
+    isExportSatellite = !isExportSatellite;
+    const btn = document.getElementById('btnSatExport');
+    
+    if(isExportSatellite) {
+        if(exportTileLayer) exportMap.removeLayer(exportTileLayer);
+        exportSatelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri',
+            maxZoom: 19
+        }).addTo(exportMap);
+        btn.innerText = "Zwykła mapa";
+        btn.style.boxShadow = "0 0 10px white";
+    } else {
+        if(exportSatelliteLayer) exportMap.removeLayer(exportSatelliteLayer);
+        exportTileLayer = getExportTileLayer();
+        exportTileLayer.addTo(exportMap);
+        btn.innerText = "Satelita";
+        btn.style.boxShadow = "none";
+    }
+}
+function togglePanelScale() {
+    isPanelScaleMode = !isPanelScaleMode;
+    const btn = document.getElementById('btnScalePanel');
+    btn.style.boxShadow = isPanelScaleMode ? "0 0 10px white" : "none";
+    
+    const targets = [document.getElementById('mapInfoPanel'), ...document.querySelectorAll('.detached-panel')];
+    
+    targets.forEach(el => {
+        if(!el) return;
+        
+        if(isPanelScaleMode) {
+            // Dodajemy widoczną obwódkę informującą, że panel można powiększać
+            el.style.outline = "2px dashed #ec4899";
+            el.style.cursor = "zoom-in";
+            
+            // Obsługa KÓŁKA MYSZY do precyzyjnego skalowania (PC)
+            el.addEventListener('wheel', handlePanelWheelZoom);
+            // Użycie Twojej wcześniejszej funkcji na telefony (Pinch-to-zoom)
+            if(typeof window.makePinchZoomable === 'function') {
+                window.makePinchZoomable(el);
+            }
+        } else {
+            el.style.outline = "none";
+            el.style.cursor = "";
+            el.removeEventListener('wheel', handlePanelWheelZoom);
+        }
+    });
+    
+    if(isPanelScaleMode) {
+        showCustomAlert("Tryb Skalowania aktywny! Użyj kółka myszy na wybranym panelu, aby go powiększyć lub pomniejszyć (na telefonie użyj dwóch palców).");
+    }
+}
+
+function handlePanelWheelZoom(e) {
+    e.preventDefault(); // Blokujemy przewijanie mapy lub strony
+    e.stopPropagation();
+
+    const el = e.currentTarget;
+    let currentScale = el.dataset.scale ? parseFloat(el.dataset.scale) : 1;
+
+    // e.deltaY to kierunek rolki (w dół/w górę)
+    if (e.deltaY < 0) {
+        currentScale += 0.05; // Powiększ
+    } else {
+        currentScale -= 0.05; // Pomniejsz
+    }
+
+    // Bezpieczne limity od 40% do 250%
+    currentScale = Math.max(0.4, Math.min(currentScale, 2.5));
+    
+    // Ustawienie transform origin na centrum, żeby tekst nie uciekał z rogu okna
+    el.style.transformOrigin = "top left";
+    el.style.scale = currentScale;
+    el.dataset.scale = currentScale;
+}
