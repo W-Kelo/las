@@ -427,6 +427,7 @@ makeDraggable(document.getElementById('pointsModal'));
 makeDraggable(document.getElementById('descModal'));
 makeDraggable(document.getElementById('styleModal'));
 makeDraggable(document.getElementById('stopsModal'));
+makeDraggable(document.getElementById('fullGalleryModal'));
 makeDraggable(document.getElementById('stopsWarningModal'));
 
 // Otwieranie dowolnego pływającego modalu - wymusza centrowanie!
@@ -2373,6 +2374,7 @@ function openExportPicker(type) {
     filterPickerList(); // Odśwież listę po otwarciu
 }
 // Zastąp funkcję filterPickerList aby ZAWIERAŁA POSTOJE w modalu bazy punktów eksportu
+// Zastąp starą funkcję filterPickerList
 function filterPickerList() {
     const query = document.getElementById('pickerSearch').value.toLowerCase();
     const container = document.getElementById('pickerListContainer');
@@ -2382,7 +2384,6 @@ function filterPickerList() {
     if (tempPickerType === 'gas') {
         dataSource = globalCustomPois.filter(p => p.isGas);
     } else {
-        // Dodajemy postoje z poprawnymi ikonami, udając że są zapisanymi punktami na sesję
         const formattedStops = routeStops.map(s => ({
             id: s.id, latlng: s.latlng, name: s.name, 
             icon: s.visualType === 'dot' ? '☕' : s.icon, 
@@ -2391,22 +2392,25 @@ function filterPickerList() {
         dataSource = [...userSavedPois, ...formattedStops]; 
     }
 
-    const selectedSet = exportPointSettings[tempPickerType].ids;
-
     if (dataSource.length === 0) {
         container.innerHTML = `<p style="text-align:center; padding: 10px; color:#94a3b8;">Brak punktów.</p>`;
         return;
     }
 
+    // Bezpośrednie odczytanie pamięci Set
+    const selectedSet = exportPointSettings[tempPickerType].ids;
+
     dataSource.forEach(p => {
         if (!p.name.toLowerCase().includes(query)) return;
+        
         const isChecked = selectedSet.has(p.id) ? 'checked' : '';
         let badge = (tempPickerType === 'user') ? (p.storage === 'local' ? `[Na stałe]` : `[Sesja]`) : '';
         if (p.isStop) badge = `<span style="color:#f59e0b; font-weight:bold;">[POSTÓJ]</span>`;
         
         container.innerHTML += `
             <label class="picker-item-styled" style="display:flex; align-items:center; gap:10px; padding:8px; border-bottom:1px solid rgba(255,255,255,0.1); cursor:pointer;">
-                <input type="checkbox" class="picker-cb" value="${p.id}" ${isChecked}>
+                <!-- ZMIANA: Wywołanie nowej funkcji live na zdarzeniu onchange -->
+                <input type="checkbox" onchange="toggleExportPointSelection('${p.id}', this.checked)" ${isChecked}>
                 <span style="font-size:1.2rem;">${p.icon}</span> 
                 <div style="display:flex; flex-direction:column; line-height: 1.2;">
                     <span style="font-weight:bold; font-size:0.9rem;">${p.name}</span>
@@ -2417,6 +2421,39 @@ function filterPickerList() {
     });
 }
 
+// NOWA FUNKCJA - Działa w tle natychmiast przy kliknięciu checkboxa
+function toggleExportPointSelection(id, isChecked) {
+    if (isChecked) {
+        exportPointSettings[tempPickerType].ids.add(id);
+    } else {
+        exportPointSettings[tempPickerType].ids.delete(id);
+    }
+}
+
+// Zastąp stare selectAllPicker
+function selectAllPicker(state) {
+    let dataSource = [];
+    if (tempPickerType === 'gas') dataSource = globalCustomPois.filter(p => p.isGas);
+    else dataSource = [...userSavedPois, ...routeStops];
+    
+    const query = document.getElementById('pickerSearch').value.toLowerCase();
+    
+    // Zaznaczamy/Odznaczamy w pamięci (tylko te, które odpowiadają filtrowi!)
+    dataSource.forEach(p => {
+        if (p.name.toLowerCase().includes(query)) {
+            toggleExportPointSelection(p.id, state);
+        }
+    });
+    
+    filterPickerList(); // Przeładowanie widoku
+}
+
+// Zastąp stare savePickerSelection (Teraz jest o wiele prostsze)
+function savePickerSelection() {
+    // Stan jest już zapisany w zmiennej Set. Zamykamy tylko okno i aktualizujemy mapę.
+    document.getElementById('exportPickerModal').style.display = 'none';
+    syncExportPoints(); 
+}
 
 function savePickerSelection() {
     const selectedIds = new Set();
@@ -3184,6 +3221,7 @@ async function loadGoogleSheetsPOIs() {
             if (isNaN(lat) || isNaN(lng)) return;
 
             const iconEmoji = item.icon || '📍';
+           // W loadGoogleSheetsPOIs zmień poiObj:
             const poiObj = {
                 id: item.id ? String(item.id).trim() : `obiekt_${index}`,
                 latlng: L.latLng(lat, lng),
@@ -3191,7 +3229,7 @@ async function loadGoogleSheetsPOIs() {
                 icon: iconEmoji,
                 category: item.category || 'Atrakcja',
                 description: item.description || '',
-                photos: item.photos || '',
+                photos: item.photos || [], // ZMIANA: odbieramy jako tablicę obiektów, a nie string
                 isGas: true
             };
             
@@ -3265,23 +3303,37 @@ function openCustomPoiModal(poiData) {
     document.getElementById('cpoiCategory').innerText = poiData.category || "Inne";
     document.getElementById('cpoiDesc').innerHTML = poiData.description || "Brak opisu.";
 
-    // Renderowanie Galerii Głównej (Niezawodna metoda HTML)
+   // Renderowanie Galerii Głównej
     const galleryContainer = document.getElementById('cpoiGallery');
     galleryContainer.innerHTML = ''; 
     galleryContainer.style.display = 'none';
 
-    if (poiData.photos) {
-        const photoUrls = poiData.photos.split(';').map(u => u.trim()).filter(u => u.length > 0);
-        if (photoUrls.length > 0) {
-            galleryContainer.style.display = 'grid';
-            let imagesHtml = '';
-            
-            // Wklejamy komendę kliknięcia bezpośrednio w tekst HTML
-            photoUrls.forEach(url => {
-                imagesHtml += `<img src="${url}" alt="${poiData.name}" style="cursor: zoom-in;" onclick="forceOpenLightbox('${url}')">`;
-            });
-            
-            galleryContainer.innerHTML = imagesHtml;
+    if (poiData.photos && Array.isArray(poiData.photos) && poiData.photos.length > 0) {
+        galleryContainer.style.display = 'grid';
+        
+        // Decyzja: ile wyświetlamy?
+        const limit = 3;
+        const total = poiData.photos.length;
+        const photosToShow = poiData.photos.slice(0, limit);
+        
+        // Mapowanie do tablicy samych URLi i meta dla nowego Lightboxa
+        window._currentGalleryData = poiData.photos; // Zapisz do zmiennej globalnej dla nawigacji!
+        
+        let imagesHtml = '';
+        photosToShow.forEach((photoObj, idx) => {
+            imagesHtml += `<img src="${photoObj.url}" alt="${photoObj.title || poiData.name}" style="cursor: zoom-in;" onclick="openAdvancedLightbox(${idx})">`;
+        });
+        
+        galleryContainer.innerHTML = imagesHtml;
+
+        // Jeśli jest więcej niż 3 zdjęcia, dorzucamy przycisk jako kafel
+        if (total > limit) {
+            galleryContainer.innerHTML += `
+                <div onclick="openFullGalleryModal('${poiData.name}')" style="background: rgba(59, 130, 246, 0.2); border: 2px dashed #3b82f6; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; min-height: 100px;">
+                    <span style="font-size: 1.8rem;">+${total - limit}</span>
+                    <span style="font-size: 0.8rem; font-weight: bold; color: #3b82f6; text-align: center;">Zobacz<br>wszystkie</span>
+                </div>
+            `;
         }
     }
 
@@ -3717,20 +3769,6 @@ function applyExportStyle() {
 }
 
 
-
-function selectAllPicker(state) {
-    document.querySelectorAll('.picker-cb').forEach(cb => cb.checked = state);
-}
-
-function savePickerSelection() {
-    const selectedIds = new Set();
-    document.querySelectorAll('.picker-cb:checked').forEach(cb => selectedIds.add(cb.value));
-    exportPointSettings[tempPickerType].ids = selectedIds;
-    
-    document.getElementById('exportPickerModal').style.display = 'none';
-    syncExportPoints(); // Wymuś natychmiastowe przeliczenie!
-}
-
 // Główny silnik synchronizujący punkty na mapie i w legendzie
 function syncExportPoints() {
     if (!exportMap || !exportMap._loaded) return; 
@@ -3832,9 +3870,8 @@ function addAutoLegendItemToDOM(id) {
     `;
     list.appendChild(li);
 }
-    /* ================= SILNIK POSTOJÓW (BREAKS) ================= */
 
-/* ================= NAPRAWIONA LOGIKA WYWOŁANIA CZASU POSTOJÓW ================= */
+/* =================  SYTEM POSTOJÓW ================= */
 function openStopsModal() {
     // 1. Zwijamy pasek mobilny jeśli jest otwarty
     if (window.innerWidth <= 768) toggleMobileNav(true);
@@ -4726,45 +4763,159 @@ function makePinchZoomable(el) {
     });
 }
 /* --- LIGHTBOX (PEŁNY EKRAN DLA ZDJĘĆ) - WERSJA NOWA --- */
-window.forceOpenLightbox = function(url) {
-    console.log("Otwieram zdjęcie (wymuszony root):", url);
+/* ================= ZAAWANSOWANA GALERIA I LIGHTBOX ================= */
+
+function openFullGalleryModal(poiName) {
+    document.getElementById('fgmTitle').innerText = `📸 Galeria: ${poiName}`;
+    const grid = document.getElementById('fgmGrid');
+    grid.innerHTML = '';
     
-    let overlay = document.getElementById('lightboxOverlay');
+    window._currentGalleryData.forEach((photoObj, idx) => {
+        grid.innerHTML += `<img src="${photoObj.url}" style="width: 100%; height: 120px; object-fit: cover; border-radius: 6px; cursor: zoom-in; box-shadow: 0 2px 5px rgba(0,0,0,0.3);" onclick="openAdvancedLightbox(${idx})">`;
+    });
     
-    // 1. Jeśli kod HTML nakładki nie istnieje LUB utknął wewnątrz innego modalu:
+    openCenteredModal('fullGalleryModal');
+}
+
+// Zmienne stanowe Lightboxa
+let lbCurrentIndex = 0;
+let lbCurrentZoom = 1;
+
+window.openAdvancedLightbox = function(startIndex) {
+    lbCurrentIndex = startIndex;
+    lbCurrentZoom = 1;
+    
+    let overlay = document.getElementById('advLightboxOverlay');
     if (!overlay) {
-        // Tworzymy go w locie
         overlay = document.createElement('div');
-        overlay.id = 'lightboxOverlay';
+        overlay.id = 'advLightboxOverlay';
+        // Tworzymy szkielet z UI
         overlay.innerHTML = `
-            <button onclick="window.forceCloseLightbox(event)" style="position:absolute; top:20px; right:20px; background:rgba(255,255,255,0.2); color:white; border:none; width:45px; height:45px; border-radius:50%; font-size:24px; cursor:pointer; z-index:9999999; display:flex; align-items:center; justify-content:center; transition:0.2s;">✖</button>
-            <img id="lightboxImage" src="" alt="Zoom" style="max-width:95vw; max-height:95vh; object-fit:contain; border-radius:8px; box-shadow:0 10px 50px rgba(0,0,0,0.9); cursor:default;" onclick="event.stopPropagation()">
+            <!-- Górny pasek kontrolny -->
+            <div style="position: absolute; top: 15px; right: 15px; display: flex; gap: 10px; z-index: 9999999;">
+                <button onclick="lbZoom(-0.2)" style="background:rgba(0,0,0,0.5); color:white; border:1px solid #fff; border-radius:6px; padding: 5px 15px; font-size:18px; cursor:pointer;">➖</button>
+                <button onclick="lbZoom(0.2)" style="background:rgba(0,0,0,0.5); color:white; border:1px solid #fff; border-radius:6px; padding: 5px 15px; font-size:18px; cursor:pointer;">➕</button>
+                <button onclick="closeAdvancedLightbox(event)" style="background:rgba(239, 68, 68, 0.8); color:white; border:none; border-radius:6px; padding: 5px 15px; font-size:18px; cursor:pointer;">✖</button>
+            </div>
+            
+            <!-- Strzałki Nawigacji -->
+            <button id="lbPrevBtn" onclick="lbNavigate(-1, event)" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.2); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:24px; cursor:pointer; z-index: 9999999; backdrop-filter: blur(5px);">❮</button>
+            <button id="lbNextBtn" onclick="lbNavigate(1, event)" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.2); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:24px; cursor:pointer; z-index: 9999999; backdrop-filter: blur(5px);">❯</button>
+
+            <!-- Główny kontener obrazu -->
+            <div id="lbImageWrapper" style="overflow: auto; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center;">
+                <img id="advLightboxImage" src="" style="max-width:95vw; max-height:90vh; object-fit:contain; border-radius:4px; transition: transform 0.2s ease-out; cursor: grab;" onclick="event.stopPropagation()">
+            </div>
+
+            <!-- Panel Metadanych (Info) -->
+            <div id="lbInfoPanel" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 500px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; color: white; padding: 15px; z-index: 9999999; transition: max-height 0.3s ease; overflow: hidden; max-height: 500px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <strong id="lbTitle" style="font-size: 1.1rem; color: #3b82f6;"></strong>
+                    <button onclick="toggleLbInfo()" id="lbToggleBtn" style="background:transparent; color:#94a3b8; border:none; font-size:1.2rem; cursor:pointer;">▼</button>
+                </div>
+                <div id="lbInfoDetails">
+                    <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 10px;">
+                        <span>👤 <span id="lbAuthor"></span></span> &nbsp;|&nbsp; <span>📅 <span id="lbDate"></span></span>
+                    </div>
+                    <div id="lbDesc" style="font-size: 0.9rem; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;"></div>
+                </div>
+            </div>
         `;
-        overlay.onclick = window.forceCloseLightbox;
-        document.body.appendChild(overlay); // Wrzucamy bezpośrednio do <body>
-    } else if (overlay.parentNode !== document.body) {
-        // Jeśli istnieje, ale utknął w innym oknie - przenosimy go prosto do <body>
         document.body.appendChild(overlay);
+
+        // Zdarzenia dotykowe (Swipe) dla całej nakładki
+        let touchStartX = 0;
+        overlay.addEventListener('touchstart', e => touchStartX = e.changedTouches[0].screenX);
+        overlay.addEventListener('touchend', e => {
+            const touchEndX = e.changedTouches[0].screenX;
+            if (touchEndX < touchStartX - 50) lbNavigate(1); // Swipe w lewo -> następne
+            if (touchEndX > touchStartX + 50) lbNavigate(-1); // Swipe w prawo -> poprzednie
+        });
+        
+        overlay.onclick = window.closeAdvancedLightbox;
     }
 
-    // 2. Twarde wstrzyknięcie stylów CSS bez pytania
     Object.assign(overlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
-        background: 'rgba(0,0,0,0.95)', zIndex: '9999998',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out'
+        background: 'rgba(0,0,0,0.95)', zIndex: '9999998', display: 'block'
     });
-
-    // 3. Ładowanie obrazu
-    const imgElement = document.getElementById('lightboxImage');
-    if(imgElement) imgElement.src = url;
     
-    // Blokada scrollowania strony w tle
     document.body.style.overflow = 'hidden';
+    updateLightboxView();
+    
+    // Obsługa klawiatury (tylko na czas otwarcia modalu)
+    document.addEventListener('keydown', lbKeyboardHandler);
 };
 
-window.forceCloseLightbox = function(e) {
+function updateLightboxView() {
+    const data = window._currentGalleryData;
+    if(!data || data.length === 0) return;
+    
+    const photo = data[lbCurrentIndex];
+    const img = document.getElementById('advLightboxImage');
+    
+    // Reset zoomu przy zmianie zdjęcia
+    lbCurrentZoom = 1;
+    img.style.transform = `scale(1)`;
+    img.src = photo.url;
+
+    // Nawigacja (ukrywanie strzałek przy 1 zdjęciu)
+    document.getElementById('lbPrevBtn').style.display = data.length > 1 ? 'block' : 'none';
+    document.getElementById('lbNextBtn').style.display = data.length > 1 ? 'block' : 'none';
+
+    // Aktualizacja metadanych
+    document.getElementById('lbTitle').innerText = photo.title || 'Brak tytułu';
+    document.getElementById('lbAuthor').innerText = photo.author || 'Nieznany';
+    document.getElementById('lbDate').innerText = photo.date || '-';
+    
+    const descEl = document.getElementById('lbDesc');
+    descEl.innerText = photo.description || 'Brak dodatkowego opisu.';
+    
+    // Jeśli nie ma ani tytułu ani opisu - zwiń panel
+    if (!photo.title && !photo.description) {
+        document.getElementById('lbInfoDetails').style.display = 'none';
+        document.getElementById('lbToggleBtn').innerText = '▲';
+    } else {
+        document.getElementById('lbInfoDetails').style.display = 'block';
+        document.getElementById('lbToggleBtn').innerText = '▼';
+    }
+}
+
+function lbNavigate(dir, e) {
+    if(e) e.stopPropagation();
+    const data = window._currentGalleryData;
+    lbCurrentIndex = (lbCurrentIndex + dir + data.length) % data.length;
+    updateLightboxView();
+}
+
+function lbZoom(val) {
+    const img = document.getElementById('advLightboxImage');
+    lbCurrentZoom = Math.max(0.5, Math.min(lbCurrentZoom + val, 4)); // Ograniczenie zoomu 0.5x do 4x
+    img.style.transform = `scale(${lbCurrentZoom})`;
+}
+
+function toggleLbInfo() {
+    const details = document.getElementById('lbInfoDetails');
+    const btn = document.getElementById('lbToggleBtn');
+    if (details.style.display === 'none') {
+        details.style.display = 'block';
+        btn.innerText = '▼';
+    } else {
+        details.style.display = 'none';
+        btn.innerText = '▲';
+    }
+}
+
+function lbKeyboardHandler(e) {
+    if (e.key === 'ArrowRight') lbNavigate(1);
+    else if (e.key === 'ArrowLeft') lbNavigate(-1);
+    else if (e.key === 'Escape') closeAdvancedLightbox();
+}
+
+window.closeAdvancedLightbox = function(e) {
     if (e) e.stopPropagation(); 
-    const overlay = document.getElementById('lightboxOverlay');
+    const overlay = document.getElementById('advLightboxOverlay');
     if (overlay) overlay.style.display = 'none';
     document.body.style.overflow = ''; 
+    document.removeEventListener('keydown', lbKeyboardHandler);
 };
