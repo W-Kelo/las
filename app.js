@@ -25,8 +25,8 @@ const tiles = {
     dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OSM', crossOrigin: true }),
     light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', crossOrigin: true })
 };
-const satelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-    attribution: '&copy; Google',
+const satelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+    attribution: '&copy; <a href="https://www.google.com/intl/pl_pl/help/terms_maps/">Google Maps</a>',
     maxZoom: 20
 });
 let dark = false; 
@@ -5274,8 +5274,8 @@ function toggleExportSatellite() {
     if(isExportSatellite) {
         if(exportTileLayer) exportMap.removeLayer(exportTileLayer);
         // Fragment wewnątrz toggleExportSatellite:
-exportSatelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-    attribution: '&copy; Google',
+exportSatelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+    attribution: '&copy; Google Maps',
     maxZoom: 20
 }).addTo(exportMap);
         btn.innerText = "Zwykła mapa";
