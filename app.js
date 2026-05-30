@@ -25,9 +25,9 @@ const tiles = {
     dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OSM', crossOrigin: true }),
     light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', crossOrigin: true })
 };
-const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles &copy; Esri',
-    maxZoom: 19
+const satelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+    attribution: '&copy; Google',
+    maxZoom: 20
 });
 let dark = false; 
 let isSatellite = false;
@@ -2129,23 +2129,21 @@ function executeRefreshRoute() {
 }
 /* --- INTELIGENTNA SKALA (PRZESUWANIE BEZ BŁĘDÓW) --- */
 /* --- INTELIGENTNA SKALA (BEZ TELEPORTACJI) --- */
+/* --- INTELIGENTNA SKALA (Z BLOKADĄ KRAWĘDZI) --- */
 function toggleScale() {
     if (!exportMap) return;
     
-    // Jeśli skala już istnieje, wyłącz ją
     if (scaleControl) {
         const existingCustom = document.getElementById('custom-draggable-scale');
-        if (existingCustom) existingCustom.remove(); // Usuwamy nasz wyrwany element
+        if (existingCustom) existingCustom.remove();
         exportMap.removeControl(scaleControl);
         scaleControl = null;
         return;
     }
     
-    // Włącz skalę w Leaflecie
     scaleControl = L.control.scale({ imperial: false });
     scaleControl.addTo(exportMap);
     
-    // Jeśli jesteśmy na komputerze, po 100ms wyrywamy ją i robimy draggable
     const isMobile = window.innerWidth <= 768;
     if (!isMobile) {
         setTimeout(() => {
@@ -2153,12 +2151,9 @@ function toggleScale() {
             if (!scaleEl) return;
 
             const wrapper = document.getElementById('exportWrapper');
-            
-            // Wyciągamy element ze standardowych blokad Leafleta do głównego okna
             scaleEl.id = 'custom-draggable-scale';
             wrapper.appendChild(scaleEl);
 
-            // Wymuszamy bezpieczną i widoczną pozycję startową
             scaleEl.style.position = 'absolute';
             scaleEl.style.bottom = '30px'; 
             scaleEl.style.left = '30px'; 
@@ -2169,8 +2164,8 @@ function toggleScale() {
             scaleEl.style.borderRadius = '4px';
             scaleEl.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
 
-            // Czysty i bezpieczny Drag & Drop
             let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            
             scaleEl.onmousedown = (e) => {
                 e.preventDefault();
                 scaleEl.style.cursor = 'grabbing';
@@ -2190,18 +2185,25 @@ function toggleScale() {
                     pos3 = e2.clientX;
                     pos4 = e2.clientY;
                     
-                    // Usuwamy bottom/right by nie blokowały ruchu przez top/left
                     scaleEl.style.bottom = 'auto';
                     scaleEl.style.right = 'auto';
                     
-                    scaleEl.style.top = (scaleEl.offsetTop - pos2) + "px";
-                    scaleEl.style.left = (scaleEl.offsetLeft - pos1) + "px";
+                    // OBLICZANIE GRANIC
+                    let newTop = scaleEl.offsetTop - pos2;
+                    let newLeft = scaleEl.offsetLeft - pos1;
+                    
+                    const maxTop = wrapper.clientHeight - scaleEl.offsetHeight;
+                    const maxLeft = wrapper.clientWidth - scaleEl.offsetWidth;
+                    
+                    // ZABLOKOWANIE W GRANICACH (0 do Max)
+                    newTop = Math.max(0, Math.min(newTop, maxTop));
+                    newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+                    
+                    scaleEl.style.top = newTop + "px";
+                    scaleEl.style.left = newLeft + "px";
                 };
             };
-            
-            // Oczyszczamy martwe strefy Leafleta, by nie blokowały klikania w mapę pod spodem
             document.querySelectorAll('#mapExport .leaflet-bottom').forEach(el => el.style.pointerEvents = 'none');
-
         }, 100);
     }
 }
@@ -2273,6 +2275,7 @@ async function printExportMap() {
 
 
 /// Główna wyszukiwarka mapy (NIEZAWODNA HIERARCHIA - WERSJA BRUTE-FORCE)
+// WYSZUKIWARKA: BEZPOŚREDNI ODCZYT LOCALSTORAGE
 async function searchLocation() {
     const val = document.getElementById('searchInput').value.trim();
     if(!val) return;
@@ -2281,47 +2284,69 @@ async function searchLocation() {
 
     let found = null;
 
-    // HIERARCHIA 1: Baza Google Sheets
+    // 1. SZUKAMY W BAZIE GS
     found = globalCustomPois.find(p => p.isGas && (
         (p.id && p.id.toLowerCase() === valLower) || p.name.toLowerCase().includes(valLower) ||
         (isCoords && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
     ));
 
-    // HIERARCHIA 2: Moje Punkty (LocalStorage + Sesja) ORAZ Postoje
+    // 2. BEZPOŚREDNIE SZUKANIE W LOCALSTORAGE (Pamięć trwała)
     if (!found) {
-        const allMyPoints = [...userSavedPois, ...routeStops];
+        const lsRaw = localStorage.getItem('gpx_user_pois');
+        if (lsRaw) {
+            try {
+                const lsData = JSON.parse(lsRaw);
+                const match = lsData.find(p => 
+                    (p.name && p.name.toLowerCase().includes(valLower)) || 
+                    (p.rawTitle && p.rawTitle.toLowerCase().includes(valLower)) ||
+                    (isCoords && p.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
+                );
 
-        for (let p of allMyPoints) {
-            const pName = p.name ? p.name.toLowerCase() : '';
-            const rawName = p.rawTitle ? p.rawTitle.toLowerCase() : '';
-            
-            // Wydobycie współrzędnych niezależnie od struktury obiektu
-            const pLat = p.lat !== undefined ? p.lat : (p.latlng ? p.latlng.lat : null);
-            const pLng = p.lng !== undefined ? p.lng : (p.latlng ? p.latlng.lng : null);
-
-            // Sprawdzanie zgodności tekstu lub współrzędnych
-            if (pName.includes(valLower) || rawName.includes(valLower) ||
-               (isCoords && pLat !== null && pLat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))) {
-
-                found = {
-                    id: p.id,
-                    latlng: L.latLng(pLat, pLng),
-                    name: p.name,
-                    icon: p.icon || (p.visualType === 'dot' ? '☕' : '📍'),
-                    category: p.isStop ? "Postój trasy" : (p.storage === 'local' ? "Zapisane na stałe" : "Zapisane w tej sesji"),
-                    description: p.desc || p.description || '',
-                    isUserSaved: true,
-                    storage: p.storage || 'session',
-                    rawLat: pLat,
-                    rawLng: pLng,
-                    rawTitle: p.rawTitle || p.name
-                };
-                break; // Znaleziono, przerywamy pętlę!
-            }
+                if (match) {
+                    found = {
+                        id: match.id,
+                        latlng: L.latLng(match.lat, match.lng),
+                        name: match.name,
+                        icon: match.icon || '📍',
+                        category: "Zapisane na stałe",
+                        description: match.desc || '',
+                        isUserSaved: true,
+                        storage: 'local',
+                        rawLat: match.lat,
+                        rawLng: match.lng,
+                        rawTitle: match.rawTitle || match.name
+                    };
+                }
+            } catch (e) { console.error("Błąd parsowania LocalStorage", e); }
         }
     }
 
-    // JEŚLI ZNALEZIONO W GAS LUB MOICH PUNKTACH:
+    // 3. SZUKANIE W SESJI I POSTOJACH (Pamięć ulotna)
+    if (!found) {
+        const tempPoints = [...userSavedPois.filter(p => p.storage === 'session'), ...routeStops];
+        const match = tempPoints.find(p => 
+            (p.name && p.name.toLowerCase().includes(valLower)) || 
+            (isCoords && p.latlng && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
+        );
+
+        if (match) {
+            found = {
+                id: match.id,
+                latlng: match.latlng || L.latLng(match.lat, match.lng),
+                name: match.name,
+                icon: match.visualType === 'dot' ? '☕' : (match.icon || '📍'),
+                category: match.isStop ? "Postój trasy" : "Zapisane w tej sesji",
+                description: match.desc || '',
+                isUserSaved: true,
+                storage: 'session',
+                rawLat: match.latlng ? match.latlng.lat : match.lat,
+                rawLng: match.latlng ? match.latlng.lng : match.lng,
+                rawTitle: match.name
+            };
+        }
+    }
+
+    // WYKONANIE (Otwarcie modalu i skok mapy)
     if (found) {
         map.setView(found.latlng, 15);
         openCustomPoiModal(found);
@@ -2329,13 +2354,13 @@ async function searchLocation() {
         return; 
     }
 
-    // HIERARCHIA 3: Zwykłe OSM po wpisanych współrzędnych
+    // 4. OSM KOORDYNATY
     if(isCoords) {
         placeSearchMarker(parseFloat(isCoords[1]), parseFloat(isCoords[2]), "Wyszukane współrzędne: " + val);
         return;
     }
 
-    // HIERARCHIA 4: Zwykłe OSM (Nominatim API)
+    // 5. OSM NOMINATIM API
     document.body.style.cursor = 'wait';
     try {
         const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=1`);
@@ -2343,11 +2368,11 @@ async function searchLocation() {
         if(data && data.length > 0) {
             placeSearchMarker(data[0].lat, data[0].lon, data[0].display_name);
         } else {
-            showCustomAlert("Nie znaleziono miejsca w bazie GS, Twoich punktach ani w OpenStreetMap.");
+            showCustomAlert("Nie znaleziono miejsca w bazie, Twoich punktach ani w OpenStreetMap.");
         }
     } catch(e) {
         console.error(e);
-        showCustomAlert("Wystąpił błąd sieci podczas wyszukiwania w globalnej bazie.");
+        showCustomAlert("Wystąpił błąd sieci podczas wyszukiwania.");
     } finally {
         document.body.style.cursor = 'default';
     }
@@ -5248,10 +5273,11 @@ function toggleExportSatellite() {
     
     if(isExportSatellite) {
         if(exportTileLayer) exportMap.removeLayer(exportTileLayer);
-        exportSatelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: 'Tiles &copy; Esri',
-            maxZoom: 19
-        }).addTo(exportMap);
+        // Fragment wewnątrz toggleExportSatellite:
+exportSatelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+    attribution: '&copy; Google',
+    maxZoom: 20
+}).addTo(exportMap);
         btn.innerText = "Zwykła mapa";
         btn.style.boxShadow = "0 0 10px white";
     } else {
