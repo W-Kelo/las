@@ -1797,7 +1797,7 @@ const OSM_DICT = {
     "material": "Materiał",
     "description": "Opis",
     "map_type": "Typ mapy",
-    "map_size": "Rozmiar mapy"
+    "map_size": "Rozmiar mapy",
     "Name:de": "Nazwa w j. niemieckim",
     "Bicycle": "Rowerowa",
     "shelter_type": "Typ wiaty",
