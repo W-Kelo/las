@@ -53,6 +53,7 @@
         <label><input type="checkbox" checked onchange="toggleLayer(poiLayer, this)"> Punkty z OSM</label><br>
         <label><input type="checkbox" checked onchange="toggleLayer(customPoiLayer, this)"> Punkty Bazy GS</label><br>
         <label><input type="checkbox" checked onchange="toggleLayer(userSavedLayer, this)"> Moje zapisane punkty</label>
+        <button id="btnSatToggleMob" onclick="toggleSatelliteMap(); closeModal('mobileLayersModal')" style="width:100%; margin-top:15px; background:#475569;">🛰️ Mapa satelitarna</button>
     </div>
 </div>
 <!-- WERSJA MOBILNA: Dolny pasek nawigacyjny -->
@@ -150,7 +151,8 @@
         <label><input type="checkbox" checked onchange="toggleLayer(hikingLayer, this)"> Szlaki turystyczne</label><br>
         <label><input type="checkbox" checked onchange="toggleLayer(poiLayer, this)"> Punkty z OSM</label><br>
         <label><input type="checkbox" checked onchange="toggleLayer(customPoiLayer, this)"> Dodatkowe punkty (Beta)</label><br>
-         <label><input type="checkbox" checked onchange="toggleLayer(userSavedLayer, this)"> Moje zapisane punkty (Beta)</label>
+        <label><input type="checkbox" checked onchange="toggleLayer(userSavedLayer, this)"> Moje zapisane punkty (Beta)</label>
+        <button id="btnSatTogglePc" onclick="toggleSatelliteMap()" style="width:100%; margin-top:10px; background:#475569; font-size: 0.8rem;">🛰️ Przełącz na satelitę</button>
     </div>
 
     <div class="stat-card">
