@@ -1752,6 +1752,67 @@ function translateOSM(val) {
     };
     return dict[val] || val;
 }
+/* --- INTELIGENTNY TŁUMACZ OSM --- */
+const OSM_DICT = {
+    // KLUCZE (Prawa strona)
+    "amenity": "Udogodnienie",
+    "tourism": "Turystyka",
+    "historic": "Zabytek",
+    "natural": "Natura",
+    "information": "Informacja",
+    "board_type": "Typ tablicy",
+    "direction": "Kierunek",
+    "operator": "Operator/Właściciel",
+    "ref": "Numer referencyjny",
+    "height": "Wysokość",
+    "material": "Materiał",
+    "description": "Opis",
+    "map_type": "Typ mapy",
+    "shelter_type": "Typ wiaty",
+    "fee": "Opłata",
+    "surface": "Nawierzchnia",
+
+    // WARTOŚCI (Lewa strona)
+    "shelter": "Wiata / Schronienie",
+    "bench": "Ławka",
+    "waste_basket": "Kosz na śmieci",
+    "drinking_water": "Poidełko",
+    "viewpoint": "Punkt widokowy",
+    "notice": "Ogłoszenie / Tablica informacyjna",
+    "board": "Tablica",
+    "guidepost": "Drogowskaz",
+    "map": "Mapa / Plan",
+    "wood": "Drewno",
+    "stone": "Kamień",
+    "yes": "Tak",
+    "no": "Nie",
+    "public": "Publiczny",
+    "forest": "Las",
+    "peak": "Szczyt",
+    "tree": "Drzewo",
+    "monument": "Pomnik",
+    "memorial": "Miejsce pamięci",
+    "weather_shelter": "Wiata przeciwdeszczowa",
+    "picnic_table": "Stół piknikowy",
+    "bicycle_parking": "Parking rowerowy"
+};
+
+// Główna funkcja tłumacząca
+function smartTranslate(text) {
+    if (!text) return "";
+    const cleanText = text.toString().toLowerCase().trim();
+    
+    // 1. Sprawdź czy jest w słowniku
+    if (OSM_DICT[cleanText]) return OSM_DICT[cleanText];
+
+    // 2. Jeśli to "operator" lub nazwa własna (zaczyna się z dużej litery w oryginale) - nie tłumacz
+    if (text.toString().match(/[A-Z]/)) return text;
+
+    // 3. Jeśli nie ma w słowniku, upiększ tekst (usuń podkreślniki, powiększ pierwszą literę)
+    return cleanText
+        .replace(/_/g, ' ')
+        .replace(/^\w/, c => c.toUpperCase());
+}
 
 function isBlacklistedOSM(e) {
     const t = e.tags || {};
@@ -3427,16 +3488,29 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function formatOSMDescription(tags, id) {
-    let html = `<ul style="margin:0; padding-left:20px; line-height: 1.8;">`;
+    let html = `<div style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 8px;">`;
+    html += `<ul style="margin:0; padding-left:0; list-style:none; line-height: 1.8;">`;
+
     for (const k in tags) {
-        if(k !== 'name' && k !== 'amenity' && k !== 'tourism') { // Ukrywamy oczywiste tagi
-            html += `<li><b>${k}:</b> ${tags[k]}</li>`;
-        }
+        // Ignorujemy tagi techniczne, których nie chcemy pokazywać
+        if (['name', 'source', 'id', 'created_by', 'wheelchair'].includes(k)) continue;
+
+        const polskiKlucz = smartTranslate(k);
+        const polskaWartosc = smartTranslate(tags[k]);
+
+        html += `
+            <li style="display: flex; border-bottom: 1px solid rgba(255,255,255,0.1); padding: 4px 0;">
+                <span style="color: var(--accent); font-weight: bold; width: 40%; font-size: 0.85rem;">${polskiKlucz}:</span>
+                <span style="width: 60%; font-size: 0.85rem; color: var(--text);">${polskaWartosc}</span>
+            </li>`;
     }
-    html += `</ul>`;
-    html += `<div style="margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 10px;">
-                <a href="https://www.openstreetmap.org/node/${id}" target="_blank" style="color: #3b82f6; text-decoration: none;">🔗 Zobacz obiekt w OpenStreetMap</a>
-             </div>`;
+    
+    html += `</ul></div>`;
+    html += `
+        <div style="margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 10px; text-align: center;">
+            <a href="https://www.openstreetmap.org/node/${id}" target="_blank" style="color: #3b82f6; text-decoration: none; font-size: 0.8rem;">🔗 Szczegóły w OpenStreetMap</a>
+        </div>`;
+    
     return html;
 }
 // Funkcja wypełniająca i otwierająca Modal
