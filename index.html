@@ -183,6 +183,18 @@
         </div>
     </div>
 </div>
+    <!-- MODAL: WSZYSTKIE ZDJĘCIA (GALERIA GRID) -->
+<div id="fullGalleryModal" class="floating-modal" style="width: 600px; max-width: 95vw; z-index: 3500; display: none;">
+    <div class="modal-header">
+        <span id="fgmTitle" style="color: #3b82f6; font-weight:bold;">📸 Galeria zdjęć</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('fullGalleryModal')">X</button>
+    </div>
+    <div class="modal-body">
+        <div id="fgmGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;">
+            <!-- Tu wpadną zdjęcia -->
+        </div>
+    </div>
+</div>
     <!-- MODAL: O APLIKACJI -->
 <div id="aboutModal" class="floating-modal" style="width: 400px; z-index: 5000;">
     <div class="modal-header">
