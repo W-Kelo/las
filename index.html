@@ -183,11 +183,17 @@
         </div>
     </div>
 </div>
-    <!-- MODAL: WSZYSTKIE ZDJĘCIA (GALERIA GRID) -->
-<div id="fullGalleryModal" class="floating-modal" style="width: 600px; max-width: 95vw; z-index: 3500; display: none;">
+<!-- MODAL: UNIWERSALNA GALERIA ZDJĘĆ Z FILTREM -->
+<div id="fullGalleryModal" class="floating-modal" style="width: 650px; max-width: 95vw; z-index: 3500; display: none;">
     <div class="modal-header">
-        <span id="fgmTitle" style="color: #3b82f6; font-weight:bold;">📸 Galeria zdjęć</span>
-        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('fullGalleryModal')">X</button>
+        <span id="fgmTitle" style="color: #3b82f6; font-weight:bold;">📸 Galeria</span>
+        <div style="display:flex; gap:10px; align-items:center;">
+            <select id="fgmSort" onchange="window.sortGallery()" style="background:rgba(0,0,0,0.2); color:inherit; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:2px; font-size:0.8rem; outline:none; display:none;">
+                <option value="desc">Od najnowszego</option>
+                <option value="asc">Od najstarszego</option>
+            </select>
+            <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('fullGalleryModal')">X</button>
+        </div>
     </div>
     <div class="modal-body">
         <div id="fgmGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;">
