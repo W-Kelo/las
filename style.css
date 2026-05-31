@@ -234,6 +234,20 @@
     z-index: 1000; align-items: center; padding: 5px 10px;
     border: 1px solid rgba(255,255,255,0.1);
 }
+/* --- POPRAWKA POZYCJI COPYRIGHT NA MOBILE --- */
+@media (max-width: 768px) {
+    /* Domyślnie podnosimy copyright ponad zwinięty pasek nav-bar (wysokość ok 80px) */
+    .leaflet-control-container .leaflet-bottom.leaflet-right {
+        bottom: 90px !important;
+        right: 10px !important;
+        transition: transform 0.3s ease;
+    }
+    
+    /* Gdy pasek jest rozwinięty (dodajemy klasę za pomocą JS), przesuwamy jeszcze wyżej */
+    body.nav-expanded .leaflet-control-container .leaflet-bottom.leaflet-right {
+        transform: translateY(-50vh); /* Przesunięcie o połowę ekranu nad menu */
+    }
+}
 @media (max-width: 768px) { .mobile-top-bar { display: flex; } }
 
 .mobile-top-bar input {
