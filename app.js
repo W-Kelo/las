@@ -2459,6 +2459,51 @@ function makeEdgeDraggable(el, wrapper, snapToEdges = true, lockVertical = false
         document.onmousemove = onDrag;
     };
 
+    function onDrag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        
+        let newLeft = initialLeft + (e.clientX - startX);
+        let newTop = initialTop + (e.clientY - startY);
+        
+        const maxLeft = wrapper.clientWidth - el.offsetWidth;
+        const maxTop = wrapper.clientHeight - el.offsetHeight;
+
+        // Ogranicznik twardy (nie wypadnie poza ekran)
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop = Math.max(0, Math.min(newTop, maxTop));
+
+        // SNAP (Przyklejanie do jednej z 4 krawędzi)
+        if (snapToEdges && !lockVertical) {
+            const distLeft = newLeft;
+            const distRight = maxLeft - newLeft;
+            const distTop = newTop;
+            const distBottom = maxTop - newTop;
+            
+            const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+            
+            if (minDist === distLeft) newLeft = 0;
+            else if (minDist === distRight) newLeft = maxLeft;
+            else if (minDist === distTop) newTop = 0;
+            else if (minDist === distBottom) newTop = maxTop;
+        }
+
+        // LOCK (Blokada w poziomie, przydatne dla copyright na dole)
+        if (lockVertical) {
+            newTop = initialTop; 
+        }
+
+        el.style.left = newLeft + 'px';
+        el.style.top = newTop + 'px';
+    }
+
+    function endDrag() {
+        isDragging = false;
+        el.style.cursor = snapToEdges ? 'grab' : 'ew-resize';
+        document.onmouseup = null;
+        document.onmousemove = null;
+    }
+}
 function makeTrainDraggable(el, wrapper, allFourEdges = true) {
     let isDragging = false;
     let startX, startY, initialLeft, initialTop;
@@ -2523,6 +2568,7 @@ function makeTrainDraggable(el, wrapper, allFourEdges = true) {
         document.onmousemove = null;
     }
 }
+
 
 /* --- ZRZUTY EKRANU DLA EKSPORTU (NAPRAWIONE) --- */
 
@@ -5677,3 +5723,4 @@ function handlePanelWheelZoom(e) {
     el.style.scale = currentScale;
     el.dataset.scale = currentScale;
 }
+    
