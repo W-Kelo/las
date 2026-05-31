@@ -56,6 +56,29 @@
         <button id="btnSatToggleMob" onclick="toggleSatelliteMap(); closeModal('mobileLayersModal')" style="width:100%; margin-top:15px; background:#475569;">🛰️ Mapa satelitarna</button>
     </div>
 </div>
+    <!-- MODAL: ZARZĄDZANIE WYGLĄDEM SKALI -->
+<div id="scaleSettingsModal" class="floating-modal" style="width: 350px; z-index: 4000; display: none;" data-html2canvas-ignore>
+    <div class="modal-header">
+        <span style="color: #3b82f6; font-weight:bold;">📏 Wygląd Skali</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('scaleSettingsModal')">X</button>
+    </div>
+    <div class="modal-body search-save-form">
+        <label>Typ skali:</label>
+        <select id="scaleTypeInput" onchange="updateCustomScaleAppearance()">
+            <option value="bar">Podziałkowa (Pasek)</option>
+            <option value="text">Liczbowa / Mianowana</option>
+        </select>
+
+        <label>Kolor tła:</label>
+        <div style="display:flex; gap:10px;">
+            <input type="color" id="scaleBgColor" value="#ffffff" style="height:35px; width:40px;" onchange="updateCustomScaleAppearance()">
+            <input type="range" id="scaleBgOpacity" min="0" max="100" value="80" style="flex-grow:1;" oninput="updateCustomScaleAppearance()">
+        </div>
+
+        <label>Kolor czcionki i paska:</label>
+        <input type="color" id="scaleTextColor" value="#000000" style="height:35px; width:100%;" onchange="updateCustomScaleAppearance()">
+    </div>
+</div>
 <!-- WERSJA MOBILNA: Dolny pasek nawigacyjny -->
 <div id="mobileBottomNav" class="mobile-bottom-nav collapsed">
     <div class="nav-drag-handle" onclick="toggleMobileNav()"></div>
