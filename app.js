@@ -147,60 +147,55 @@ document.body.className = "light";
     
 (dark ? tiles.dark : tiles.light).addTo(map);
 
-    document.addEventListener('DOMContentLoaded', () => {
-    // Ładowanie zapisanych punktów
+   document.addEventListener('DOMContentLoaded', () => {
+    // 1. Ładowanie danych
     loadUserSavedPois();
     loadGoogleSheetsPOIs();
-        document.addEventListener('DOMContentLoaded', () => {
-    // Sprawdzanie czy użytkownik zamknął wyszukiwarkę w tej sesji
-    if (window.innerWidth <= 768 && sessionStorage.getItem('hideMobileSearch') === 'true') {
-        document.getElementById('mobileTopSearch').style.display = 'none';
-        document.getElementById('mobileRestoreSearch').style.display = 'flex';
-    }
-});
     
-    // Sprawienie, że wszystkie modale są pływające
+    // 2. Mobilna wyszukiwarka
+    if (window.innerWidth <= 768 && sessionStorage.getItem('hideMobileSearch') === 'true') {
+        const mobSearch = document.getElementById('mobileTopSearch');
+        const mobRestore = document.getElementById('mobileRestoreSearch');
+        if(mobSearch) mobSearch.style.display = 'none';
+        if(mobRestore) mobRestore.style.display = 'flex';
+    }
+
+    // 3. Sprawienie, że modale są draggable
     const modals = [
         'pointsModal', 'descModal', 'styleModal', 'pdfModal', 
         'myPointsModal', 'customPoiModal', 'exportDataModal', 
         'exportPickerModal', 'exportStyleModal', 'confirmRefreshModal', 
         'statsSelectionModal', 'exportMetaModal', 'departureTimeModal',
-        'timeSummaryModal', 'customDescModal'
+        'timeSummaryModal', 'customDescModal', 'stopsModal'
     ];
     
     modals.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             makeDraggable(el);
-            makePinchZoomable(el); 
+            if(typeof makePinchZoomable === 'function') makePinchZoomable(el); 
         }
     });
-    
-    // Uruchomienie animacji radaru 
+
+    // 4. Inicjalizacja animacji
     drawEmptyElevationAnimation(); 
 
-    // BEZPIECZNE PODPINANIE LISTENERÓW (Zabezpieczenie przed "Cannot read properties of null")
-    const styleColorInput = document.getElementById('styleColor');
-    if (styleColorInput) {
-        styleColorInput.addEventListener('input', e => {
-            const hexSpan = document.getElementById('styleColorHex');
-            if (hexSpan) hexSpan.innerText = e.target.value;
-        });
-    }
-
-    const stylePointsColorInput = document.getElementById('stylePointsColor');
-    if (stylePointsColorInput) {
-        stylePointsColorInput.addEventListener('input', e => {
-            const hexSpan = document.getElementById('stylePointsColorHex');
-            if (hexSpan) hexSpan.innerText = e.target.value;
-        });
-    }
-
+    // 5. Stylizacja (pobieranie hexów do spanów)
+    const setupColorUpdate = (inputId, spanId) => {
+        const input = document.getElementById(inputId);
+        const span = document.getElementById(spanId);
+        if (input && span) {
+            input.addEventListener('input', e => span.innerText = e.target.value);
+        }
+    };
+    setupColorUpdate('styleColor', 'styleColorHex');
+    setupColorUpdate('stylePointsColor', 'stylePointsColorHex');
+    
     const pdfModalEl = document.getElementById('pdfModal');
     if (pdfModalEl) {
         pdfModalEl.addEventListener('mouseenter', checkSessionMapForPdf);
     }
-});
+}); 
 const hikingLayer = L.layerGroup().addTo(map);
 const poiLayer = L.layerGroup().addTo(map);
 const customPoiLayer = L.layerGroup().addTo(map); 
@@ -2425,25 +2420,6 @@ function updateScaleValues() {
         barEl.style.display = 'block';
     }
 }
-// 7. DRAG "POCIĄG PO SZYNACH" (Płynny Snap do 4 Krawędzi)
-function makeTrainDraggable(el, wrapper, allFourEdges = true) {
-    let isDragging = false;
-    let startX, startY, initialLeft, initialTop;
-
-    el.onmousedown = (e) => {
-        if(e.button !== 0) return; // Ignoruj prawy klik
-        e.preventDefault();
-        isDragging = true;
-        el.style.cursor = 'grabbing';
-        
-        startX = e.clientX;
-        startY = e.clientY;
-        initialLeft = el.offsetLeft;
-        initialTop = el.offsetTop;
-        
-        document.onmouseup = endDrag;
-        document.onmousemove = onDrag;
-    };
 
 // 6. OBSŁUGA MODALU USTAWIEŃ SKALI
 window.updateCustomScaleAppearance = function() {
