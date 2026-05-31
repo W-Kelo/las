@@ -137,7 +137,7 @@ const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
 window._currentGalleryData = [];
 window._modalGalleryData = [];
-window.isElevationAnimated = false;
+window.isElevationAnimated = true;
 const polyline = L.polyline([], {
     color: routePrefColor, 
     weight: routePrefWeight, 
