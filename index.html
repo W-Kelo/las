@@ -57,6 +57,7 @@
     </div>
 </div>
     <!-- MODAL: ZARZĄDZANIE WYGLĄDEM SKALI -->
+<!-- MODAL: ZARZĄDZANIE WYGLĄDEM SKALI -->
 <div id="scaleSettingsModal" class="floating-modal" style="width: 350px; z-index: 4000; display: none;" data-html2canvas-ignore>
     <div class="modal-header">
         <span style="color: #3b82f6; font-weight:bold;">📏 Wygląd Skali</span>
@@ -64,7 +65,7 @@
     </div>
     <div class="modal-body search-save-form">
         <div id="scaleContrastWarning" style="display:none; background:rgba(245,158,11,0.2); color:#f59e0b; padding:8px; border-left:3px solid #f59e0b; font-size:0.8rem; margin-bottom:10px;">
-            ⚠️ Użyte kolory mogą być nieczytelne, ale pozwalam na tę zmianę.
+            ⚠️ Użyte kolory mogą być nieczytelne (za słaby kontrast), ale pozwalam na tę zmianę.
         </div>
         
         <label>Typ skali:</label>
@@ -75,12 +76,14 @@
 
         <label>Kolor tła i przezroczystość:</label>
         <div style="display:flex; gap:10px;">
-            <input type="color" id="scaleBgColor" value="#ffffff" style="height:35px; width:40px;" onchange="updateCustomScaleAppearance()">
+            <!-- Zmiana na oninput -->
+            <input type="color" id="scaleBgColor" value="#ffffff" style="height:35px; width:40px;" oninput="updateCustomScaleAppearance()">
             <input type="range" id="scaleBgOpacity" min="0" max="100" value="80" style="flex-grow:1;" oninput="updateCustomScaleAppearance()">
         </div>
 
         <label>Kolor czcionki i paska:</label>
-        <input type="color" id="scaleTextColor" value="#000000" style="height:35px; width:100%;" onchange="updateCustomScaleAppearance()">
+        <!-- Zmiana na oninput -->
+        <input type="color" id="scaleTextColor" value="#000000" style="height:35px; width:100%;" oninput="updateCustomScaleAppearance()">
     </div>
 </div>
 
