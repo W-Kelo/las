@@ -2342,6 +2342,7 @@ function createCustomCopyright() {
     });
 }
 
+
 window.updateCopyrightText = function() {
     if (!customCopyrightEl) return;
     if (typeof isExportSatellite !== 'undefined' && isExportSatellite) {
@@ -2458,7 +2459,26 @@ function makeEdgeDraggable(el, wrapper, snapToEdges = true, lockVertical = false
         document.onmousemove = onDrag;
     };
 
-function onDrag(e) {
+function makeTrainDraggable(el, wrapper, allFourEdges = true) {
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+
+    el.onmousedown = (e) => {
+        if(e.button !== 0) return; // Ignoruj prawy klik
+        e.preventDefault();
+        isDragging = true;
+        el.style.cursor = 'grabbing';
+        
+        startX = e.clientX;
+        startY = e.clientY;
+        initialLeft = el.offsetLeft;
+        initialTop = el.offsetTop;
+        
+        document.onmouseup = endDrag;
+        document.onmousemove = onDrag;
+    };
+
+    function onDrag(e) {
         if (!isDragging) return;
         e.preventDefault();
         
@@ -2495,7 +2515,7 @@ function onDrag(e) {
         el.style.top = newTop + 'px';
     }
 
-   function endDrag() {
+    function endDrag() {
         if(!isDragging) return;
         isDragging = false;
         el.style.cursor = allFourEdges ? 'grab' : 'ew-resize';
