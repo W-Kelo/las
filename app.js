@@ -137,6 +137,7 @@ const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
 window._currentGalleryData = [];
 window._modalGalleryData = [];
+window.isElevationAnimated = false;
 const polyline = L.polyline([], {
     color: routePrefColor, 
     weight: routePrefWeight, 
@@ -1110,7 +1111,10 @@ function unhighlightStep() {
     return d;
 }
 function drawEmptyElevationAnimation() {
+    if (!window.isElevationAnimated) return; // Bezwzględny kill-switch
+    
     const c = document.getElementById('elevation');
+    if(!c) return;
     const ctx = c.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
     c.width = c.offsetWidth * dpr;
@@ -1119,19 +1123,16 @@ function drawEmptyElevationAnimation() {
     
     ctx.clearRect(0, 0, c.offsetWidth, c.offsetHeight);
     
-    // Rysowanie animowanej "fali" terenu
     ctx.beginPath();
     for(let x=0; x < c.offsetWidth; x+=2) {
         const y = (c.offsetHeight / 2) + Math.sin((x * 0.03) + elevPhase) * 12 + Math.cos((x * 0.01) - elevPhase) * 5;
         if(x===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     
-    // Gradient i styl fali
     ctx.strokeStyle = document.body.classList.contains('light') ? 'rgba(34, 197, 94, 0.4)' : 'rgba(34, 197, 94, 0.2)';
     ctx.lineWidth = 2;
     ctx.stroke();
     
-    // Napis
     ctx.fillStyle = document.body.classList.contains('light') ? '#64748b' : '#94a3b8';
     ctx.font = 'bold 12px "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
@@ -1142,19 +1143,22 @@ function drawEmptyElevationAnimation() {
 }
 
 async function fetchFullElevationProfile() {
-      if (elevAnimFrame) cancelAnimationFrame(elevAnimFrame);
+    // 1. ZABIJANIE ANIMACJI
+    window.isElevationAnimated = false; 
+    if (elevAnimFrame) cancelAnimationFrame(elevAnimFrame);
     
     if (routeGeometry.length < 2) { 
         globalElevationData = []; globalElevationDist = []; globalElevationLatLng = [];
         if (chartHoverMarker) { map.removeLayer(chartHoverMarker); chartHoverMarker = null; }
-        drawEmptyElevationAnimation(); // Uruchomienie animacji
+        window.isElevationAnimated = true; // Wznawiamy tylko gdy pusto
+        drawEmptyElevationAnimation(); 
         return; 
     }
     
-     const step = Math.max(1, Math.floor(routeGeometry.length / 90));
+    const step = Math.max(1, Math.floor(routeGeometry.length / 90));
     globalElevationData = [];
     globalElevationDist = [];
-    globalElevationLatLng = [];
+    globalElevationLatLng = []; 
     let cumDist = 0;
     
     for(let i = 0; i < routeGeometry.length; i += step) {
@@ -1169,26 +1173,20 @@ async function fetchFullElevationProfile() {
         }
         globalElevationDist.push(cumDist);
     }
-    
-    // Zabezpieczenie: Jeśli "step" pominął ostatni wierzchołek trasy (bo nie dzielił się równo), dodajemy go ręcznie.
-    // Dzięki temu przy 2 punktach zawsze mamy pełen wykres Start -> Meta!
+
+    // GWARANCJA OSTATNIEGO PUNKTU (Niezbędne dla tras z 2 kliknięć)
     const lastIdx = routeGeometry.length - 1;
     if (globalElevationLatLng.length > 0 && globalElevationLatLng[globalElevationLatLng.length - 1][0] !== routeGeometry[lastIdx][0]) {
-        const lastEl = routeGeometry[lastIdx][2] || 0;
-        globalElevationData.push(lastEl);
+        globalElevationData.push(routeGeometry[lastIdx][2] || 0);
         globalElevationLatLng.push([routeGeometry[lastIdx][0], routeGeometry[lastIdx][1]]);
-        
         const prevLatLng = globalElevationLatLng[globalElevationLatLng.length - 2];
-        const addedDist = L.latLng(prevLatLng).distanceTo(L.latLng(routeGeometry[lastIdx][0], routeGeometry[lastIdx][1]));
-        cumDist += addedDist;
+        cumDist += L.latLng(prevLatLng).distanceTo(L.latLng(routeGeometry[lastIdx][0], routeGeometry[lastIdx][1]));
         globalElevationDist.push(cumDist);
     }
     
     totalAscent = 0;
     for(let i = 1; i < globalElevationData.length; i++) {
-        if(globalElevationData[i] > globalElevationData[i-1]) {
-            totalAscent += (globalElevationData[i] - globalElevationData[i-1]);
-        }
+        if(globalElevationData[i] > globalElevationData[i-1]) totalAscent += (globalElevationData[i] - globalElevationData[i-1]);
     }
     totalAscent = Math.round(totalAscent);
     
@@ -1228,13 +1226,19 @@ function drawElevation(hoverIdx = -1) {
     const innerW = displayWidth - padL - padR;
     const innerH = displayHeight - padT - padB;
     
-    const minRaw = Math.min(...globalElevationData);
+   const minRaw = Math.min(...globalElevationData);
     const maxRaw = Math.max(...globalElevationData);
     
-    // Dodajemy "oddech" do skali (zaokrąglanie do dziesiątek)
-    const min = Math.max(0, Math.floor(minRaw / 10) * 10 - 10);
-    const max = Math.ceil(maxRaw / 10) * 10 + 10;
-    const range = (max - min) < 10 ? 10 : (max - min);
+    let min = Math.max(0, Math.floor(minRaw / 10) * 10 - 10);
+    let max = Math.ceil(maxRaw / 10) * 10 + 10;
+    let range = max - min;
+    
+    // Jeśli trasa jest całkowicie płaska (range < 10), rozszerzamy skalę by kreska była na środku
+    if (range < 15) {
+        min = Math.max(0, min - 10);
+        max += 10;
+        range = max - min;
+    }
 
     ctx.clearRect(0, 0, displayWidth, displayHeight);
 
@@ -2235,6 +2239,7 @@ function getLuminance(r, g, b) {
     return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
 }
 
+
 function checkContrastRatio(hex1, hex2, opacity1) {
     const r1 = parseInt(hex1.slice(1, 3), 16), g1 = parseInt(hex1.slice(3, 5), 16), b1 = parseInt(hex1.slice(5, 7), 16);
     const r2 = parseInt(hex2.slice(1, 3), 16), g2 = parseInt(hex2.slice(3, 5), 16), b2 = parseInt(hex2.slice(5, 7), 16);
@@ -2298,23 +2303,23 @@ function createCustomScale() {
     customScaleEl.id = 'export-custom-scale';
     
     Object.assign(customScaleEl.style, {
-        position: 'absolute', bottom: '15px', right: '15px', zIndex: '3500', // Domyślnie z prawej strony!
+        position: 'absolute', bottom: '35px', left: '15px', zIndex: '3500', // Pomiędzy mapą a Copyrightem
         cursor: 'grab', padding: '4px 8px', borderRadius: '4px',
         background: 'rgba(255,255,255,0.8)', color: '#000000',
         fontFamily: 'sans-serif', fontSize: '12px', fontWeight: 'bold',
         boxShadow: '0 2px 5px rgba(0,0,0,0.3)', userSelect: 'none', border: '1px solid rgba(0,0,0,0.2)',
-        width: 'max-content', boxSizing: 'border-box', whiteSpace: 'nowrap' // Twarda blokada rozszerzania tła!
+        width: 'max-content', height: 'max-content', boxSizing: 'border-box'
     });
 
     customScaleEl.innerHTML = `
-        <div id="scaleText" style="text-align:center; line-height: 1;">0 m</div>
+        <div id="scaleText" style="text-align:center; line-height: 1; white-space: nowrap;">0 m</div>
         <div id="scaleBar" style="height:4px; background:#000; margin-top:3px; border-radius:2px; display:none; width: 100%;"></div>
     `;
 
     wrapper.appendChild(customScaleEl);
     updateScaleValues(); 
     exportMap.on('moveend zoomend', updateScaleValues);
-    makeTrainDraggable(customScaleEl, wrapper, true); 
+    makeStrictEdgeDraggable(customScaleEl, wrapper, true); 
 
     customScaleEl.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -2331,16 +2336,16 @@ function createCustomCopyright() {
     customCopyrightEl.id = 'export-custom-copyright';
     
     Object.assign(customCopyrightEl.style, {
-        position: 'absolute', bottom: '10px', left: '15px', zIndex: '3400', // ZMIANA: LEWY dolny róg
+        position: 'absolute', bottom: '10px', left: '15px', zIndex: '99999', // ABSOLUTNIE NAJWYŻSZA WARSTWA
         cursor: 'ew-resize', padding: '2px 6px', borderRadius: '4px',
         background: 'rgba(255,255,255,0.6)', color: '#333333',
         fontFamily: 'sans-serif', fontSize: '10px', userSelect: 'none', border: '1px solid rgba(0,0,0,0.1)',
-        width: 'max-content', boxSizing: 'border-box', whiteSpace: 'nowrap' // Twarda blokada rozszerzania tła!
+        width: 'max-content', height: 'max-content', boxSizing: 'border-box', whiteSpace: 'nowrap'
     });
 
     wrapper.appendChild(customCopyrightEl);
     updateCopyrightText();
-    makeTrainDraggable(customCopyrightEl, wrapper, false); 
+    makeStrictEdgeDraggable(customCopyrightEl, wrapper, false); 
     
     customCopyrightEl.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -2348,10 +2353,11 @@ function createCustomCopyright() {
     });
 }
 
+
 window.updateCopyrightText = function() {
     if (!customCopyrightEl) return;
     if (typeof isExportSatellite !== 'undefined' && isExportSatellite) {
-        customCopyrightEl.innerHTML = '&copy; Google Maps';
+        customCopyrightEl.innerHTML = '&copy; <a href="https://www.google.com/intl/pl_pl/help/terms_maps/" target="_blank" style="color:inherit; text-decoration:none;">Google Maps</a>';
     } else {
         customCopyrightEl.innerHTML = '&copy; Autorzy OpenStreetMap';
     }
@@ -2367,8 +2373,6 @@ window.updateCustomScaleAppearance = function() {
     
     const ratio = checkContrastRatio(hexBg, textColor, opacity);
     const warningDiv = document.getElementById('scaleContrastWarning');
-    
-    // Używamy display: block zamiast inline, by zawsze wymusić rozszerzenie modalu!
     warningDiv.style.display = ratio < 3.0 ? 'block' : 'none';
 
     const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
@@ -2419,14 +2423,93 @@ function updateScaleValues() {
     let displayStr = targetMeters >= 1000 ? `${(targetMeters/1000).toFixed(1)} km` : `${targetMeters} m`;
     
     if (type === 'text') {
-        customScaleEl.style.width = 'max-content'; // Wraca do ściskania się do tekstu
+        customScaleEl.style.width = 'max-content'; 
         textEl.innerText = `1 cm ≈ ${Math.round(mapWidthMeters / mapWidthPx * 100) / 10} m`;
         barEl.style.display = 'none';
     } else {
-        // TWARDA SZEROKOŚĆ w PIKSELACH dla paska skali (zapobiega rozsuwaniu przy drag&drop!)
-        customScaleEl.style.width = (scaleWidthPx + 16) + 'px'; // +16 na padding
+        customScaleEl.style.width = (scaleWidthPx + 16) + 'px'; 
         textEl.innerText = displayStr;
         barEl.style.display = 'block';
+    }
+}
+// NOWY ALGORYTM DRAG&DROP - Twarde krawędzie + Twarde wymiary
+function makeStrictEdgeDraggable(el, wrapper, allFourEdges = true) {
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+
+    el.onmousedown = (e) => {
+        if(e.button !== 0) return;
+        e.preventDefault();
+        isDragging = true;
+        el.style.cursor = 'grabbing';
+        
+        // ZAMRAŻANIE WYMIARÓW! Zapobiega rozszerzaniu się w nieskończoność
+        const rect = el.getBoundingClientRect();
+        el.style.width = rect.width + 'px';
+        el.style.height = rect.height + 'px';
+        
+        startX = e.clientX;
+        startY = e.clientY;
+        initialLeft = el.offsetLeft;
+        initialTop = el.offsetTop;
+        
+        document.onmouseup = endDrag;
+        document.onmousemove = onDrag;
+    };
+
+    function onDrag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        
+        let targetX = initialLeft + (e.clientX - startX);
+        let targetY = initialTop + (e.clientY - startY);
+        
+        const maxLeft = wrapper.clientWidth - el.offsetWidth;
+        const maxTop = wrapper.clientHeight - el.offsetHeight;
+
+        // Ogranicznik twardy ekranu
+        targetX = Math.max(0, Math.min(targetX, maxLeft));
+        targetY = Math.max(0, Math.min(targetY, maxTop));
+
+        if (allFourEdges) {
+            // Skala - Wymuszenie szyn! Zawsze musi przylegać do 1 z 4 ścian.
+            const margin = 15; 
+            const distL = targetX;
+            const distR = maxLeft - targetX;
+            const distT = targetY;
+            const distB = maxTop - targetY;
+            
+            const minD = Math.min(distL, distR, distT, distB);
+            
+            if (minD === distL) { targetX = margin; el.style.cursor = 'ns-resize'; }
+            else if (minD === distR) { targetX = maxLeft - margin; el.style.cursor = 'ns-resize'; }
+            else if (minD === distT) { targetY = margin; el.style.cursor = 'ew-resize'; }
+            else if (minD === distB) { targetY = maxTop - margin; el.style.cursor = 'ew-resize'; }
+        } else {
+            // Copyright - Tylko szyna dolna
+            targetY = maxTop - 10;
+        }
+
+        el.style.left = targetX + 'px';
+        el.style.top = targetY + 'px';
+    }
+
+    function endDrag() {
+        if(!isDragging) return;
+        isDragging = false;
+        el.style.cursor = allFourEdges ? 'grab' : 'ew-resize';
+        
+        // Zdejmujemy zamrożenie wymiarów tylko dla skali (bo tekst może się zmieniać)
+        if (el.id === 'export-custom-scale' && document.getElementById('scaleTypeInput').value === 'text') {
+            el.style.width = 'max-content';
+            el.style.height = 'max-content';
+        } else if (el.id === 'export-custom-copyright') {
+            el.style.width = 'max-content';
+            el.style.height = 'max-content';
+        }
+        
+        document.onmouseup = null;
+        document.onmousemove = null;
     }
 }
 // 6. OBSŁUGA MODALU USTAWIEŃ SKALI
