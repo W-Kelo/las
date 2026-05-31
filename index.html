@@ -63,13 +63,17 @@
         <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('scaleSettingsModal')">X</button>
     </div>
     <div class="modal-body search-save-form">
+        <div id="scaleContrastWarning" style="display:none; background:rgba(245,158,11,0.2); color:#f59e0b; padding:8px; border-left:3px solid #f59e0b; font-size:0.8rem; margin-bottom:10px;">
+            ⚠️ Użyte kolory mogą być nieczytelne, ale pozwalam na tę zmianę.
+        </div>
+        
         <label>Typ skali:</label>
         <select id="scaleTypeInput" onchange="updateCustomScaleAppearance()">
             <option value="bar">Podziałkowa (Pasek)</option>
             <option value="text">Liczbowa / Mianowana</option>
         </select>
 
-        <label>Kolor tła:</label>
+        <label>Kolor tła i przezroczystość:</label>
         <div style="display:flex; gap:10px;">
             <input type="color" id="scaleBgColor" value="#ffffff" style="height:35px; width:40px;" onchange="updateCustomScaleAppearance()">
             <input type="range" id="scaleBgOpacity" min="0" max="100" value="80" style="flex-grow:1;" oninput="updateCustomScaleAppearance()">
@@ -77,6 +81,26 @@
 
         <label>Kolor czcionki i paska:</label>
         <input type="color" id="scaleTextColor" value="#000000" style="height:35px; width:100%;" onchange="updateCustomScaleAppearance()">
+    </div>
+</div>
+
+<!-- MODAL: ZARZĄDZANIE WYGLĄDEM COPYRIGHT (ŹRÓDŁO) -->
+<div id="copySettingsModal" class="floating-modal" style="width: 350px; z-index: 4000; display: none;" data-html2canvas-ignore>
+    <div class="modal-header">
+        <span style="color: #10b981; font-weight:bold;">© Wygląd Źródła</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('copySettingsModal')">X</button>
+    </div>
+    <div class="modal-body search-save-form">
+        <p style="font-size:0.85rem; margin-top:0;">Dostawcy map wymagają, by to pole pozostało czytelne.</p>
+        
+        <label>Kolor tła i przezroczystość:</label>
+        <div style="display:flex; gap:10px;">
+            <input type="color" id="copyBgColor" value="#ffffff" style="height:35px; width:40px;" onchange="updateCustomCopyrightAppearance()">
+            <input type="range" id="copyBgOpacity" min="0" max="100" value="60" style="flex-grow:1;" oninput="updateCustomCopyrightAppearance()">
+        </div>
+
+        <label>Kolor czcionki:</label>
+        <input type="color" id="copyTextColor" value="#333333" style="height:35px; width:100%;" onchange="updateCustomCopyrightAppearance()">
     </div>
 </div>
 <!-- WERSJA MOBILNA: Dolny pasek nawigacyjny -->
