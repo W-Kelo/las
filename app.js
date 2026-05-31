@@ -2174,10 +2174,10 @@ function openMapExportModal() {
                 executeRefreshRoute();
                 wasExportEmpty = false;
             }
+            window.initAlwaysOnCopyright();
         }, 50);
     }
 }
-
 function initExportMap() {
     const container = document.getElementById('mapExport');
     if (!container) return;
@@ -2218,6 +2218,27 @@ function initExportMap() {
         syncExportPoints(); // Odpalenie legendy
     }, 200);
 }
+// Funkcja pomocnicza: Obliczanie luminancji i kontrastu wg WCAG
+function getLuminance(r, g, b) {
+    let [rs, gs, bs] = [r, g, b].map(c => {
+        c = c / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+function checkContrastRatio(hex1, hex2, opacity1) {
+    const r1 = parseInt(hex1.slice(1, 3), 16), g1 = parseInt(hex1.slice(3, 5), 16), b1 = parseInt(hex1.slice(5, 7), 16);
+    const r2 = parseInt(hex2.slice(1, 3), 16), g2 = parseInt(hex2.slice(3, 5), 16), b2 = parseInt(hex2.slice(5, 7), 16);
+    
+    // Uproszczenie: zakłamy, że przezroczystość zmniejsza czytelność, więc obniżamy "zdolność" pierwszego koloru
+    const lum1 = getLuminance(r1, g1, b1) * (opacity1 / 100) + getLuminance(255,255,255) * (1 - opacity1/100); 
+    const lum2 = getLuminance(r2, g2, b2);
+    
+    const brightest = Math.max(lum1, lum2);
+    const darkest = Math.min(lum1, lum2);
+    return (brightest + 0.05) / (darkest + 0.05); // Wartość 1.0 do 21.0
+}
 
 function executeRefreshRoute() {
     document.getElementById('confirmRefreshModal').style.display = 'none';
@@ -2255,25 +2276,22 @@ window.toggleScale = function() {
         if (btn) btn.innerText = "Ukryj skalę";
         if (btn) btn.style.boxShadow = "0 0 10px white";
         createCustomScale();
-        createCustomCopyright();
     } else {
         if (btn) btn.innerText = "Pokaż skalę";
         if (btn) btn.style.boxShadow = "none";
         if (customScaleEl) { customScaleEl.remove(); customScaleEl = null; }
-        if (customCopyrightEl) { customCopyrightEl.remove(); customCopyrightEl = null; }
         exportMap.off('moveend zoomend', updateScaleValues);
     }
 };
 
-// 2. TWORZENIE ELEMENTU SKALI
+// 3. TWORZENIE ELEMENTU SKALI
 function createCustomScale() {
     const wrapper = document.getElementById('exportWrapper');
     customScaleEl = document.createElement('div');
     customScaleEl.id = 'export-custom-scale';
     
-    // Style pozycjonujące i drag&drop
     Object.assign(customScaleEl.style, {
-        position: 'absolute', bottom: '30px', left: '15px', zIndex: '3500',
+        position: 'absolute', bottom: '15px', left: '15px', zIndex: '3500',
         cursor: 'grab', padding: '4px 8px', borderRadius: '4px',
         background: 'rgba(255,255,255,0.8)', color: '#000000',
         fontFamily: 'sans-serif', fontSize: '12px', fontWeight: 'bold',
@@ -2286,39 +2304,45 @@ function createCustomScale() {
     `;
 
     wrapper.appendChild(customScaleEl);
-    updateScaleValues(); // Pierwsze przeliczenie
-    exportMap.on('moveend zoomend', updateScaleValues); // Ciągłe nasłuchiwanie
+    updateScaleValues(); 
+    exportMap.on('moveend zoomend', updateScaleValues);
     
-    makeEdgeDraggable(customScaleEl, wrapper, true); // true = wzdłuż krawędzi
+    // Ruch jak "pociąg po szynach" wzdłuż 4 krawędzi
+    makeTrainDraggable(customScaleEl, wrapper, true); 
 
-    // Otwieranie Modalu PPM
     customScaleEl.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         openCenteredModal('scaleSettingsModal');
     });
 }
 
-// 3. TWORZENIE ELEMENTU COPYRIGHT
+// 4. TWORZENIE ELEMENTU COPYRIGHT
 function createCustomCopyright() {
     const wrapper = document.getElementById('exportWrapper');
+    if(!wrapper) return;
+    
     customCopyrightEl = document.createElement('div');
     customCopyrightEl.id = 'export-custom-copyright';
     
     Object.assign(customCopyrightEl.style, {
-        position: 'absolute', bottom: '10px', left: '15px', zIndex: '3400',
+        position: 'absolute', bottom: '10px', right: '15px', zIndex: '3400',
         cursor: 'ew-resize', padding: '2px 6px', borderRadius: '4px',
-        background: 'rgba(255,255,255,0.6)', color: '#333',
-        fontFamily: 'sans-serif', fontSize: '10px', userSelect: 'none'
+        background: 'rgba(255,255,255,0.6)', color: '#333333',
+        fontFamily: 'sans-serif', fontSize: '10px', userSelect: 'none', border: '1px solid rgba(0,0,0,0.1)'
     });
 
     wrapper.appendChild(customCopyrightEl);
     updateCopyrightText();
     
-    // Drag tylko w poziomie (wzdłuż dolnej krawędzi)
-    makeEdgeDraggable(customCopyrightEl, wrapper, false, true); 
+    // Ruch tylko lewo/prawo u dołu
+    makeTrainDraggable(customCopyrightEl, wrapper, false); 
+    
+    customCopyrightEl.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        openCenteredModal('copySettingsModal');
+    });
 }
 
-// 4. AKTUALIZACJA TEKSTU COPYRIGHT (Wywołuj to też przy zmianie na Satelitę!)
 window.updateCopyrightText = function() {
     if (!customCopyrightEl) return;
     if (typeof isExportSatellite !== 'undefined' && isExportSatellite) {
@@ -2327,24 +2351,60 @@ window.updateCopyrightText = function() {
         customCopyrightEl.innerHTML = '&copy; Autorzy OpenStreetMap';
     }
 };
+// 5. OBSŁUGA WYGLĄDU (Kalkulator Kontrastu)
+window.updateCustomScaleAppearance = function() {
+    if (!customScaleEl) return;
+    const hexBg = document.getElementById('scaleBgColor').value;
+    const opacity = document.getElementById('scaleBgOpacity').value;
+    const textColor = document.getElementById('scaleTextColor').value;
+    
+    // Miękkie Ostrzeżenie (poniżej 3.0 to zły kontrast)
+    const ratio = checkContrastRatio(hexBg, textColor, opacity);
+    document.getElementById('scaleContrastWarning').style.display = ratio < 3.0 ? 'block' : 'none';
 
+    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
+    customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
+    customScaleEl.style.color = textColor;
+    document.getElementById('scaleBar').style.backgroundColor = textColor;
+    customScaleEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
+    
+    updateScaleValues();
+};
+window.updateCustomCopyrightAppearance = function() {
+    if (!customCopyrightEl) return;
+    const hexBg = document.getElementById('copyBgColor').value;
+    const opacity = document.getElementById('copyBgOpacity').value;
+    const textColor = document.getElementById('copyTextColor').value;
+    
+    // TWARDA BLOKADA DLA ŹRÓDŁA (Kontrast musi być większy niż 3.0)
+    const ratio = checkContrastRatio(hexBg, textColor, opacity);
+    if (ratio < 3.0) {
+        showCustomAlert("⚠️ Odmowa zmiany! Źródło (Copyright) byłoby nieczytelne na mapie. Wybierz bardziej kontrastowe kolory lub zwiększ przezroczystość tła.");
+        // Resetowanie inputów do bezpiecznych wartości
+        document.getElementById('copyBgColor').value = "#ffffff";
+        document.getElementById('copyBgOpacity').value = 60;
+        document.getElementById('copyTextColor').value = "#333333";
+        return; // Zakończenie funkcji bez aplikacji stylów
+    }
+
+    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
+    customCopyrightEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
+    customCopyrightEl.style.color = textColor;
+    customCopyrightEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
+};
 // 5. MATEMATYKA SKALI (Własne przeliczanie metrów)
 function updateScaleValues() {
     if (!customScaleEl || !exportMap) return;
     
     const bounds = exportMap.getBounds();
-    const center = bounds.getCenter();
     const mapWidthPx = document.getElementById('mapExport').clientWidth;
     const mapWidthMeters = bounds.getNorthEast().distanceTo(bounds.getNorthWest());
     
-    // Szukamy okrągłej liczby metrów (np. 10m, 50m, 500m, 1km, 5km)
     const pxPerMeter = mapWidthPx / mapWidthMeters;
     let targetMeters = 10;
     while (targetMeters * pxPerMeter < 100) targetMeters *= 2; 
-    // Chcemy by skala miała ok 100-200 pikseli szerokości
     
     const scaleWidthPx = Math.round(targetMeters * pxPerMeter);
-    
     const textEl = document.getElementById('scaleText');
     const barEl = document.getElementById('scaleBar');
     const type = document.getElementById('scaleTypeInput').value;
@@ -2353,7 +2413,7 @@ function updateScaleValues() {
     
     if (type === 'text') {
         customScaleEl.style.width = 'auto';
-        textEl.innerText = `Skala: 1 cm ≈ ${Math.round(mapWidthMeters / mapWidthPx * 100) / 10} m`;
+        textEl.innerText = `1 cm ≈ ${Math.round(mapWidthMeters / mapWidthPx * 100) / 10} m`;
         barEl.style.display = 'none';
     } else {
         customScaleEl.style.width = scaleWidthPx + 'px';
@@ -2361,6 +2421,25 @@ function updateScaleValues() {
         barEl.style.display = 'block';
     }
 }
+// 7. DRAG "POCIĄG PO SZYNACH" (Płynny Snap do 4 Krawędzi)
+function makeTrainDraggable(el, wrapper, allFourEdges = true) {
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+
+    el.onmousedown = (e) => {
+        if(e.button !== 0) return; // Ignoruj prawy klik
+        e.preventDefault();
+        isDragging = true;
+        el.style.cursor = 'grabbing';
+        
+        startX = e.clientX;
+        startY = e.clientY;
+        initialLeft = el.offsetLeft;
+        initialTop = el.offsetTop;
+        
+        document.onmouseup = endDrag;
+        document.onmousemove = onDrag;
+    };
 
 // 6. OBSŁUGA MODALU USTAWIEŃ SKALI
 window.updateCustomScaleAppearance = function() {
@@ -2399,7 +2478,7 @@ function makeEdgeDraggable(el, wrapper, snapToEdges = true, lockVertical = false
         document.onmousemove = onDrag;
     };
 
-    function onDrag(e) {
+function onDrag(e) {
         if (!isDragging) return;
         e.preventDefault();
         
@@ -2409,12 +2488,13 @@ function makeEdgeDraggable(el, wrapper, snapToEdges = true, lockVertical = false
         const maxLeft = wrapper.clientWidth - el.offsetWidth;
         const maxTop = wrapper.clientHeight - el.offsetHeight;
 
-        // Ogranicznik twardy (nie wypadnie poza ekran)
+        // Ogranicznik przed wypadnięciem poza ekran
         newLeft = Math.max(0, Math.min(newLeft, maxLeft));
         newTop = Math.max(0, Math.min(newTop, maxTop));
 
-        // SNAP (Przyklejanie do jednej z 4 krawędzi)
-        if (snapToEdges && !lockVertical) {
+        if (allFourEdges) {
+            // Skala - przykleja się do najbliższej z 4 ścian (pociąg)
+            const margin = 15; // Sztywny odstęp od brzegu
             const distLeft = newLeft;
             const distRight = maxLeft - newLeft;
             const distTop = newTop;
@@ -2422,24 +2502,23 @@ function makeEdgeDraggable(el, wrapper, snapToEdges = true, lockVertical = false
             
             const minDist = Math.min(distLeft, distRight, distTop, distBottom);
             
-            if (minDist === distLeft) newLeft = 0;
-            else if (minDist === distRight) newLeft = maxLeft;
-            else if (minDist === distTop) newTop = 0;
-            else if (minDist === distBottom) newTop = maxTop;
-        }
-
-        // LOCK (Blokada w poziomie, przydatne dla copyright na dole)
-        if (lockVertical) {
-            newTop = initialTop; 
+            if (minDist === distLeft) { newLeft = margin; el.style.cursor = 'ns-resize'; }
+            else if (minDist === distRight) { newLeft = maxLeft - margin; el.style.cursor = 'ns-resize'; }
+            else if (minDist === distTop) { newTop = margin; el.style.cursor = 'ew-resize'; }
+            else if (minDist === distBottom) { newTop = maxTop - margin; el.style.cursor = 'ew-resize'; }
+        } else {
+            // Copyright - tylko wzdłuż dolnej ściany
+            newTop = maxTop - 10;
         }
 
         el.style.left = newLeft + 'px';
         el.style.top = newTop + 'px';
     }
 
-    function endDrag() {
+   function endDrag() {
+        if(!isDragging) return;
         isDragging = false;
-        el.style.cursor = snapToEdges ? 'grab' : 'ew-resize';
+        el.style.cursor = allFourEdges ? 'grab' : 'ew-resize';
         document.onmouseup = null;
         document.onmousemove = null;
     }
