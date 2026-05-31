@@ -2244,9 +2244,6 @@ function executeRefreshRoute() {
 }
 /* ================= ELASTYCZNA SKALA I COPYRIGHT W EKSPORCIE ================= */
 
-let customScaleEl = null;
-let customCopyrightEl = null;
-let isCustomScaleVisible = false;
 
 // 1. GŁÓWNA FUNKCJA SKALI
 window.toggleScale = function() {
