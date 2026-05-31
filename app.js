@@ -1151,16 +1151,15 @@ async function fetchFullElevationProfile() {
         return; 
     }
     
-    const step = Math.max(1, Math.floor(routeGeometry.length / 90));
+     const step = Math.max(1, Math.floor(routeGeometry.length / 90));
     globalElevationData = [];
     globalElevationDist = [];
-    globalElevationLatLng = []; // Reset
+    globalElevationLatLng = [];
     let cumDist = 0;
     
     for(let i = 0; i < routeGeometry.length; i += step) {
         const elevation = routeGeometry[i][2] || 0; 
         globalElevationData.push(elevation);
-        // Zapisujemy współrzędne żeby móc je wskazać na mapie głównej
         globalElevationLatLng.push([routeGeometry[i][0], routeGeometry[i][1]]);
         
         if(i > 0) {
@@ -1168,6 +1167,20 @@ async function fetchFullElevationProfile() {
         } else if (i === 0 && routeGeometry.length > 1) {
             cumDist += L.latLng(routeGeometry[0]).distanceTo(L.latLng(routeGeometry[i]));
         }
+        globalElevationDist.push(cumDist);
+    }
+    
+    // Zabezpieczenie: Jeśli "step" pominął ostatni wierzchołek trasy (bo nie dzielił się równo), dodajemy go ręcznie.
+    // Dzięki temu przy 2 punktach zawsze mamy pełen wykres Start -> Meta!
+    const lastIdx = routeGeometry.length - 1;
+    if (globalElevationLatLng.length > 0 && globalElevationLatLng[globalElevationLatLng.length - 1][0] !== routeGeometry[lastIdx][0]) {
+        const lastEl = routeGeometry[lastIdx][2] || 0;
+        globalElevationData.push(lastEl);
+        globalElevationLatLng.push([routeGeometry[lastIdx][0], routeGeometry[lastIdx][1]]);
+        
+        const prevLatLng = globalElevationLatLng[globalElevationLatLng.length - 2];
+        const addedDist = L.latLng(prevLatLng).distanceTo(L.latLng(routeGeometry[lastIdx][0], routeGeometry[lastIdx][1]));
+        cumDist += addedDist;
         globalElevationDist.push(cumDist);
     }
     
@@ -2225,14 +2238,11 @@ function getLuminance(r, g, b) {
 function checkContrastRatio(hex1, hex2, opacity1) {
     const r1 = parseInt(hex1.slice(1, 3), 16), g1 = parseInt(hex1.slice(3, 5), 16), b1 = parseInt(hex1.slice(5, 7), 16);
     const r2 = parseInt(hex2.slice(1, 3), 16), g2 = parseInt(hex2.slice(3, 5), 16), b2 = parseInt(hex2.slice(5, 7), 16);
-    
-    // Uproszczenie: zakłamy, że przezroczystość zmniejsza czytelność, więc obniżamy "zdolność" pierwszego koloru
     const lum1 = getLuminance(r1, g1, b1) * (opacity1 / 100) + getLuminance(255,255,255) * (1 - opacity1/100); 
     const lum2 = getLuminance(r2, g2, b2);
-    
     const brightest = Math.max(lum1, lum2);
     const darkest = Math.min(lum1, lum2);
-    return (brightest + 0.05) / (darkest + 0.05); // Wartość 1.0 do 21.0
+    return (brightest + 0.05) / (darkest + 0.05); 
 }
 
 function executeRefreshRoute() {
@@ -2260,9 +2270,7 @@ function executeRefreshRoute() {
 }
 /* ================= ELASTYCZNA SKALA I COPYRIGHT W EKSPORCIE ================= */
 window.initAlwaysOnCopyright = function() {
-    if (!customCopyrightEl) {
-        createCustomCopyright();
-    }
+    if (!customCopyrightEl) createCustomCopyright();
 };
 
 // 1. GŁÓWNA FUNKCJA SKALI
@@ -2290,23 +2298,22 @@ function createCustomScale() {
     customScaleEl.id = 'export-custom-scale';
     
     Object.assign(customScaleEl.style, {
-        position: 'absolute', bottom: '15px', left: '15px', zIndex: '3500',
+        position: 'absolute', bottom: '15px', right: '15px', zIndex: '3500', // Domyślnie z prawej strony!
         cursor: 'grab', padding: '4px 8px', borderRadius: '4px',
         background: 'rgba(255,255,255,0.8)', color: '#000000',
         fontFamily: 'sans-serif', fontSize: '12px', fontWeight: 'bold',
-        boxShadow: '0 2px 5px rgba(0,0,0,0.3)', userSelect: 'none', border: '1px solid rgba(0,0,0,0.2)'
+        boxShadow: '0 2px 5px rgba(0,0,0,0.3)', userSelect: 'none', border: '1px solid rgba(0,0,0,0.2)',
+        width: 'max-content', boxSizing: 'border-box', whiteSpace: 'nowrap' // Twarda blokada rozszerzania tła!
     });
 
     customScaleEl.innerHTML = `
         <div id="scaleText" style="text-align:center; line-height: 1;">0 m</div>
-        <div id="scaleBar" style="height:4px; background:#000; margin-top:3px; border-radius:2px; display:none;"></div>
+        <div id="scaleBar" style="height:4px; background:#000; margin-top:3px; border-radius:2px; display:none; width: 100%;"></div>
     `;
 
     wrapper.appendChild(customScaleEl);
     updateScaleValues(); 
     exportMap.on('moveend zoomend', updateScaleValues);
-    
-    // Ruch jak "pociąg po szynach" wzdłuż 4 krawędzi
     makeTrainDraggable(customScaleEl, wrapper, true); 
 
     customScaleEl.addEventListener('contextmenu', (e) => {
@@ -2324,16 +2331,15 @@ function createCustomCopyright() {
     customCopyrightEl.id = 'export-custom-copyright';
     
     Object.assign(customCopyrightEl.style, {
-        position: 'absolute', bottom: '10px', right: '15px', zIndex: '3400',
+        position: 'absolute', bottom: '10px', left: '15px', zIndex: '3400', // ZMIANA: LEWY dolny róg
         cursor: 'ew-resize', padding: '2px 6px', borderRadius: '4px',
         background: 'rgba(255,255,255,0.6)', color: '#333333',
-        fontFamily: 'sans-serif', fontSize: '10px', userSelect: 'none', border: '1px solid rgba(0,0,0,0.1)'
+        fontFamily: 'sans-serif', fontSize: '10px', userSelect: 'none', border: '1px solid rgba(0,0,0,0.1)',
+        width: 'max-content', boxSizing: 'border-box', whiteSpace: 'nowrap' // Twarda blokada rozszerzania tła!
     });
 
     wrapper.appendChild(customCopyrightEl);
     updateCopyrightText();
-    
-    // Ruch tylko lewo/prawo u dołu
     makeTrainDraggable(customCopyrightEl, wrapper, false); 
     
     customCopyrightEl.addEventListener('contextmenu', (e) => {
@@ -2341,7 +2347,6 @@ function createCustomCopyright() {
         openCenteredModal('copySettingsModal');
     });
 }
-
 
 window.updateCopyrightText = function() {
     if (!customCopyrightEl) return;
@@ -2351,6 +2356,8 @@ window.updateCopyrightText = function() {
         customCopyrightEl.innerHTML = '&copy; Autorzy OpenStreetMap';
     }
 };
+
+
 // 5. OBSŁUGA WYGLĄDU (Kalkulator Kontrastu)
 window.updateCustomScaleAppearance = function() {
     if (!customScaleEl) return;
@@ -2358,9 +2365,11 @@ window.updateCustomScaleAppearance = function() {
     const opacity = document.getElementById('scaleBgOpacity').value;
     const textColor = document.getElementById('scaleTextColor').value;
     
-    // Miękkie Ostrzeżenie (poniżej 3.0 to zły kontrast)
     const ratio = checkContrastRatio(hexBg, textColor, opacity);
-    document.getElementById('scaleContrastWarning').style.display = ratio < 3.0 ? 'block' : 'none';
+    const warningDiv = document.getElementById('scaleContrastWarning');
+    
+    // Używamy display: block zamiast inline, by zawsze wymusić rozszerzenie modalu!
+    warningDiv.style.display = ratio < 3.0 ? 'block' : 'none';
 
     const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
     customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
@@ -2376,15 +2385,13 @@ window.updateCustomCopyrightAppearance = function() {
     const opacity = document.getElementById('copyBgOpacity').value;
     const textColor = document.getElementById('copyTextColor').value;
     
-    // TWARDA BLOKADA DLA ŹRÓDŁA (Kontrast musi być większy niż 3.0)
     const ratio = checkContrastRatio(hexBg, textColor, opacity);
     if (ratio < 3.0) {
-        showCustomAlert("⚠️ Odmowa zmiany! Źródło (Copyright) byłoby nieczytelne na mapie. Wybierz bardziej kontrastowe kolory lub zwiększ przezroczystość tła.");
-        // Resetowanie inputów do bezpiecznych wartości
+        showCustomAlert("⚠️ Odmowa zmiany! Źródło (Copyright) byłoby nieczytelne na mapie.");
         document.getElementById('copyBgColor').value = "#ffffff";
         document.getElementById('copyBgOpacity').value = 60;
         document.getElementById('copyTextColor').value = "#333333";
-        return; // Zakończenie funkcji bez aplikacji stylów
+        return; 
     }
 
     const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
@@ -2412,16 +2419,16 @@ function updateScaleValues() {
     let displayStr = targetMeters >= 1000 ? `${(targetMeters/1000).toFixed(1)} km` : `${targetMeters} m`;
     
     if (type === 'text') {
-        customScaleEl.style.width = 'auto';
+        customScaleEl.style.width = 'max-content'; // Wraca do ściskania się do tekstu
         textEl.innerText = `1 cm ≈ ${Math.round(mapWidthMeters / mapWidthPx * 100) / 10} m`;
         barEl.style.display = 'none';
     } else {
-        customScaleEl.style.width = scaleWidthPx + 'px';
+        // TWARDA SZEROKOŚĆ w PIKSELACH dla paska skali (zapobiega rozsuwaniu przy drag&drop!)
+        customScaleEl.style.width = (scaleWidthPx + 16) + 'px'; // +16 na padding
         textEl.innerText = displayStr;
         barEl.style.display = 'block';
     }
 }
-
 // 6. OBSŁUGA MODALU USTAWIEŃ SKALI
 window.updateCustomScaleAppearance = function() {
     if (!customScaleEl) return;
@@ -2509,10 +2516,13 @@ function makeTrainDraggable(el, wrapper, allFourEdges = true) {
     let startX, startY, initialLeft, initialTop;
 
     el.onmousedown = (e) => {
-        if(e.button !== 0) return; // Ignoruj prawy klik
+        if(e.button !== 0) return;
         e.preventDefault();
         isDragging = true;
         el.style.cursor = 'grabbing';
+        
+        // Zabezpieczenie fizycznej szerokości obiektu przed przeciąganiem
+        el.style.width = el.offsetWidth + 'px';
         
         startX = e.clientX;
         startY = e.clientY;
@@ -2533,13 +2543,11 @@ function makeTrainDraggable(el, wrapper, allFourEdges = true) {
         const maxLeft = wrapper.clientWidth - el.offsetWidth;
         const maxTop = wrapper.clientHeight - el.offsetHeight;
 
-        // Ogranicznik przed wypadnięciem poza ekran
         newLeft = Math.max(0, Math.min(newLeft, maxLeft));
         newTop = Math.max(0, Math.min(newTop, maxTop));
 
         if (allFourEdges) {
-            // Skala - przykleja się do najbliższej z 4 ścian (pociąg)
-            const margin = 15; // Sztywny odstęp od brzegu
+            const margin = 15; 
             const distLeft = newLeft;
             const distRight = maxLeft - newLeft;
             const distTop = newTop;
@@ -2552,7 +2560,7 @@ function makeTrainDraggable(el, wrapper, allFourEdges = true) {
             else if (minDist === distTop) { newTop = margin; el.style.cursor = 'ew-resize'; }
             else if (minDist === distBottom) { newTop = maxTop - margin; el.style.cursor = 'ew-resize'; }
         } else {
-            // Copyright - tylko wzdłuż dolnej ściany
+            // Copyright zawsze na dole
             newTop = maxTop - 10;
         }
 
@@ -2564,11 +2572,14 @@ function makeTrainDraggable(el, wrapper, allFourEdges = true) {
         if(!isDragging) return;
         isDragging = false;
         el.style.cursor = allFourEdges ? 'grab' : 'ew-resize';
+        // Zdejmujemy twardą szerokość, żeby aktualizator zawartości mógł ją zmienić w przyszłości
+        if (el.id !== 'export-custom-scale' || document.getElementById('scaleTypeInput').value === 'text') {
+            el.style.width = 'max-content';
+        }
         document.onmouseup = null;
         document.onmousemove = null;
     }
 }
-
 
 /* --- ZRZUTY EKRANU DLA EKSPORTU (NAPRAWIONE) --- */
 
