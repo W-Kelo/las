@@ -2264,7 +2264,11 @@ function executeRefreshRoute() {
     syncExportPoints();
 }
 /* ================= ELASTYCZNA SKALA I COPYRIGHT W EKSPORCIE ================= */
-
+window.initAlwaysOnCopyright = function() {
+    if (!customCopyrightEl) {
+        createCustomCopyright();
+    }
+};
 
 // 1. GŁÓWNA FUNKCJA SKALI
 window.toggleScale = function() {
