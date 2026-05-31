@@ -88,6 +88,9 @@ let exportMap = null;
 let exportPolyline = null;
 let scaleControl = null;
 let scaleVisible = false;
+let customScaleEl = null;
+let customCopyrightEl = null;
+let isCustomScaleVisible = false;
 let animLineLayer = null;
 let animDotMarker = null;
 let animInterval = null;
@@ -372,13 +375,16 @@ function toggleMobileNav(forceClose = false) {
     if (forceClose) {
         nav.classList.remove('expanded');
         nav.classList.add('collapsed');
+        document.body.classList.remove('nav-expanded'); // <--- DODANO
     } else {
         if (nav.classList.contains('collapsed')) {
             nav.classList.remove('collapsed');
             nav.classList.add('expanded');
+            document.body.classList.add('nav-expanded'); // <--- DODANO
         } else {
             nav.classList.remove('expanded');
             nav.classList.add('collapsed');
+            document.body.classList.remove('nav-expanded'); // <--- DODANO
         }
     }
 }
@@ -2236,86 +2242,212 @@ function executeRefreshRoute() {
     // Na koniec odświeżamy punkty (żeby wskoczyły na nowe współrzędne trasy)
     syncExportPoints();
 }
-/* --- INTELIGENTNA SKALA (PRZESUWANIE BEZ BŁĘDÓW) --- */
-/* --- INTELIGENTNA SKALA (BEZ TELEPORTACJI) --- */
-/* --- INTELIGENTNA SKALA (Z BLOKADĄ KRAWĘDZI) --- */
-function toggleScale() {
+/* ================= ELASTYCZNA SKALA I COPYRIGHT W EKSPORCIE ================= */
+
+let customScaleEl = null;
+let customCopyrightEl = null;
+let isCustomScaleVisible = false;
+
+// 1. GŁÓWNA FUNKCJA SKALI
+window.toggleScale = function() {
     if (!exportMap) return;
-    
-    if (scaleControl) {
-        const existingCustom = document.getElementById('custom-draggable-scale');
-        if (existingCustom) existingCustom.remove();
-        exportMap.removeControl(scaleControl);
-        scaleControl = null;
-        return;
+    isCustomScaleVisible = !isCustomScaleVisible;
+    const btn = document.querySelector('button[onclick="toggleScale()"]');
+
+    if (isCustomScaleVisible) {
+        if (btn) btn.innerText = "Ukryj skalę";
+        if (btn) btn.style.boxShadow = "0 0 10px white";
+        createCustomScale();
+        createCustomCopyright();
+    } else {
+        if (btn) btn.innerText = "Pokaż skalę";
+        if (btn) btn.style.boxShadow = "none";
+        if (customScaleEl) { customScaleEl.remove(); customScaleEl = null; }
+        if (customCopyrightEl) { customCopyrightEl.remove(); customCopyrightEl = null; }
+        exportMap.off('moveend zoomend', updateScaleValues);
     }
+};
+
+// 2. TWORZENIE ELEMENTU SKALI
+function createCustomScale() {
+    const wrapper = document.getElementById('exportWrapper');
+    customScaleEl = document.createElement('div');
+    customScaleEl.id = 'export-custom-scale';
     
-    scaleControl = L.control.scale({ imperial: false });
-    scaleControl.addTo(exportMap);
+    // Style pozycjonujące i drag&drop
+    Object.assign(customScaleEl.style, {
+        position: 'absolute', bottom: '30px', left: '15px', zIndex: '3500',
+        cursor: 'grab', padding: '4px 8px', borderRadius: '4px',
+        background: 'rgba(255,255,255,0.8)', color: '#000000',
+        fontFamily: 'sans-serif', fontSize: '12px', fontWeight: 'bold',
+        boxShadow: '0 2px 5px rgba(0,0,0,0.3)', userSelect: 'none', border: '1px solid rgba(0,0,0,0.2)'
+    });
+
+    customScaleEl.innerHTML = `
+        <div id="scaleText" style="text-align:center; line-height: 1;">0 m</div>
+        <div id="scaleBar" style="height:4px; background:#000; margin-top:3px; border-radius:2px; display:none;"></div>
+    `;
+
+    wrapper.appendChild(customScaleEl);
+    updateScaleValues(); // Pierwsze przeliczenie
+    exportMap.on('moveend zoomend', updateScaleValues); // Ciągłe nasłuchiwanie
     
-    const isMobile = window.innerWidth <= 768;
-    if (!isMobile) {
-        setTimeout(() => {
-            const scaleEl = document.querySelector('#mapExport .leaflet-control-scale');
-            if (!scaleEl) return;
+    makeEdgeDraggable(customScaleEl, wrapper, true); // true = wzdłuż krawędzi
 
-            const wrapper = document.getElementById('exportWrapper');
-            scaleEl.id = 'custom-draggable-scale';
-            wrapper.appendChild(scaleEl);
+    // Otwieranie Modalu PPM
+    customScaleEl.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        openCenteredModal('scaleSettingsModal');
+    });
+}
 
-            scaleEl.style.position = 'absolute';
-            scaleEl.style.bottom = '30px'; 
-            scaleEl.style.left = '30px'; 
-            scaleEl.style.zIndex = '3500';
-            scaleEl.style.cursor = 'grab';
-            scaleEl.style.background = 'rgba(255,255,255,0.8)';
-            scaleEl.style.padding = '2px 6px';
-            scaleEl.style.borderRadius = '4px';
-            scaleEl.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+// 3. TWORZENIE ELEMENTU COPYRIGHT
+function createCustomCopyright() {
+    const wrapper = document.getElementById('exportWrapper');
+    customCopyrightEl = document.createElement('div');
+    customCopyrightEl.id = 'export-custom-copyright';
+    
+    Object.assign(customCopyrightEl.style, {
+        position: 'absolute', bottom: '10px', left: '15px', zIndex: '3400',
+        cursor: 'ew-resize', padding: '2px 6px', borderRadius: '4px',
+        background: 'rgba(255,255,255,0.6)', color: '#333',
+        fontFamily: 'sans-serif', fontSize: '10px', userSelect: 'none'
+    });
 
-            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-            
-            scaleEl.onmousedown = (e) => {
-                e.preventDefault();
-                scaleEl.style.cursor = 'grabbing';
-                pos3 = e.clientX;
-                pos4 = e.clientY;
+    wrapper.appendChild(customCopyrightEl);
+    updateCopyrightText();
+    
+    // Drag tylko w poziomie (wzdłuż dolnej krawędzi)
+    makeEdgeDraggable(customCopyrightEl, wrapper, false, true); 
+}
 
-                document.onmouseup = () => {
-                    document.onmouseup = null;
-                    document.onmousemove = null;
-                    scaleEl.style.cursor = 'grab';
-                };
+// 4. AKTUALIZACJA TEKSTU COPYRIGHT (Wywołuj to też przy zmianie na Satelitę!)
+window.updateCopyrightText = function() {
+    if (!customCopyrightEl) return;
+    if (typeof isExportSatellite !== 'undefined' && isExportSatellite) {
+        customCopyrightEl.innerHTML = '&copy; Google Maps';
+    } else {
+        customCopyrightEl.innerHTML = '&copy; Autorzy OpenStreetMap';
+    }
+};
 
-                document.onmousemove = (e2) => {
-                    e2.preventDefault();
-                    pos1 = pos3 - e2.clientX;
-                    pos2 = pos4 - e2.clientY;
-                    pos3 = e2.clientX;
-                    pos4 = e2.clientY;
-                    
-                    scaleEl.style.bottom = 'auto';
-                    scaleEl.style.right = 'auto';
-                    
-                    // OBLICZANIE GRANIC
-                    let newTop = scaleEl.offsetTop - pos2;
-                    let newLeft = scaleEl.offsetLeft - pos1;
-                    
-                    const maxTop = wrapper.clientHeight - scaleEl.offsetHeight;
-                    const maxLeft = wrapper.clientWidth - scaleEl.offsetWidth;
-                    
-                    // ZABLOKOWANIE W GRANICACH (0 do Max)
-                    newTop = Math.max(0, Math.min(newTop, maxTop));
-                    newLeft = Math.max(0, Math.min(newLeft, maxLeft));
-                    
-                    scaleEl.style.top = newTop + "px";
-                    scaleEl.style.left = newLeft + "px";
-                };
-            };
-            document.querySelectorAll('#mapExport .leaflet-bottom').forEach(el => el.style.pointerEvents = 'none');
-        }, 100);
+// 5. MATEMATYKA SKALI (Własne przeliczanie metrów)
+function updateScaleValues() {
+    if (!customScaleEl || !exportMap) return;
+    
+    const bounds = exportMap.getBounds();
+    const center = bounds.getCenter();
+    const mapWidthPx = document.getElementById('mapExport').clientWidth;
+    const mapWidthMeters = bounds.getNorthEast().distanceTo(bounds.getNorthWest());
+    
+    // Szukamy okrągłej liczby metrów (np. 10m, 50m, 500m, 1km, 5km)
+    const pxPerMeter = mapWidthPx / mapWidthMeters;
+    let targetMeters = 10;
+    while (targetMeters * pxPerMeter < 100) targetMeters *= 2; 
+    // Chcemy by skala miała ok 100-200 pikseli szerokości
+    
+    const scaleWidthPx = Math.round(targetMeters * pxPerMeter);
+    
+    const textEl = document.getElementById('scaleText');
+    const barEl = document.getElementById('scaleBar');
+    const type = document.getElementById('scaleTypeInput').value;
+
+    let displayStr = targetMeters >= 1000 ? `${(targetMeters/1000).toFixed(1)} km` : `${targetMeters} m`;
+    
+    if (type === 'text') {
+        customScaleEl.style.width = 'auto';
+        textEl.innerText = `Skala: 1 cm ≈ ${Math.round(mapWidthMeters / mapWidthPx * 100) / 10} m`;
+        barEl.style.display = 'none';
+    } else {
+        customScaleEl.style.width = scaleWidthPx + 'px';
+        textEl.innerText = displayStr;
+        barEl.style.display = 'block';
     }
 }
+
+// 6. OBSŁUGA MODALU USTAWIEŃ SKALI
+window.updateCustomScaleAppearance = function() {
+    if (!customScaleEl) return;
+    const hexBg = document.getElementById('scaleBgColor').value;
+    const opacity = document.getElementById('scaleBgOpacity').value / 100;
+    const textColor = document.getElementById('scaleTextColor').value;
+    
+    // Konwersja hex na rgb dla tła
+    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
+    customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    customScaleEl.style.color = textColor;
+    document.getElementById('scaleBar').style.backgroundColor = textColor;
+    customScaleEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity+0.2)})`;
+    
+    updateScaleValues(); // Przerysuj w nowym trybie
+};
+
+// 7. DRAG & DROP WZDŁUŻ KRAWĘDZI
+function makeEdgeDraggable(el, wrapper, snapToEdges = true, lockVertical = false) {
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+
+    el.onmousedown = (e) => {
+        if(e.button !== 0) return; // Ignoruj prawy klik
+        e.preventDefault();
+        isDragging = true;
+        el.style.cursor = 'grabbing';
+        
+        startX = e.clientX;
+        startY = e.clientY;
+        initialLeft = el.offsetLeft;
+        initialTop = el.offsetTop;
+        
+        document.onmouseup = endDrag;
+        document.onmousemove = onDrag;
+    };
+
+    function onDrag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        
+        let newLeft = initialLeft + (e.clientX - startX);
+        let newTop = initialTop + (e.clientY - startY);
+        
+        const maxLeft = wrapper.clientWidth - el.offsetWidth;
+        const maxTop = wrapper.clientHeight - el.offsetHeight;
+
+        // Ogranicznik twardy (nie wypadnie poza ekran)
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop = Math.max(0, Math.min(newTop, maxTop));
+
+        // SNAP (Przyklejanie do jednej z 4 krawędzi)
+        if (snapToEdges && !lockVertical) {
+            const distLeft = newLeft;
+            const distRight = maxLeft - newLeft;
+            const distTop = newTop;
+            const distBottom = maxTop - newTop;
+            
+            const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+            
+            if (minDist === distLeft) newLeft = 0;
+            else if (minDist === distRight) newLeft = maxLeft;
+            else if (minDist === distTop) newTop = 0;
+            else if (minDist === distBottom) newTop = maxTop;
+        }
+
+        // LOCK (Blokada w poziomie, przydatne dla copyright na dole)
+        if (lockVertical) {
+            newTop = initialTop; 
+        }
+
+        el.style.left = newLeft + 'px';
+        el.style.top = newTop + 'px';
+    }
+
+    function endDrag() {
+        isDragging = false;
+        el.style.cursor = snapToEdges ? 'grab' : 'ew-resize';
+        document.onmouseup = null;
+        document.onmousemove = null;
+    }
+}
+
 /* --- ZRZUTY EKRANU DLA EKSPORTU (NAPRAWIONE) --- */
 
 async function exportMapPNG() {
@@ -5408,6 +5540,10 @@ exportSatelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}
         exportTileLayer.addTo(exportMap);
         btn.innerText = "Satelita";
         btn.style.boxShadow = "none";
+    }
+    // Dopisujemy to na końcu:
+    if (typeof window.updateCopyrightText === 'function') {
+        window.updateCopyrightText();
     }
 }
 function togglePanelScale() {
