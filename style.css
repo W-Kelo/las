@@ -207,8 +207,8 @@
 
    
     .map-export-modal {
-        max-width: none !important;
-        max-height: none !important;
+       // max-width: none !important;
+       // max-height: none !important;
         margin: 0 !important;
         border-radius: 0 !important;
         border: none !important;
