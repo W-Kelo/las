@@ -207,8 +207,6 @@
 
    
     .map-export-modal {
-        width: 100vw !important;
-        /* height i border kontrolowane teraz bezpośrednio z JS dla 100% precyzji */
         max-width: none !important;
         max-height: none !important;
         margin: 0 !important;
@@ -240,13 +238,6 @@
 }
 /* --- POPRAWKA POZYCJI COPYRIGHT NA MOBILE --- */
 @media (max-width: 768px) {
-    /* Przy zamkniętym pasku - standardowa pozycja nad uchwytem paska */
-    .leaflet-control-container .leaflet-bottom.leaflet-right {
-        bottom: 95px !important;
-        right: 10px !important;
-        transform: none !important;
-        transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
     
     /* Przy otwartym pasku - podniesione elastycznie nad rozwinięty panel */
     body.nav-expanded .leaflet-control-container .leaflet-bottom.leaflet-right {
