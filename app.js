@@ -384,6 +384,43 @@ function toggleMobileNav(forceClose = false) {
         }
     }
 }
+// --- NOWE: Obsługa gestów (Swipe Up / Swipe Down) dla mobilnego paska nawigacji ---
+document.addEventListener('DOMContentLoaded', () => {
+    const nav = document.getElementById('mobileBottomNav');
+    let startY = 0;
+    let currentY = 0;
+
+    if (!nav) return;
+
+    nav.addEventListener('touchstart', (e) => {
+        // Ignoruj swipe, jeśli użytkownik klika precyzyjnie w przyciski (button) lub inputy
+        if(e.target.tagName.toLowerCase() === 'button' || e.target.closest('button')) return;
+        startY = e.touches[0].clientY;
+    }, { passive: true });
+
+    nav.addEventListener('touchmove', (e) => {
+        if (!startY) return;
+        currentY = e.touches[0].clientY;
+    }, { passive: true });
+
+    nav.addEventListener('touchend', () => {
+        if (!startY || !currentY) return;
+        
+        const diff = currentY - startY;
+
+        // Przesunięcie w dół (Zamykanie paska)
+        if (diff > 35 && nav.classList.contains('expanded')) {
+            toggleMobileNav(true); // true = wymuś zamknięcie
+        }
+        // Przesunięcie w górę (Otwieranie paska)
+        else if (diff < -35 && nav.classList.contains('collapsed')) {
+            toggleMobileNav(false); 
+        }
+
+        startY = 0;
+        currentY = 0;
+    });
+});
     
 /* ================= OBSŁUGA MODALI (Floating) ================= */
 function makeDraggable(el) {
@@ -2134,30 +2171,36 @@ async function generatePDF() {
     }
 }
 // Niezawodna funkcja pozycjonująca okno (w miejsce CSS transform)
+// Niezawodna funkcja pozycjonująca okno eksportu
 function centerExportModal() {
     const modal = document.getElementById('mapExportModal');
     if (modal.style.display !== 'flex') return;
 
     const winW = window.innerWidth;
-    const winH = window.innerHeight;
+    const winH = window.innerHeight; // dynamiczna wysokość z uwzględnieniem paska URL przeglądarki
 
-    // Marginesy: 10px na telefonach, 30px na komputerach
-    const margin = winW < 768 ? 10 : 30;
+    if (winW <= 768) {
+        // --- Tryb mobilny: bezwzględny pełny ekran bez marginesów ---
+        modal.style.width = '100vw';
+        modal.style.height = winH + 'px'; 
+        modal.style.left = '0px';
+        modal.style.top = '0px';
+        modal.style.borderRadius = '0px';
+        modal.style.border = 'none';
+        modal.style.transform = 'none';
+    } else {
+        // --- Tryb PC: z eleganckimi marginesami ---
+        const margin = 30;
+        modal.style.width = (winW - margin * 2) + 'px';
+        modal.style.height = (winH - margin * 2) + 'px';
+        modal.style.left = margin + 'px';
+        modal.style.top = margin + 'px';
+        modal.style.borderRadius = '12px';
+        modal.style.transform = 'none'; // reset wymusza stabilność
+    }
 
-    const targetW = winW - (margin * 2);
-    const targetH = winH - (margin * 2);
-
-    modal.style.width = targetW + 'px';
-    modal.style.height = targetH + 'px';
-
-    // Całkowite zresetowanie transform z CSS, wymuszamy sztywne piksele
-    modal.style.transform = 'none';
-    modal.style.left = margin + 'px';
-    modal.style.top = margin + 'px';
-    
     if (exportMap) exportMap.invalidateSize(true);
 }
-
 // Zabezpieczenie przed obracaniem ekranu smartfona
 window.addEventListener('resize', centerExportModal);
 
@@ -3151,7 +3194,70 @@ function saveLegendItem() {
     }
     updatePanelVisibility();
     closeEmojiPicker();
+    checkDuplicateEmojis();
 }
+// --- NOWE: Inteligentna numeracja powtarzających się ikon ---
+function checkDuplicateEmojis() {
+    if (!exportMap || Object.keys(exportLegendItems).length === 0) return;
+
+    const emojiCounts = {};
+    Object.values(exportLegendItems).forEach(item => {
+        // Usuwamy ewentualne spcje i cyfry na końcu, żeby wykryć "czystą" emotkę
+        const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim(); 
+        emojiCounts[baseEmoji] = (emojiCounts[baseEmoji] || 0) + 1;
+    });
+
+    // Sprawdź czy jest jakakolwiek emotka występująca więcej niż 1 raz
+    const hasDuplicates = Object.values(emojiCounts).some(count => count > 1);
+
+    let banner = document.getElementById('emoji-duplicate-banner');
+
+    if (hasDuplicates) {
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'emoji-duplicate-banner';
+            banner.setAttribute('data-html2canvas-ignore', 'true'); // Ignorowane przy generowaniu PDF/PNG
+            banner.style.cssText = "position:absolute; top:70px; left:50%; transform:translateX(-50%); background:rgba(59, 130, 246, 0.95); color:white; padding:10px 20px; border-radius:30px; box-shadow:0 4px 15px rgba(0,0,0,0.3); z-index:4000; display:flex; align-items:center; gap:10px; font-size:0.85rem; backdrop-filter:blur(4px); white-space:nowrap;";
+            banner.innerHTML = `
+                <span>💡 Powtarzające się ikony. Ponumerować?</span>
+                <button onclick="applyEmojiNumbering()" style="background:#22c55e; padding:4px 12px; border-radius:15px; border:none; color:white; cursor:pointer; font-weight:bold;">Tak</button>
+                <button onclick="this.parentElement.style.display='none'" style="background:transparent; padding:4px; border:none; color:white; cursor:pointer; font-size:1.1rem;">✖</button>
+            `;
+            document.getElementById('exportWrapper').appendChild(banner);
+        }
+        banner.style.display = 'flex';
+    } else if (banner) {
+        banner.style.display = 'none';
+    }
+}
+
+window.applyEmojiNumbering = function() {
+    const counters = {};
+    
+    Object.entries(exportLegendItems).forEach(([id, item]) => {
+        const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim();
+        counters[baseEmoji] = (counters[baseEmoji] || 0) + 1;
+        
+        // Dodajemy numer jeśli ta emotka występuje więcej niż raz w całym zestawieniu
+        const newEmoji = `${baseEmoji} <span style="font-size:0.6em; font-weight:bold;">${counters[baseEmoji]}</span>`;
+        const rawNewEmoji = `${baseEmoji} ${counters[baseEmoji]}`;
+
+        item.emoji = rawNewEmoji;
+        item.marker.setIcon(L.divIcon({
+            html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));" title="${item.text}">${newEmoji}</div>`,
+            className: 'poi-icon'
+        }));
+
+        // Aktualizacja w bocznym panelu legendy
+        const li = document.getElementById(id);
+        if (li) {
+            const iconSpan = li.querySelector('.leg-icon');
+            if (iconSpan) iconSpan.innerHTML = rawNewEmoji; // w legendzie zwykły tekst, żeby się zmieścił
+        }
+    });
+
+    document.getElementById('emoji-duplicate-banner').style.display = 'none';
+};
 
 function editLegendItem(id) {
     const item = exportLegendItems[id];
@@ -4464,6 +4570,7 @@ function syncExportPoints() {
     }
 
     updatePanelVisibility();
+    checkDuplicateEmojis();
 }
 function addAutoLegendItemToDOM(id) {
     const item = exportLegendItems[id];
