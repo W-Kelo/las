@@ -205,16 +205,20 @@
         left: auto !important;
     }
 
+   
     .map-export-modal {
-        width: 96% !important;
-        height: 96vh !important;
-        max-height: 96vh !important;
+        width: 100vw !important;
+        /* height i border kontrolowane teraz bezpośrednio z JS dla 100% precyzji */
+        max-width: none !important;
+        max-height: none !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        border: none !important;
     }
-
-    .modal-body {
-        overflow-y: auto !important;
-        -webkit-overflow-scrolling: touch;
-        flex-grow: 1;
+    
+    /* Dodatkowo zwężamy nieco nagłówek na telefonach, by odzyskać przestrzeń roboczą dla mapy */
+    .export-header {
+        padding: 5px 8px;
     }
 
     .style-control-group, .search-save-form, .my-points-toolbar {
@@ -235,18 +239,19 @@
     border: 1px solid rgba(255,255,255,0.1);
 }
 /* --- POPRAWKA POZYCJI COPYRIGHT NA MOBILE --- */
-/* --- POPRAWKA POZYCJI COPYRIGHT NA MOBILE --- */
 @media (max-width: 768px) {
-    /* Przy zamkniętym pasku - obniżone o 0,1 cm (ok 4px z 90px na 86px) */
+    /* Przy zamkniętym pasku - standardowa pozycja nad uchwytem paska */
     .leaflet-control-container .leaflet-bottom.leaflet-right {
-        bottom: 86px !important;
+        bottom: 95px !important;
         right: 10px !important;
-        transition: transform 0.3s ease;
+        transform: none !important;
+        transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
     
-    /* Przy otwartym pasku - podniesione o centymetr w górę (zmiana z -50vh na -58vh) */
+    /* Przy otwartym pasku - podniesione elastycznie nad rozwinięty panel */
     body.nav-expanded .leaflet-control-container .leaflet-bottom.leaflet-right {
-        transform: translateY(-58vh); 
+        bottom: calc(70vh + 30px) !important; /* Automatycznie wędruje nad panel */
+        transform: none !important; 
     }
 }
 @media (max-width: 768px) { .mobile-top-bar { display: flex; } }
