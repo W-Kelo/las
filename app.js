@@ -5947,35 +5947,43 @@ function handlePanelWheelZoom(e) {
     el.dataset.scale = currentScale;
 }
 // --- STRAŻNIK 24/7: Automatyczne omijanie menu przez źródło mapy ---
+// --- PANCERNY STRAŻNIK 24/7: Automatyczne omijanie menu przez źródło mapy ---
 function keepAttributionSafe() {
     const nav = document.getElementById('mobileBottomNav');
     const attrControl = document.querySelector('.leaflet-control-container .leaflet-bottom.leaflet-right');
+    const mapEl = document.getElementById('map');
 
-    if (attrControl && window.innerWidth <= 768) {
-        if (nav && nav.style.display !== 'none') {
-            // Pobieramy absolutną wysokość okna oraz miejsce w którym zaczyna się panel menu
+    if (attrControl && nav && window.innerWidth <= 768) {
+        if (window.getComputedStyle(nav).display !== 'none') {
+            // Pobieramy dokładne fizyczne koordynaty obu elementów na ekranie
             const navRect = nav.getBoundingClientRect();
-            const windowHeight = window.innerHeight;
-            
-            // Ile miejsca zajmuje panel od samego dołu ekranu?
-            const navSpaceFromBottom = windowHeight - navRect.top;
+            const mapRect = mapEl.getBoundingClientRect();
 
-            // Ustaw źródło dokładnie 10 pikseli nad panelem nawigacji
-            attrControl.style.bottom = (navSpaceFromBottom + 10) + 'px';
-            attrControl.style.transition = 'bottom 0.1s ease'; // minimalne wygładzenie
+            // Obliczamy DOKŁADNIE, ile pikseli menu wchodzi (nakłada się) na kontener mapy
+            let overlap = mapRect.bottom - navRect.top;
+
+            // Zabezpieczenie przed ujemnymi wartościami (gdyby menu było pod mapą)
+            if (overlap < 0) overlap = 0;
+
+            // Ustawiamy źródło na wysokości nałożenia + 20 pikseli bezpiecznego marginesu
+            // transition: none zapobiega opóźnieniom - pasek jest "przyspawany" do krawędzi menu
+            attrControl.style.transition = 'none';
+            attrControl.style.bottom = (overlap + 20) + 'px';
+            attrControl.style.zIndex = '1000';
+            
+            // Lekki tuning tła, żeby napis był czytelniejszy, jeśli zjedzie na jasną mapę
+            attrControl.style.background = 'rgba(255,255,255,0.7)';
+            attrControl.style.borderRadius = '4px';
         } else {
-            // Awaryjna pozycja dla wersji mobilnej, gdyby menu nie było
-            attrControl.style.bottom = '95px';
+            // Awaryjnie, gdy panel menu jest ukryty (np. tryb rysowania)
+            attrControl.style.bottom = '20px';
         }
     } else if (attrControl) {
-        // Czyszczenie stylów dla komputerów (PC używa domyślnych ustawień)
+        // Czyszczenie stylów dla komputerów (PC używa domyślnych ustawień Leafleta)
         attrControl.style.bottom = '';
+        attrControl.style.background = '';
     }
 
-    // Pętla wywołująca samą siebie z każdą klatką rysowaną przez ekran
+    // Nieskończona pętla zsynchronizowana z odświeżaniem ekranu (60/120 klatek na sekundę)
     requestAnimationFrame(keepAttributionSafe);
 }
-
-// Uruchomienie strażnika
-requestAnimationFrame(keepAttributionSafe);
-    
