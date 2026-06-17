@@ -2172,37 +2172,49 @@ async function generatePDF() {
 }
 // Niezawodna funkcja pozycjonująca okno (w miejsce CSS transform)
 // Niezawodna funkcja pozycjonująca okno eksportu
+// Niezawodna funkcja pozycjonująca okno eksportu (Uniwersalna na KAŻDY ekran)
 function centerExportModal() {
     const modal = document.getElementById('mapExportModal');
     if (modal.style.display !== 'flex') return;
 
-    const winW = window.innerWidth;
-    const winH = window.innerHeight; // dynamiczna wysokość z uwzględnieniem paska URL przeglądarki
+    // Pobieramy prawdziwe wymiary okna (visualViewport to najdokładniejsza metoda na telefony)
+    const winW = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+    const winH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
 
-    if (winW <= 768) {
-        // --- Tryb mobilny: bezwzględny pełny ekran bez marginesów ---
-        modal.style.width = '100vw';
-        modal.style.height = winH + 'px'; 
-        modal.style.left = '0px';
-        modal.style.top = '0px';
-        modal.style.borderRadius = '0px';
-        modal.style.border = 'none';
-        modal.style.transform = 'none';
-    } else {
-        // --- Tryb PC: z eleganckimi marginesami ---
-        const margin = 30;
-        modal.style.width = (winW - margin * 2) + 'px';
-        modal.style.height = (winH - margin * 2) + 'px';
-        modal.style.left = margin + 'px';
-        modal.style.top = margin + 'px';
-        modal.style.borderRadius = '12px';
-        modal.style.transform = 'none'; // reset wymusza stabilność
+    const isMobile = winW <= 768;
+    
+    // Ustawiamy bezpieczny margines (np. 10px na komórce, 30px na PC z każdej strony)
+    const margin = isMobile ? 5 : 30;
+
+    // Ustalamy sztywne wartości w pikselach
+    const targetW = winW - (margin * 2);
+    const targetH = winH - (margin * 2);
+
+    modal.style.width = targetW + 'px';
+    modal.style.height = targetH + 'px';
+    modal.style.maxWidth = 'none';
+    modal.style.maxHeight = 'none';
+
+    // Uniwersalne centrowanie absolutne (nie polega na lewej krawędzi, samo znajduje środek)
+    modal.style.position = 'fixed';
+    modal.style.top = '50%';
+    modal.style.left = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
+    modal.style.margin = '0';
+    modal.style.borderRadius = isMobile ? '8px' : '12px';
+
+    if (exportMap) {
+        // Opóźnienie by przeglądarka zdążyła narysować okno przed przeskalowaniem mapy
+        setTimeout(() => exportMap.invalidateSize(true), 50);
     }
-
-    if (exportMap) exportMap.invalidateSize(true);
 }
-// Zabezpieczenie przed obracaniem ekranu smartfona
+
+// Nasłuchiwanie zmian rozmiaru (i obrotu ekranu)
 window.addEventListener('resize', centerExportModal);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', centerExportModal);
+}
+
 
 function openMapExportModal() {
     const modal = document.getElementById('mapExportModal');
@@ -3232,33 +3244,43 @@ function checkDuplicateEmojis() {
 }
 
 window.applyEmojiNumbering = function() {
-    const counters = {};
-    
+    const frequencies = {}; // Zlicza ile razy występuje dany punkt
+    const counters = {};    // Śledzi obecny numer przypisywany punktowi
+
+    // ETAP 1: Obliczenie częstotliwości (kto ma duplikaty)
+    Object.values(exportLegendItems).forEach(item => {
+        const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim();
+        frequencies[baseEmoji] = (frequencies[baseEmoji] || 0) + 1;
+    });
+
+    // ETAP 2: Nadanie numerków TYLKO tym, które mają frequency > 1
     Object.entries(exportLegendItems).forEach(([id, item]) => {
         const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim();
-        counters[baseEmoji] = (counters[baseEmoji] || 0) + 1;
         
-        // Dodajemy numer jeśli ta emotka występuje więcej niż raz w całym zestawieniu
-        const newEmoji = `${baseEmoji} <span style="font-size:0.6em; font-weight:bold;">${counters[baseEmoji]}</span>`;
-        const rawNewEmoji = `${baseEmoji} ${counters[baseEmoji]}`;
+        // Jeśli ikona jest unikalna (występuje 1 raz), zostaw ją w spokoju
+        if (frequencies[baseEmoji] > 1) {
+            counters[baseEmoji] = (counters[baseEmoji] || 0) + 1;
+            
+            const newEmoji = `${baseEmoji} <span style="font-size:0.6em; font-weight:bold;">${counters[baseEmoji]}</span>`;
+            const rawNewEmoji = `${baseEmoji} ${counters[baseEmoji]}`;
 
-        item.emoji = rawNewEmoji;
-        item.marker.setIcon(L.divIcon({
-            html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));" title="${item.text}">${newEmoji}</div>`,
-            className: 'poi-icon'
-        }));
+            item.emoji = rawNewEmoji;
+            item.marker.setIcon(L.divIcon({
+                html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));" title="${item.text}">${newEmoji}</div>`,
+                className: 'poi-icon'
+            }));
 
-        // Aktualizacja w bocznym panelu legendy
-        const li = document.getElementById(id);
-        if (li) {
-            const iconSpan = li.querySelector('.leg-icon');
-            if (iconSpan) iconSpan.innerHTML = rawNewEmoji; // w legendzie zwykły tekst, żeby się zmieścił
+            // Aktualizacja w bocznym panelu legendy
+            const li = document.getElementById(id);
+            if (li) {
+                const iconSpan = li.querySelector('.leg-icon');
+                if (iconSpan) iconSpan.innerHTML = rawNewEmoji;
+            }
         }
     });
 
     document.getElementById('emoji-duplicate-banner').style.display = 'none';
 };
-
 function editLegendItem(id) {
     const item = exportLegendItems[id];
     if(!item) return;
@@ -5924,4 +5946,36 @@ function handlePanelWheelZoom(e) {
     el.style.scale = currentScale;
     el.dataset.scale = currentScale;
 }
+// --- STRAŻNIK 24/7: Automatyczne omijanie menu przez źródło mapy ---
+function keepAttributionSafe() {
+    const nav = document.getElementById('mobileBottomNav');
+    const attrControl = document.querySelector('.leaflet-control-container .leaflet-bottom.leaflet-right');
+
+    if (attrControl && window.innerWidth <= 768) {
+        if (nav && nav.style.display !== 'none') {
+            // Pobieramy absolutną wysokość okna oraz miejsce w którym zaczyna się panel menu
+            const navRect = nav.getBoundingClientRect();
+            const windowHeight = window.innerHeight;
+            
+            // Ile miejsca zajmuje panel od samego dołu ekranu?
+            const navSpaceFromBottom = windowHeight - navRect.top;
+
+            // Ustaw źródło dokładnie 10 pikseli nad panelem nawigacji
+            attrControl.style.bottom = (navSpaceFromBottom + 10) + 'px';
+            attrControl.style.transition = 'bottom 0.1s ease'; // minimalne wygładzenie
+        } else {
+            // Awaryjna pozycja dla wersji mobilnej, gdyby menu nie było
+            attrControl.style.bottom = '95px';
+        }
+    } else if (attrControl) {
+        // Czyszczenie stylów dla komputerów (PC używa domyślnych ustawień)
+        attrControl.style.bottom = '';
+    }
+
+    // Pętla wywołująca samą siebie z każdą klatką rysowaną przez ekran
+    requestAnimationFrame(keepAttributionSafe);
+}
+
+// Uruchomienie strażnika
+requestAnimationFrame(keepAttributionSafe);
     
