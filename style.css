@@ -1178,3 +1178,21 @@ canvas#elevation {
 @media (max-width: 768px) {
     #mobileLayersBtn { display: flex; }
 }
+/* --- PREMIUM KADROWANIE --- */
+.premium-resize-overlay {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    border: 2px dashed #a855f7;
+    pointer-events: none; /* Środek jest przezroczysty dla kliknięć */
+    z-index: 9999;
+    box-sizing: border-box;
+}
+.prem-handle {
+    position: absolute;
+    background: #a855f7;
+    pointer-events: auto; /* Same uchwyty chwytają kliknięcia */
+    box-shadow: 0 0 5px rgba(0,0,0,0.5);
+}
+.prem-se { bottom: -6px; right: -6px; width: 14px; height: 14px; border-radius: 50%; cursor: se-resize; }
+.prem-e { top: 0; right: -4px; width: 8px; height: 100%; cursor: e-resize; }
+.prem-s { bottom: -4px; left: 0; width: 100%; height: 8px; cursor: s-resize; }
