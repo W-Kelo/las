@@ -385,6 +385,7 @@ function toggleMobileNav(forceClose = false) {
     }
 }
 // --- NOWE: Obsługa gestów (Swipe Up / Swipe Down) dla mobilnego paska nawigacji ---
+// --- NAPRAWIONA OBSŁUGA GESTÓW I BLOKADA AUTO-OTWIERANIA ---
 document.addEventListener('DOMContentLoaded', () => {
     const nav = document.getElementById('mobileBottomNav');
     let startY = 0;
@@ -392,10 +393,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!nav) return;
 
+    // 1. Ochrona przycisków przed otwieraniem menu
+    const navButtons = nav.querySelectorAll('.nav-item');
+    navButtons.forEach(btn => {
+        // Podmieniamy atrybut onclick, wymuszając wartość TRUE (forceClose)
+        const oldClick = btn.getAttribute('onclick');
+        if(oldClick && oldClick.includes('toggleMobileNav(false)')) {
+            btn.setAttribute('onclick', oldClick.replace('toggleMobileNav(false)', 'toggleMobileNav(true)'));
+        }
+    });
+
+    // 2. Naprawiony mechanizm Swipe
     nav.addEventListener('touchstart', (e) => {
-        // Ignoruj swipe, jeśli użytkownik klika precyzyjnie w przyciski (button) lub inputy
+        // Zignoruj gest, jeśli użytkownik klika w jakikolwiek przycisk wewnątrz menu!
         if(e.target.tagName.toLowerCase() === 'button' || e.target.closest('button')) return;
+        
         startY = e.touches[0].clientY;
+        currentY = startY; // Reset!
     }, { passive: true });
 
     nav.addEventListener('touchmove', (e) => {
@@ -408,17 +422,17 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const diff = currentY - startY;
 
-        // Przesunięcie w dół (Zamykanie paska)
-        if (diff > 35 && nav.classList.contains('expanded')) {
-            toggleMobileNav(true); // true = wymuś zamknięcie
-        }
-        // Przesunięcie w górę (Otwieranie paska)
-        else if (diff < -35 && nav.classList.contains('collapsed')) {
-            toggleMobileNav(false); 
+        // Tolerancja ruchu podniesiona do 40px, by uniknąć przypadkowych tapnięć
+        if (diff > 40 && nav.classList.contains('expanded')) {
+            toggleMobileNav(true); // Zwiń
+        } else if (diff < -40 && nav.classList.contains('collapsed')) {
+            // Wymuś rozwinięcie tylko jeśli to nie był klik w przycisk
+            nav.classList.remove('collapsed');
+            nav.classList.add('expanded');
+            document.body.classList.add('nav-expanded');
         }
 
-        startY = 0;
-        currentY = 0;
+        startY = 0; currentY = 0;
     });
 });
     
@@ -3498,6 +3512,7 @@ function removePanelDraggable(el) {
 
 
 
+// --- MOBILNE KADROWANIE Z UCHWYTAMI ---
 function togglePanelResize() {
     isPanelResizable = !isPanelResizable;
     const btn = document.getElementById('btnResizePanel');
@@ -3506,9 +3521,50 @@ function togglePanelResize() {
     const targets = [document.getElementById('mapInfoPanel'), ...document.querySelectorAll('.detached-panel')];
     targets.forEach(el => {
         if(!el) return;
-        if(isPanelResizable) el.classList.add('resizable');
-        else el.classList.remove('resizable');
+        if(isPanelResizable) {
+            el.classList.add('resizable');
+            el.style.border = "2px dashed #a855f7"; // Wizualna wskazówka
+            
+            // Tworzenie dotykowego uchwytu dla urządzeń mobilnych
+            let handle = el.querySelector('.mobile-resize-handle');
+            if(!handle) {
+                handle = document.createElement('div');
+                handle.className = 'mobile-resize-handle';
+                handle.innerHTML = '📐';
+                handle.style.cssText = "position:absolute; bottom:-10px; right:-10px; font-size:24px; background:white; border-radius:50%; box-shadow:0 2px 5px rgba(0,0,0,0.5); width:35px; height:35px; display:flex; align-items:center; justify-content:center; cursor:se-resize; z-index:9999;";
+                el.appendChild(handle);
+                setupMobileResize(el, handle);
+            }
+            handle.style.display = 'flex';
+        } else {
+            el.classList.remove('resizable');
+            el.style.border = "";
+            const handle = el.querySelector('.mobile-resize-handle');
+            if(handle) handle.style.display = 'none';
+        }
     });
+}
+
+function setupMobileResize(panel, handle) {
+    let startX, startY, startW, startH;
+
+    handle.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation(); // Blokuje przesuwanie całego panelu
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        startW = panel.offsetWidth;
+        startH = panel.offsetHeight;
+    }, {passive: false});
+
+    handle.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const newWidth = startW + (e.touches[0].clientX - startX);
+        const newHeight = startH + (e.touches[0].clientY - startY);
+        // Minimalne wymiary
+        panel.style.width = Math.max(100, newWidth) + 'px';
+        panel.style.height = Math.max(50, newHeight) + 'px';
+    }, {passive: false});
 }
     /* ================= STYLIZACJA TRASY ================= */
 function openStyleModal() {
@@ -5348,42 +5404,79 @@ function activateScissorsMode() {
     // Aktywujemy drag & drop dla wyrwanego klocka
     forceEnableDragAndResize(el);
 }
-   function forceEnableDragAndResize(el) {
+  // --- WIBRUJĄCE PRZESUWANIE DOTYKOWE (LONG PRESS) ---
+function forceEnableDragAndResize(el) {
     if(!el) return;
-    
     if(isPanelDraggable) el.classList.add('draggable');
-    if(isPanelResizable) el.classList.add('resizable');
     
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    let pressTimer = null;
+    let isTouchDragging = false;
     
+    // --- OBSŁUGA MYSZY (PC) ---
     el.onmousedown = (e) => {
-        if(!el.classList.contains('draggable')) return;
-        
-        // Zabezpieczenie - kliknięcie w prawy dolny róg służy do skalowania CSS, nie do przesuwania!
-        if(e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return;
-        
+        if(!el.classList.contains('draggable') || e.target.classList.contains('mobile-resize-handle')) return;
         e.preventDefault();
-        pos3 = e.clientX;
-        pos4 = e.clientY;
+        pos3 = e.clientX; pos4 = e.clientY;
         document.onmouseup = closeDrag;
         document.onmousemove = elementDrag;
     };
 
     function elementDrag(e) {
         e.preventDefault();
-        pos1 = pos3 - e.clientX;
-        pos2 = pos4 - e.clientY;
-        pos3 = e.clientX;
-        pos4 = e.clientY;
+        pos1 = pos3 - e.clientX; pos2 = pos4 - e.clientY;
+        pos3 = e.clientX; pos4 = e.clientY;
         el.style.top = (el.offsetTop - pos2) + "px";
         el.style.left = (el.offsetLeft - pos1) + "px";
     }
     
     function closeDrag() {
-        document.onmouseup = null;
-        document.onmousemove = null;
+        document.onmouseup = null; document.onmousemove = null;
     }
+
+    // --- OBSŁUGA DOTYKU (MOBILE - LONG PRESS) ---
+    el.addEventListener('touchstart', (e) => {
+        if(!el.classList.contains('draggable') || e.target.classList.contains('mobile-resize-handle')) return;
+        
+        // Czekamy 300ms na aktywację przesuwania
+        pressTimer = setTimeout(() => {
+            isTouchDragging = true;
+            // Emisja wibracji (jeśli urządzenie pozwala)
+            if (navigator.vibrate) navigator.vibrate(50);
+            
+            el.style.opacity = '0.7'; // Wizualna informacja "złapałem"
+            pos3 = e.touches[0].clientX;
+            pos4 = e.touches[0].clientY;
+        }, 300);
+    }, {passive: false});
+
+    el.addEventListener('touchmove', (e) => {
+        if(!isTouchDragging) {
+            clearTimeout(pressTimer); // Anuluj jeśli palec się zsunął za wcześnie
+            return;
+        }
+        e.preventDefault(); // Zablokuj przesuwanie mapy!
+        pos1 = pos3 - e.touches[0].clientX;
+        pos2 = pos4 - e.touches[0].clientY;
+        pos3 = e.touches[0].clientX;
+        pos4 = e.touches[0].clientY;
+        el.style.top = (el.offsetTop - pos2) + "px";
+        el.style.left = (el.offsetLeft - pos1) + "px";
+    }, {passive: false});
+
+    const endTouch = () => {
+        clearTimeout(pressTimer);
+        if(isTouchDragging) {
+            isTouchDragging = false;
+            el.style.opacity = '1'; // Powrót do normy
+        }
+    };
+
+    el.addEventListener('touchend', endTouch);
+    el.addEventListener('touchcancel', endTouch);
 }
+
+  
 
 function resetSplitPanels() {
     const parentPanel = document.getElementById('mapInfoPanel');
@@ -5456,7 +5549,7 @@ function loadStylesForTarget(targetId) {
 function makePinchZoomable(el) {
     let initialDistance = null;
     let currentScale = 1;
-    const MIN_SCALE = 0.8;  // Maksymalne pomniejszenie (80%)
+    const MIN_SCALE = 0.3;  // Maksymalne pomniejszenie (80%)
     const MAX_SCALE = 1.4;  // Maksymalne powiększenie (140%)
 
     // Nasłuchuj tylko na urządzeniach dotykowych
@@ -5946,44 +6039,37 @@ function handlePanelWheelZoom(e) {
     el.style.scale = currentScale;
     el.dataset.scale = currentScale;
 }
-// --- STRAŻNIK 24/7: Automatyczne omijanie menu przez źródło mapy ---
-// --- PANCERNY STRAŻNIK 24/7: Automatyczne omijanie menu przez źródło mapy ---
+// --- PANCERNY STRAŻNIK V3: Źródło idealnie zrośnięte z panelem ---
 function keepAttributionSafe() {
     const nav = document.getElementById('mobileBottomNav');
     const attrControl = document.querySelector('.leaflet-control-container .leaflet-bottom.leaflet-right');
-    const mapEl = document.getElementById('map');
 
     if (attrControl && nav && window.innerWidth <= 768) {
         if (window.getComputedStyle(nav).display !== 'none') {
-            // Pobieramy dokładne fizyczne koordynaty obu elementów na ekranie
             const navRect = nav.getBoundingClientRect();
-            const mapRect = mapEl.getBoundingClientRect();
-
-            // Obliczamy DOKŁADNIE, ile pikseli menu wchodzi (nakłada się) na kontener mapy
-            let overlap = mapRect.bottom - navRect.top;
-
-            // Zabezpieczenie przed ujemnymi wartościami (gdyby menu było pod mapą)
-            if (overlap < 0) overlap = 0;
-
-            // Ustawiamy źródło na wysokości nałożenia + 20 pikseli bezpiecznego marginesu
-            // transition: none zapobiega opóźnieniom - pasek jest "przyspawany" do krawędzi menu
-            attrControl.style.transition = 'none';
-            attrControl.style.bottom = (overlap + 20) + 'px';
-            attrControl.style.zIndex = '1000';
             
-            // Lekki tuning tła, żeby napis był czytelniejszy, jeśli zjedzie na jasną mapę
-            attrControl.style.background = 'rgba(255,255,255,0.7)';
-            attrControl.style.borderRadius = '4px';
+            // Wyrywamy źródło z mapy i przyklejamy do ekranu
+            attrControl.style.position = 'fixed';
+            // Obliczamy odległość od dołu ekranu do górnej krawędzi menu
+            attrControl.style.bottom = (window.innerHeight - navRect.top) + 'px';
+            attrControl.style.right = '0px';
+            attrControl.style.zIndex = '1000';
+            attrControl.style.background = 'rgba(255,255,255,0.85)';
+            attrControl.style.padding = '2px 5px';
+            attrControl.style.borderTopLeftRadius = '6px';
+            attrControl.style.transition = 'none'; // Żadnych opóźnień - rusza się razem z menu!
         } else {
-            // Awaryjnie, gdy panel menu jest ukryty (np. tryb rysowania)
-            attrControl.style.bottom = '20px';
+            attrControl.style.bottom = '20px'; // Awaryjnie, gdy menu wyłączone
         }
     } else if (attrControl) {
-        // Czyszczenie stylów dla komputerów (PC używa domyślnych ustawień Leafleta)
+        // Reset dla komputerów PC
+        attrControl.style.position = '';
         attrControl.style.bottom = '';
+        attrControl.style.right = '';
         attrControl.style.background = '';
+        attrControl.style.padding = '';
     }
 
-    // Nieskończona pętla zsynchronizowana z odświeżaniem ekranu (60/120 klatek na sekundę)
     requestAnimationFrame(keepAttributionSafe);
 }
+requestAnimationFrame(keepAttributionSafe);
