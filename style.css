@@ -236,15 +236,7 @@
     z-index: 1000; align-items: center; padding: 5px 10px;
     border: 1px solid rgba(255,255,255,0.1);
 }
-/* --- POPRAWKA POZYCJI COPYRIGHT NA MOBILE --- */
-@media (max-width: 768px) {
-    
-    /* Przy otwartym pasku - podniesione elastycznie nad rozwinięty panel */
-    body.nav-expanded .leaflet-control-container .leaflet-bottom.leaflet-right {
-        bottom: calc(70vh + 30px) !important; /* Automatycznie wędruje nad panel */
-        transform: none !important; 
-    }
-}
+
 @media (max-width: 768px) { .mobile-top-bar { display: flex; } }
 
 .mobile-top-bar input {
