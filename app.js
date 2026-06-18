@@ -3348,31 +3348,76 @@ async function printExportMap() {
         <script>window.onload = () => window.print()<\/script>
     `);
 }
-    /* --- AKTUALIZACJA WIDOCZNOŚCI PANELU (z uwzględnieniem statystyk) --- */
-/* --- AKTUALIZACJA WIDOCZNOŚCI PANELU (z uwzględnieniem statystyk) --- */
+/* --- INTELIGENTNE ZARZĄDZANIE PASKIEM NARZĘDZI --- */
 function updatePanelVisibility() {
     const panel = document.getElementById('mapInfoPanel');
+    if(!panel) return;
+
+    // Sprawdzanie czy są jakiekolwiek teksty lub statystyki
     const hasText = document.getElementById('miTitle').style.display === 'block' || 
                     document.getElementById('miDate').style.display === 'block' || 
                     document.getElementById('miDesc').style.display === 'block' ||
                     document.getElementById('miStats').style.display === 'flex'; 
     const hasLegend = document.getElementById('exportLegendList').children.length > 0;
     
+    // Sprawdzanie, czy istnieje JAKIKOLWIEK panel na ekranie (główny matczyny, lub oderwane dzieci)
+    const anyDetached = document.querySelectorAll('.detached-panel').length > 0;
+    const hasAnyPanel = hasText || hasLegend || anyDetached;
+
+    // Pobranie uchwytów do przycisków na pasku (musimy upewnić się, że mają nadane ID w HTML, lub je po nim znajdziemy)
     const btnDrag = document.getElementById('btnDragPanel');
     const btnResize = document.getElementById('btnResizePanel');
-    
-    if(hasText || hasLegend) {
+    const btnScale = document.getElementById('btnScalePanel');
+    const btnScissors = document.getElementById('btnScissors');
+    const btnMerge = document.getElementById('btnMerge'); // Ten przycisk ma spację na końcu ID w Twoim HTML, patrz uwaga poniżej!
+
+    // Główny panel "matka" pokazuje się tylko jeśli sam ma jakąś zawartość (nie wszystko zostało wyrwane)
+    if (hasText || hasLegend) {
         panel.style.display = 'block';
-        btnDrag.disabled = false;
-        btnResize.disabled = false;
     } else {
         panel.style.display = 'none';
-        btnDrag.disabled = true;
-        btnResize.disabled = true;
+    }
+
+    // 1. ZARZĄDZANIE PRZYCISKAMI PODSTAWOWYMI (Przesuwanie, Kadrowanie, Skalowanie)
+    // Pokazują się gdy istnieje jakikolwiek panel do modyfikacji
+    if (hasAnyPanel) {
+        if(btnDrag) btnDrag.style.display = 'inline-block';
+        if(btnResize) btnResize.style.display = 'inline-block';
+        if(btnScale) btnScale.style.display = 'inline-block';
+    } else {
+        if(btnDrag) btnDrag.style.display = 'none';
+        if(btnResize) btnResize.style.display = 'none';
+        if(btnScale) btnScale.style.display = 'none';
         
-        // Automatycznie wyłącza tryby przesuwania/kadrowania, jeśli panel znika
+        // Automatycznie wyłączamy tryby, jeśli wszystko zniknęło
         if(isPanelDraggable) togglePanelDrag();
         if(isPanelResizable) togglePanelResize();
+        if(isPanelScaleMode) togglePanelScale();
+    }
+
+    // 2. ZARZĄDZANIE NOŻYCZKAMI (Rozłączanie)
+    // Przycisk pokazujemy TYLKO, gdy panel "matka" zawiera w sobie co najmniej 2 widoczne sekcje
+    if (btnScissors) {
+        const children = Array.from(panel.children).filter(el => 
+            el && el.style && el.style.display !== 'none' && el.id && el.id !== '' && el.innerHTML.trim() !== '' && !el.classList.contains('premium-resize-overlay') && !el.classList.contains('split-divider')
+        );
+        
+        if (children.length >= 2) {
+            btnScissors.style.display = 'inline-block';
+        } else {
+            btnScissors.style.display = 'none';
+            if(isScissorsMode) activateScissorsMode(); // Wyłącz nożyczki, jeśli np. usunięto przedostatnią sekcję
+        }
+    }
+
+    // 3. ZARZĄDZANIE SCALANIEM
+    // Przycisk pokazujemy TYLKO, gdy istnieje chociaż jeden wyrwany panel
+    if (btnMerge) {
+        if (anyDetached) {
+            btnMerge.style.display = 'inline-block';
+        } else {
+            btnMerge.style.display = 'none';
+        }
     }
 }
 
@@ -5423,7 +5468,7 @@ function detachPanel(targetId, dividerEl) {
     
     // Aktywujemy drag, upewniamy się że ma dwuklik i wyłączamy siatkę na czas transportu
     forceEnableDragAndResize(el);
-    setupDoubleTapDelete(el);
+    setupQuadTapDelete(el);
     
     // Jeśli kadrowanie jest włączone globalnie, odświeżamy by nałożyło siatkę na ten nowy element
     if (isPanelResizable) {
@@ -5961,47 +6006,71 @@ function toggleSatelliteMap() {
     }
 }
 // --- NOWE: USUWANIE PANELI PRZEZ SZYBKI DWUKLIK / DOUBLE TAP ---
-function setupDoubleTapDelete(panel) {
-    let lastTapTime = 0;
+// --- NOWE: USUWANIE PANELI PRZEZ SZYBKI 4-KROTNY KLIK / QUAD-TAP ---
+function setupQuadTapDelete(panel) {
+    let tapCount = 0;
+    let tapTimer = null;
     
-    // Używamy pointerup - działa perfekcyjnie i dla myszki, i dla palca
+    // Używamy pointerup - rejestruje precyzyjnie oderwanie palca/kliku myszki
     panel.addEventListener('pointerup', function(e) {
-        // Ignoruj, jeśli użytkownik klika w siatkę kadrowania lub przyciski formatowania
+        // Zignoruj jeśli to siatka kadrowania lub systemowy przycisk
         if(e.target.closest('.premium-resize-overlay') || e.target.closest('button')) return;
 
-        const currentTime = new Date().getTime();
-        const tapLength = currentTime - lastTapTime;
+        tapCount++;
 
-        // Jeśli dwa kliknięcia nastąpiły w czasie krótszym niż 300ms
-        if (tapLength < 300 && tapLength > 0) {
+        // Resetowanie licznika kliknięć, jeśli użytkownik przestanie klikać (okienko 500ms na całą operację)
+        clearTimeout(tapTimer);
+        tapTimer = setTimeout(() => {
+            tapCount = 0;
+        }, 500); // Ma 0.5 sekundy na wykonanie 4 kliknięć
+
+        // Jeśli kliknął 4 razy
+        if (tapCount >= 4) {
             e.preventDefault();
-            e.stopPropagation(); // Blokuje inne zdarzenia
+            e.stopPropagation(); 
+            
+            // Zerujemy licznik, by nie wyświetliło podwójnego alertu
+            tapCount = 0;
+            clearTimeout(tapTimer);
 
-            showCustomConfirm("Czy chcesz usunąć ten element z mapy?", () => {
+            showCustomConfirm("Czy chcesz trwale usunąć ten panel z mapy?", () => {
+                // Jeśli usuwamy panel statystyk, odznacz z ptaszków
                 if (panel.id === 'miStats' || panel.querySelector('#miStats')) {
                     document.getElementById('statCheckDist').checked = false;
                     document.getElementById('statCheckTime').checked = false;
                 }
+                
+                // Trwałe czyszczenie i ukrycie
                 panel.innerHTML = '';
                 panel.style.display = 'none';
-                updatePanelVisibility();
+                
+                // Jeśli to był oderwany panel, usuwamy mu klasę i czyścimy style, by matka znowu mogła nim zarządzać w przyszłości
+                if(panel.classList.contains('detached-panel')) {
+                    panel.classList.remove('detached-panel', 'draggable', 'resizable');
+                    panel.style.position = '';
+                    const parentPanel = document.getElementById('mapInfoPanel');
+                    if(parentPanel) parentPanel.appendChild(panel);
+                }
+
+                updatePanelVisibility(); // Wymusi przeliczenie paska narzędzi
             });
         }
-        lastTapTime = currentTime;
     });
 
-    // Zabezpieczenie przed domyślnym menu kontekstowym (prawy klik / długie przytrzymanie na mobile)
+    // Blokada domyślnego przytrzymania ekranu na mobile
     panel.addEventListener('contextmenu', e => e.preventDefault());
 }
 
-// Inicjalizujemy dwuklik dla wszystkich paneli
+// Inicjalizujemy nowy 4-krotny klik na starcie dla wszystkich paneli bazowych
 document.addEventListener('DOMContentLoaded', () => {
     const ids = ['mapInfoPanel', 'miTitle', 'miDate', 'miDesc', 'miStats', 'miLegendContainer'];
     ids.forEach(id => {
         const el = document.getElementById(id);
-        if(el) setupDoubleTapDelete(el);
+        if(el) setupQuadTapDelete(el);
     });
 });
+
+
 function toggleExportSatellite() {
     if(!exportMap) return;
     
