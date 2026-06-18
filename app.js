@@ -125,6 +125,7 @@ let lbPanY = 0;
 let isExportSatellite = false;
 let exportSatelliteLayer = null;
 let isPanelScaleMode = false;
+let draggedLegendItem = null;
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
@@ -3208,6 +3209,9 @@ function saveLegendItem() {
         const list = document.getElementById('exportLegendList');
         const li = document.createElement('li');
         li.id = id;
+        li.draggable = true; // Zezwól na przesuwanie
+        setupLegendDragAndDrop(li); // Przypnij nasłuchiwacze
+
         li.innerHTML = `
             <span class="leg-icon" style="font-size:20px;">${selectedEmoji}</span> 
             <span class="leg-text">${text}</span>
@@ -3258,29 +3262,55 @@ function checkDuplicateEmojis() {
 }
 
 window.applyEmojiNumbering = function() {
-    const frequencies = {}; // Zlicza ile razy występuje dany punkt
-    const counters = {};    // Śledzi obecny numer przypisywany punktowi
+    const frequencies = {}; 
+    const counters = {};    
 
-    // ETAP 1: Obliczenie częstotliwości (kto ma duplikaty)
+    // Prosta funkcja wykrywająca przybliżony kolor "bańki" na podstawie samej emotki
+    function getEmojiThemeColor(emoji) {
+        if(emoji.includes('🌲') || emoji.includes('⛰️')) return 'rgba(34, 197, 94, 0.7)'; // Zielony
+        if(emoji.includes('💧') || emoji.includes('🏊')) return 'rgba(59, 130, 246, 0.7)'; // Niebieski
+        if(emoji.includes('🔥') || emoji.includes('⚠️') || emoji.includes('⛺') || emoji.includes('🍔')) return 'rgba(245, 158, 11, 0.7)'; // Pomarańczowy/Czerwony
+        if(emoji.includes('🅿️') || emoji.includes('ℹ️') || emoji.includes('🚑')) return 'rgba(51, 65, 85, 0.7)'; // Szary/Ciemny
+        return 'rgba(255, 255, 255, 0.75)'; // Domyślny jasny (np. dla klasycznej 📍)
+    }
+
     Object.values(exportLegendItems).forEach(item => {
         const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim();
         frequencies[baseEmoji] = (frequencies[baseEmoji] || 0) + 1;
     });
 
-    // ETAP 2: Nadanie numerków TYLKO tym, które mają frequency > 1
     Object.entries(exportLegendItems).forEach(([id, item]) => {
         const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim();
         
-        // Jeśli ikona jest unikalna (występuje 1 raz), zostaw ją w spokoju
         if (frequencies[baseEmoji] > 1) {
             counters[baseEmoji] = (counters[baseEmoji] || 0) + 1;
             
-            const newEmoji = `${baseEmoji} <span style="font-size:0.6em; font-weight:bold;">${counters[baseEmoji]}</span>`;
+            // --- NOWY WYGLĄD IKONY NA MAPIE ---
+            const themeColor = getEmojiThemeColor(baseEmoji);
+            const textColor = themeColor === 'rgba(255, 255, 255, 0.75)' ? '#000' : '#fff';
+            
+            // Marker mapy (Zbliżony numerek, zamknięty w bańce)
+            const mapIconHtml = `
+                <div style="
+                    display: inline-flex; 
+                    align-items: center; 
+                    background: ${themeColor}; 
+                    padding: 2px 6px 2px 4px; 
+                    border-radius: 12px; 
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+                    border: 1px solid rgba(255,255,255,0.4);
+                ">
+                    <span style="font-size:20px; filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.3));">${baseEmoji}</span>
+                    <span style="font-size:12px; font-weight:bold; color:${textColor}; margin-left: -1px;">${counters[baseEmoji]}</span>
+                </div>
+            `;
+            
+            // Surowy tekst dla systemu by wiedział, jaka to pozycja (np. "📍 1")
             const rawNewEmoji = `${baseEmoji} ${counters[baseEmoji]}`;
 
             item.emoji = rawNewEmoji;
             item.marker.setIcon(L.divIcon({
-                html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));" title="${item.text}">${newEmoji}</div>`,
+                html: mapIconHtml,
                 className: 'poi-icon'
             }));
 
@@ -4726,14 +4756,16 @@ function addAutoLegendItemToDOM(id) {
     const item = exportLegendItems[id];
     const list = document.getElementById('exportLegendList');
     
-    // Usuń pusty komunikat jeśli jest
     const tempEmpty = document.getElementById('temp_empty_leg');
     if (tempEmpty) tempEmpty.remove();
 
     const li = document.createElement('li');
     li.id = id;
-    // Oczko: Ukrywa w legendzie, zachowuje na mapie
-    // X: Usuwa całkowicie z widoku (odznacza w pamięci)
+    
+    // Zezwalamy na przesuwanie elementu (Drag & Drop)
+    li.draggable = true;
+    setupLegendDragAndDrop(li);
+
     li.innerHTML = `
         <span class="leg-icon" style="font-size:20px;">${item.emoji}</span> 
         <span class="leg-text">${item.text}</span>
@@ -6187,3 +6219,52 @@ function keepAttributionSafe() {
     requestAnimationFrame(keepAttributionSafe);
 }
 requestAnimationFrame(keepAttributionSafe);
+function setupLegendDragAndDrop(li) {
+    li.addEventListener('dragstart', function(e) {
+        draggedLegendItem = this;
+        this.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        // Kod obchodzący błędy Firefoxa
+        e.dataTransfer.setData('text/plain', this.id); 
+    });
+
+    li.addEventListener('dragover', function(e) {
+        e.preventDefault(); // Zezwól na "drop"
+        this.classList.add('drag-over');
+        e.dataTransfer.dropEffect = 'move';
+        return false;
+    });
+
+    li.addEventListener('dragleave', function(e) {
+        this.classList.remove('drag-over');
+    });
+
+    li.addEventListener('drop', function(e) {
+        e.stopPropagation();
+        this.classList.remove('drag-over');
+
+        if (draggedLegendItem && draggedLegendItem !== this) {
+            const list = document.getElementById('exportLegendList');
+            const children = Array.from(list.children);
+            
+            const draggedIdx = children.indexOf(draggedLegendItem);
+            const targetIdx = children.indexOf(this);
+
+            // Podmiana elementów w DOM (Jeśli upuszczamy na dół to wstawiamy 'po' elemencie, jeśli na górę 'przed')
+            if (draggedIdx < targetIdx) {
+                list.insertBefore(draggedLegendItem, this.nextSibling);
+            } else {
+                list.insertBefore(draggedLegendItem, this);
+            }
+        }
+        return false;
+    });
+
+    li.addEventListener('dragend', function() {
+        this.classList.remove('dragging');
+        document.querySelectorAll('.map-info-legend-list li').forEach(item => {
+            item.classList.remove('drag-over');
+        });
+        draggedLegendItem = null;
+    });
+}
