@@ -456,10 +456,23 @@
     padding: 2px 4px;
     border-radius: 4px;
     transition: background 0.2s;
-    margin-bottom: var(--legend-gap, 5px) !important; 
+    margin-bottom: var(--legend-gap, 5px) !important;
+    cursor: grab;
+    transition: transform 0.2s, background 0.2s;
+    border: 1px solid transparent; /* Zapobiega skakaniu elementów */
 }
 .map-info-legend-list li:hover {
     background: rgba(0,0,0,0.05);
+}
+.map-info-legend-list li:active {
+    cursor: grabbing;
+}
+.map-info-legend-list li.drag-over {
+    border-top: 2px solid #3b82f6; /* Podświetla dokąd trafi element */
+    transform: translateY(2px);
+}
+.map-info-legend-list li.dragging {
+    opacity: 0.5;
 }
 .dark-theme .map-info-legend-list li:hover {
     background: rgba(255,255,255,0.1);
