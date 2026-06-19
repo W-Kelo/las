@@ -1695,22 +1695,85 @@ function toggleTheme() {
 }
 // --- 1. OBSŁUGA ZRZUTU EKRANU I KADROWANIA ---
 
-// Standardowa deklaracja funkcji (gwarantuje, że HTML ją zobaczy natychmiast)
-function handleScreenshotClick() {
-    if (screenshotClickTimer === null) {
-        // Uruchamiamy odliczanie. Jeśli w ciągu 300ms nie będzie drugiego kliku -> robimy zrzut
-        screenshotClickTimer = setTimeout(() => {
-            screenshotClickTimer = null;
-            takeScreenshot(); 
-        }, 300);
-    } else {
-        // Jeśli kliknięto drugi raz przed upływem 300ms -> anulujemy zrzut i otwieramy modal
-        clearTimeout(screenshotClickTimer);
-        screenshotClickTimer = null;
-        openCropScreenshotModal(); 
-    }
+// --- 1. OBSŁUGA ZRZUTU EKRANU I KADROWANIA (LONG PRESS = SZYBKI ZRZUT, SHORT CLICK = MODAL) ---
+function setupScreenshotButtons() {
+    const btnPc = document.getElementById('btnScreenshotPc');
+    const btnMob = document.getElementById('btnScreenshotMobile');
+    const buttons = [btnPc, btnMob].filter(b => b);
+
+    buttons.forEach(btn => {
+        let pressTimer;
+        let isLongPress = false;
+
+        const startPress = (e) => {
+            if(e.type === 'mousedown' && e.button !== 0) return; // Ignoruj prawy klik myszy
+            e.preventDefault(); // Blokuje domyślne akcje
+            isLongPress = false;
+
+            pressTimer = setTimeout(() => {
+                isLongPress = true;
+                // --- AKCJA 1: DŁUGIE PRZYTRZYMANIE (500ms) -> Szybki zrzut mapy ---
+                if (navigator.vibrate) navigator.vibrate(50); // Informacja wibracją
+                if (btn.id === 'btnScreenshotMobile') toggleMobileNav(true); // Zwiń pasek mobilny
+                
+                showCustomAlert("📸 Wykonuję szybki zrzut pełnego ekranu mapy...");
+                takeScreenshot(); 
+            }, 500); 
+        };
+
+        const cancelPress = (e) => {
+            clearTimeout(pressTimer);
+            if (!isLongPress) {
+                // --- AKCJA 2: KRÓTKIE KLIKNIĘCIE -> Otwiera Potężny Modal ---
+                e.preventDefault();
+                if (btn.id === 'btnScreenshotMobile') toggleMobileNav(true); // Zwiń pasek mobilny
+                openCropScreenshotModal(); 
+            }
+        };
+
+        // Nasłuchiwacze dla Myszki (PC)
+        btn.addEventListener('mousedown', startPress);
+        btn.addEventListener('mouseup', cancelPress);
+        btn.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+
+        // Nasłuchiwacze dla Dotyku (Mobile)
+        btn.addEventListener('touchstart', startPress, {passive: false});
+        btn.addEventListener('touchend', cancelPress);
+        btn.addEventListener('touchcancel', () => clearTimeout(pressTimer));
+        
+        // Wyłącz menu kontekstowe na mobilu
+        btn.addEventListener('contextmenu', e => e.preventDefault());
+    });
 }
 
+// Inicjalizacja przycisków
+document.addEventListener('DOMContentLoaded', setupScreenshotButtons);
+
+function takeScreenshot() {
+    const mapEl = document.getElementById('map');
+    const zoomControls = document.querySelector('.leaflet-control-zoom');
+    
+    // Ukrywamy kontrolki zooma do zdjęcia
+    if (zoomControls) zoomControls.style.display = 'none';
+
+    // Opóźnienie 200ms by alert zdążył się narysować (lub zniknąć) przed screenem
+    setTimeout(() => {
+        domtoimage.toPng(mapEl, { width: mapEl.clientWidth, height: mapEl.clientHeight })
+        .then(dataUrl => { 
+            const link = document.createElement('a'); 
+            link.download = `zrzut_mapy_${new Date().toLocaleDateString()}.png`; 
+            link.href = dataUrl; 
+            link.click(); 
+        })
+        .catch(err => {
+            console.error("Błąd zrzutu:", err);
+            showCustomAlert("Wystąpił błąd przy tworzeniu zrzutu.");
+        })
+        .finally(() => {
+            if (zoomControls) zoomControls.style.display = 'block';
+        });
+    }, 200);
+}
 function takeScreenshot() {
     const mapEl = document.getElementById('map');
     const zoomControls = document.querySelector('.leaflet-control-zoom');
@@ -3402,8 +3465,12 @@ function sortLegendPanel() {
 
 // --- LOGIKA MODALU STYLÓW ---
 
-window.openEmojiStyleModal = function() {
+// --- LOGIKA MODALU STYLÓW (NAPRAWIONA) ---
+
+function openEmojiStyleModal() {
     const select = document.getElementById('esTarget');
+    if(!select) return;
+
     // Generowanie opcji wyboru dla duplikatów
     let html = '<option value="global">Wszystkie ikony (Globalnie)</option>';
     
@@ -3424,10 +3491,16 @@ window.openEmojiStyleModal = function() {
 
     const modal = document.getElementById('emojiStyleModal');
     modal.style.display = 'flex';
-    makeDraggable(modal); // Opcjonalnie, jeśli chcesz by można było przesuwać modal stylów
+    
+    // Niezawodne centrowanie modalu na środku ekranu
+    modal.style.top = '50%';
+    modal.style.left = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
+    
+    makeDraggable(modal); 
 }
 
-window.loadEmojiStyleToUI = function() {
+function loadEmojiStyleToUI() {
     const target = document.getElementById('esTarget').value;
     const style = target === 'global' ? emojiStylesMap.global : (emojiStylesMap.custom[target] || emojiStylesMap.global);
 
@@ -3441,7 +3514,7 @@ window.loadEmojiStyleToUI = function() {
     document.getElementById('esOffset').value = style.offset;
 }
 
-window.saveEmojiStyleInRealTime = function() {
+function saveEmojiStyleInRealTime() {
     const target = document.getElementById('esTarget').value;
     const newStyle = {
         position: document.getElementById('esPosition').value,
@@ -3463,18 +3536,18 @@ window.saveEmojiStyleInRealTime = function() {
     applyEmojiNumbering(); // Natychmiastowe odświeżenie mapy!
 }
 
-window.saveEmojiStylesToLocal = function() {
+function saveEmojiStylesToLocal() {
     localStorage.setItem('gpx_emoji_styles', JSON.stringify(emojiStylesMap));
     showCustomAlert("Style zapisane w pamięci przeglądarki!");
 }
 
-window.clearEmojiStyles = function() {
-    if(confirm("Przywrócić ustawienia fabryczne?")) {
+function clearEmojiStyles() {
+    showCustomConfirm("Czy chcesz przywrócić domyślne ustawienia fabryczne kropek?", () => {
         emojiStylesMap = { global: { ...DEFAULT_EMOJI_STYLE }, custom: {} };
         localStorage.removeItem('gpx_emoji_styles');
         loadEmojiStyleToUI();
         applyEmojiNumbering();
-    }
+    });
 }
 
 // Funkcja pomocnicza: Hex do formatu rgba(R, G, B, A) używanego w stylach
