@@ -57,6 +57,10 @@ const satelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}
     attribution: '&copy; <a href="https://www.google.com/intl/pl_pl/help/terms_maps/">Google Maps</a>',
     maxZoom: 20
 });
+const DEFAULT_EMOJI_STYLE = { color: '#3b82f6', opacity: 75, dotSize: 18, fontSize: 12, fontColor: '#ffffff', fontStyle: 'bold', position: 'right', offset: 2 };
+
+// Obiekt przechowujący logikę stylów (Wczytywanie z LocalStorage)
+let emojiStylesMap = JSON.parse(localStorage.getItem('gpx_emoji_styles')) || { global: { ...DEFAULT_EMOJI_STYLE }, custom: {} };
 let dark = false; 
 let isSatellite = false;
 let brouterOutageNotified = false; 
@@ -126,11 +130,14 @@ let isExportSatellite = false;
 let exportSatelliteLayer = null;
 let isPanelScaleMode = false;
 let draggedLegendItem = null;
+let screenshotClickTimer = null;
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
 };
 let tempPickerType = '';
+let cropMap = null;
+let cropRatio = 0;
 const userSavedLayer = L.layerGroup().addTo(map);
 const WALK_SPEED_M_PER_MIN = 70; // 4.2 km/h;
 const STOP_EMOJIS = ["☕", "🍔", "⛺", "🔥", "📸", "🛌", "🔋", "🚾", "🥪", "🪑"];
@@ -1686,10 +1693,44 @@ function toggleTheme() {
     dark = !dark; document.body.className = dark ? "dark" : "light";
     map.removeLayer(dark ? tiles.light : tiles.dark); (dark ? tiles.dark : tiles.light).addTo(map);
 }
+// --- 1. OBSŁUGA ZRZUTU EKRANU I KADROWANIA ---
+
+
+window.handleScreenshotClick = function() {
+    if (screenshotClickTimer === null) {
+        screenshotClickTimer = setTimeout(() => {
+            screenshotClickTimer = null;
+            takeScreenshot(); // Pojedyncze kliknięcie
+        }, 300);
+    } else {
+        clearTimeout(screenshotClickTimer);
+        screenshotClickTimer = null;
+        openCropScreenshotModal(); // Podwójne kliknięcie
+    }
+};
+
 function takeScreenshot() {
     const mapEl = document.getElementById('map');
+    const zoomControls = document.querySelector('.leaflet-control-zoom');
+    
+    // Ukrywamy kontrolki zooma do zdjęcia
+    if (zoomControls) zoomControls.style.display = 'none';
+
     domtoimage.toPng(mapEl, { width: mapEl.clientWidth, height: mapEl.clientHeight })
-    .then(dataUrl => { const link = document.createElement('a'); link.download = 'mapa_puszcza.png'; link.href = dataUrl; link.click(); });
+    .then(dataUrl => { 
+        const link = document.createElement('a'); 
+        link.download = `zrzut_mapy_${new Date().toLocaleDateString()}.png`; 
+        link.href = dataUrl; 
+        link.click(); 
+    })
+    .catch(err => {
+        console.error("Błąd zrzutu:", err);
+        showCustomAlert("Wystąpił błąd przy tworzeniu zrzutu.");
+    })
+    .finally(() => {
+        // Przywracamy kontrolki
+        if (zoomControls) zoomControls.style.display = 'block';
+    });
 }
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
     async function fetchOverpassWithRetry(url, retries = 3, delay = 1500) {
@@ -3226,32 +3267,38 @@ function saveLegendItem() {
     closeEmojiPicker();
     checkDuplicateEmojis();
 }
-// --- NOWE: Inteligentna numeracja powtarzających się ikon ---
 function checkDuplicateEmojis() {
     if (!exportMap || Object.keys(exportLegendItems).length === 0) return;
 
-    const emojiCounts = {};
-    Object.values(exportLegendItems).forEach(item => {
-        // Usuwamy ewentualne spcje i cyfry na końcu, żeby wykryć "czystą" emotkę
-        const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim(); 
-        emojiCounts[baseEmoji] = (emojiCounts[baseEmoji] || 0) + 1;
+    // KROK 1: ZAWSZE resetujemy legendę do stanu czystego (bez numerków), zanim policzymy duplikaty.
+    Object.entries(exportLegendItems).forEach(([id, item]) => {
+        item.emoji = item.emoji.replace(/\s<span.*?<\/span>$/, '').replace(/\s\d+$/, '').trim(); // Regex ściągający stare numery
+        // Przywracamy czysty widok w prawym panelu
+        const li = document.getElementById(id);
+        if (li) {
+            const iconSpan = li.querySelector('.leg-icon');
+            if (iconSpan) iconSpan.innerHTML = item.emoji;
+        }
     });
 
-    // Sprawdź czy jest jakakolwiek emotka występująca więcej niż 1 raz
-    const hasDuplicates = Object.values(emojiCounts).some(count => count > 1);
+    const frequencies = {};
+    Object.values(exportLegendItems).forEach(item => {
+        frequencies[item.emoji] = (frequencies[item.emoji] || 0) + 1;
+    });
 
+    const hasDuplicates = Object.values(frequencies).some(count => count > 1);
     let banner = document.getElementById('emoji-duplicate-banner');
 
     if (hasDuplicates) {
         if (!banner) {
             banner = document.createElement('div');
             banner.id = 'emoji-duplicate-banner';
-            banner.setAttribute('data-html2canvas-ignore', 'true'); // Ignorowane przy generowaniu PDF/PNG
+            banner.setAttribute('data-html2canvas-ignore', 'true');
             banner.style.cssText = "position:absolute; top:70px; left:50%; transform:translateX(-50%); background:rgba(59, 130, 246, 0.95); color:white; padding:10px 20px; border-radius:30px; box-shadow:0 4px 15px rgba(0,0,0,0.3); z-index:4000; display:flex; align-items:center; gap:10px; font-size:0.85rem; backdrop-filter:blur(4px); white-space:nowrap;";
             banner.innerHTML = `
-                <span>💡 Powtarzające się ikony. Ponumerować?</span>
-                <button onclick="applyEmojiNumbering()" style="background:#22c55e; padding:4px 12px; border-radius:15px; border:none; color:white; cursor:pointer; font-weight:bold;">Tak</button>
-                <button onclick="this.parentElement.style.display='none'" style="background:transparent; padding:4px; border:none; color:white; cursor:pointer; font-size:1.1rem;">✖</button>
+                <span>💡 Wykryto duplikaty ikon. Ponumerować?</span>
+                <button onclick="applyEmojiNumbering()" style="background:#22c55e; padding:4px 12px; border-radius:15px; border:none; color:white; cursor:pointer; font-weight:bold;">Zastosuj numery</button>
+                <button onclick="openEmojiStyleModal()" style="background:#a855f7; padding:4px 12px; border-radius:15px; border:none; color:white; cursor:pointer; font-weight:bold;">🎨 Style</button>
             `;
             document.getElementById('exportWrapper').appendChild(banner);
         }
@@ -3262,69 +3309,179 @@ function checkDuplicateEmojis() {
 }
 
 window.applyEmojiNumbering = function() {
-    const frequencies = {}; 
     const counters = {};    
-
-    // Prosta funkcja wykrywająca przybliżony kolor "bańki" na podstawie samej emotki
-    function getEmojiThemeColor(emoji) {
-        if(emoji.includes('🌲') || emoji.includes('⛰️')) return 'rgba(34, 197, 94, 0.7)'; // Zielony
-        if(emoji.includes('💧') || emoji.includes('🏊')) return 'rgba(59, 130, 246, 0.7)'; // Niebieski
-        if(emoji.includes('🔥') || emoji.includes('⚠️') || emoji.includes('⛺') || emoji.includes('🍔')) return 'rgba(245, 158, 11, 0.7)'; // Pomarańczowy/Czerwony
-        if(emoji.includes('🅿️') || emoji.includes('ℹ️') || emoji.includes('🚑')) return 'rgba(51, 65, 85, 0.7)'; // Szary/Ciemny
-        return 'rgba(255, 255, 255, 0.75)'; // Domyślny jasny (np. dla klasycznej 📍)
-    }
+    const frequencies = {};
 
     Object.values(exportLegendItems).forEach(item => {
-        const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim();
-        frequencies[baseEmoji] = (frequencies[baseEmoji] || 0) + 1;
+        frequencies[item.emoji] = (frequencies[item.emoji] || 0) + 1;
     });
 
     Object.entries(exportLegendItems).forEach(([id, item]) => {
-        const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim();
+        const baseEmoji = item.emoji;
         
         if (frequencies[baseEmoji] > 1) {
             counters[baseEmoji] = (counters[baseEmoji] || 0) + 1;
+            const number = counters[baseEmoji];
             
-            // --- NOWY WYGLĄD IKONY NA MAPIE ---
-            const themeColor = getEmojiThemeColor(baseEmoji);
-            const textColor = themeColor === 'rgba(255, 255, 255, 0.75)' ? '#000' : '#fff';
+            // Wczytywanie stylów (Sprawdza czy jest Custom dla emotki, jeśli nie - bierze Global)
+            const style = emojiStylesMap.custom[baseEmoji] || emojiStylesMap.global;
             
-            // Marker mapy (Zbliżony numerek, zamknięty w bańce)
+            // Logika układu FlexBox na podstawie wybranej pozycji
+            let flexDir = 'row';
+            if (style.position === 'left') flexDir = 'row-reverse';
+            if (style.position === 'top') flexDir = 'column-reverse';
+            if (style.position === 'bottom') flexDir = 'column';
+
+            let gapMargin = `margin: ${style.offset}px;`;
+            let overlayCss = '';
+            
+            // Tryb "Na emotce" (Nakładka absolutna)
+            if (style.position === 'overlay') {
+                flexDir = 'row';
+                gapMargin = '';
+                overlayCss = `position:absolute; top:${style.offset}px; right:${style.offset}px;`;
+            }
+
+            // HTML dla pinezki na mapie
             const mapIconHtml = `
-                <div style="
-                    display: inline-flex; 
-                    align-items: center; 
-                    background: ${themeColor}; 
-                    padding: 2px 6px 2px 4px; 
-                    border-radius: 12px; 
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-                    border: 1px solid rgba(255,255,255,0.4);
-                ">
-                    <span style="font-size:20px; filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.3));">${baseEmoji}</span>
-                    <span style="font-size:12px; font-weight:bold; color:${textColor}; margin-left: -1px;">${counters[baseEmoji]}</span>
+                <div style="position:relative; display:inline-flex; align-items:center; justify-content:center; flex-direction:${flexDir};">
+                    <span style="font-size:24px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${baseEmoji}</span>
+                    <div style="
+                        ${overlayCss}
+                        ${gapMargin}
+                        display:flex; align-items:center; justify-content:center;
+                        width: ${style.dotSize}px; height: ${style.dotSize}px;
+                        background: ${hexToRgbaString(style.color, style.opacity)};
+                        border-radius: 50%;
+                        box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+                        color: ${style.fontColor};
+                        font-size: ${style.fontSize}px;
+                        font-weight: ${style.fontStyle};
+                        line-height: 1;
+                    ">${number}</div>
                 </div>
             `;
             
-            // Surowy tekst dla systemu by wiedział, jaka to pozycja (np. "📍 1")
-            const rawNewEmoji = `${baseEmoji} ${counters[baseEmoji]}`;
+            item.emoji = `${baseEmoji} <span style="font-size:0.6em; font-weight:bold;">${number}</span>`; // Nowy format dla legendy
+            item.marker.setIcon(L.divIcon({ html: mapIconHtml, className: 'poi-icon' }));
 
-            item.emoji = rawNewEmoji;
-            item.marker.setIcon(L.divIcon({
-                html: mapIconHtml,
-                className: 'poi-icon'
-            }));
-
-            // Aktualizacja w bocznym panelu legendy
             const li = document.getElementById(id);
             if (li) {
                 const iconSpan = li.querySelector('.leg-icon');
-                if (iconSpan) iconSpan.innerHTML = rawNewEmoji;
+                if (iconSpan) iconSpan.innerHTML = `${baseEmoji} <span style="color:${style.color}; font-weight:bold; margin-left:4px;">${number}</span>`;
             }
         }
     });
 
-    document.getElementById('emoji-duplicate-banner').style.display = 'none';
+    sortLegendPanel(); // Wywołanie alfabetycznego układania
+
+    const banner = document.getElementById('emoji-duplicate-banner');
+    if (banner) banner.style.display = 'none';
 };
+
+// Funkcja sortująca Panel Legendy
+function sortLegendPanel() {
+    const list = document.getElementById('exportLegendList');
+    if(!list) return;
+
+    const items = Array.from(list.children);
+    items.sort((a, b) => {
+        const itemA = exportLegendItems[a.id];
+        const itemB = exportLegendItems[b.id];
+        if(!itemA || !itemB) return 0;
+        
+        // Czyste alfabetyczne sortowanie (najpierw wg typu emoji, potem numeru)
+        return itemA.emoji.localeCompare(itemB.emoji, undefined, {numeric: true, sensitivity: 'base'});
+    });
+    
+    // Wstrzykujemy ponownie w prawidłowej kolejności
+    items.forEach(li => list.appendChild(li));
+}
+
+// --- LOGIKA MODALU STYLÓW ---
+
+window.openEmojiStyleModal = function() {
+    const select = document.getElementById('esTarget');
+    // Generowanie opcji wyboru dla duplikatów
+    let html = '<option value="global">Wszystkie ikony (Globalnie)</option>';
+    
+    const frequencies = {};
+    Object.values(exportLegendItems).forEach(item => {
+        const base = item.emoji.replace(/\s<span.*?<\/span>$/, '').trim();
+        frequencies[base] = (frequencies[base] || 0) + 1;
+    });
+
+    Object.keys(frequencies).forEach(emoji => {
+        if(frequencies[emoji] > 1) {
+            html += `<option value="${emoji}">Tylko ikona: ${emoji}</option>`;
+        }
+    });
+
+    select.innerHTML = html;
+    loadEmojiStyleToUI();
+
+    const modal = document.getElementById('emojiStyleModal');
+    modal.style.display = 'flex';
+    makeDraggable(modal); // Opcjonalnie, jeśli chcesz by można było przesuwać modal stylów
+}
+
+window.loadEmojiStyleToUI = function() {
+    const target = document.getElementById('esTarget').value;
+    const style = target === 'global' ? emojiStylesMap.global : (emojiStylesMap.custom[target] || emojiStylesMap.global);
+
+    document.getElementById('esPosition').value = style.position;
+    document.getElementById('esDotColor').value = style.color;
+    document.getElementById('esDotOpacity').value = style.opacity;
+    document.getElementById('esDotSize').value = style.dotSize;
+    document.getElementById('esFontSize').value = style.fontSize;
+    document.getElementById('esFontColor').value = style.fontColor;
+    document.getElementById('esFontStyle').value = style.fontStyle;
+    document.getElementById('esOffset').value = style.offset;
+}
+
+window.saveEmojiStyleInRealTime = function() {
+    const target = document.getElementById('esTarget').value;
+    const newStyle = {
+        position: document.getElementById('esPosition').value,
+        color: document.getElementById('esDotColor').value,
+        opacity: parseInt(document.getElementById('esDotOpacity').value),
+        dotSize: parseInt(document.getElementById('esDotSize').value),
+        fontSize: parseInt(document.getElementById('esFontSize').value),
+        fontColor: document.getElementById('esFontColor').value,
+        fontStyle: document.getElementById('esFontStyle').value,
+        offset: parseInt(document.getElementById('esOffset').value)
+    };
+
+    if (target === 'global') {
+        emojiStylesMap.global = newStyle;
+    } else {
+        emojiStylesMap.custom[target] = newStyle;
+    }
+
+    applyEmojiNumbering(); // Natychmiastowe odświeżenie mapy!
+}
+
+window.saveEmojiStylesToLocal = function() {
+    localStorage.setItem('gpx_emoji_styles', JSON.stringify(emojiStylesMap));
+    showCustomAlert("Style zapisane w pamięci przeglądarki!");
+}
+
+window.clearEmojiStyles = function() {
+    if(confirm("Przywrócić ustawienia fabryczne?")) {
+        emojiStylesMap = { global: { ...DEFAULT_EMOJI_STYLE }, custom: {} };
+        localStorage.removeItem('gpx_emoji_styles');
+        loadEmojiStyleToUI();
+        applyEmojiNumbering();
+    }
+}
+
+// Funkcja pomocnicza: Hex do formatu rgba(R, G, B, A) używanego w stylach
+function hexToRgbaString(hex, opacityPercentage) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${opacityPercentage / 100})`;
+}
 function editLegendItem(id) {
     const item = exportLegendItems[id];
     if(!item) return;
@@ -6267,4 +6424,107 @@ function setupLegendDragAndDrop(li) {
         });
         draggedLegendItem = null;
     });
+}
+function openCropScreenshotModal() {
+    const modal = document.getElementById('cropScreenshotModal');
+    modal.style.display = 'flex';
+    
+    // Centrowanie jak w Export Modalu
+    const winW = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+    const winH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const isMobile = winW <= 768;
+    const margin = isMobile ? 0 : 30;
+    modal.style.width = (winW - margin * 2) + 'px';
+    modal.style.height = (winH - margin * 2) + 'px';
+    modal.style.top = '50%';
+    modal.style.left = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
+    modal.style.borderRadius = isMobile ? '0' : '12px';
+
+    if (!cropMap) {
+        cropMap = L.map('cropMapContainer', { zoomControl: true, attributionControl: false, preferCanvas: true });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(cropMap);
+        setupPremiumResize(document.getElementById('cropWrapper'), document.getElementById('cropBox'));
+        makePanelDraggable(document.getElementById('cropBox')); // Pozwalamy przesuwać całe okienko
+    }
+
+    // Synchronizacja widoku z główną mapą
+    cropMap.setView(map.getCenter(), map.getZoom());
+    
+    // Czyścimy i klonujemy polylinię
+    cropMap.eachLayer(layer => { if(layer instanceof L.Polyline && !layer._url) cropMap.removeLayer(layer); });
+    if(routeGeometry.length > 1) {
+        L.polyline(routeGeometry, { color: routePrefColor, weight: routePrefWeight }).addTo(cropMap);
+    }
+}
+
+function cropSetRatio(ratio) {
+    cropRatio = ratio;
+    const box = document.getElementById('cropBox');
+    const wrapper = document.getElementById('cropWrapper');
+    
+    if (ratio === 0) return; // Wolna ręka
+    
+    const w = box.offsetWidth;
+    const h = w / ratio;
+    
+    if (h > wrapper.clientHeight) {
+        box.style.height = wrapper.clientHeight * 0.9 + 'px';
+        box.style.width = (wrapper.clientHeight * 0.9 * ratio) + 'px';
+    } else {
+        box.style.height = h + 'px';
+    }
+}
+
+async function executeCroppedScreenshot() {
+    const wrapper = document.getElementById('cropWrapper');
+    const box = document.getElementById('cropBox');
+    const mapContainer = document.getElementById('cropMapContainer');
+    
+    // Pobieramy fizyczne pozycje
+    const rectWrapper = wrapper.getBoundingClientRect();
+    const rectBox = box.getBoundingClientRect();
+    
+    // Parametry wycinka (względne do kontenera mapy)
+    const cropX = rectBox.left - rectWrapper.left;
+    const cropY = rectBox.top - rectWrapper.top;
+    const cropW = rectBox.width;
+    const cropH = rectBox.height;
+
+    // Ukrywamy nakładkę na czas zdjęcia
+    document.getElementById('cropOverlay').style.display = 'none';
+
+    try {
+        // Robimy zrzut całej ukrytej mapy (html2canvas)
+        const canvasFull = await html2canvas(mapContainer, { useCORS: true, scale: window.devicePixelRatio || 2 });
+        
+        // Tworzymy nowe płótno (Canvas) o rozmiarach naszego kadru
+        const scale = window.devicePixelRatio || 2;
+        const canvasCropped = document.createElement('canvas');
+        canvasCropped.width = cropW * scale;
+        canvasCropped.height = cropH * scale;
+        const ctx = canvasCropped.getContext('2d');
+        
+        // Wycinamy interesujący nas fragment
+        ctx.drawImage(canvasFull, cropX * scale, cropY * scale, cropW * scale, cropH * scale, 0, 0, cropW * scale, cropH * scale);
+
+        // Dodajemy źródło (Copyright) na wycięte zdjęcie w prawym dolnym rogu
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillRect(canvasCropped.width - 150, canvasCropped.height - 25, 150, 25);
+        ctx.fillStyle = '#000';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('© OpenStreetMap', canvasCropped.width - 10, canvasCropped.height - 8);
+
+        // Pobieramy
+        const link = document.createElement('a');
+        link.download = `kadr_${new Date().getTime()}.png`;
+        link.href = canvasCropped.toDataURL('image/png');
+        link.click();
+    } catch(err) {
+        console.error(err);
+        showCustomAlert("Błąd przy zapisie wycinka mapy.");
+    } finally {
+        document.getElementById('cropOverlay').style.display = 'block';
+    }
 }
