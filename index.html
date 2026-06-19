@@ -171,8 +171,8 @@
     </div>
 
     <div class="btn-group">
-        <button class="secondary" onclick="exportGPX()">⬇️ Eksport</button>
-        <button class="secondary" onclick="document.getElementById('fileInput').click()">⬆️ Import</button>
+        <button class="secondary" onclick="exportGPX()">⬇️ Eksport GPX</button>
+        <button class="secondary" onclick="document.getElementById('fileInput').click()">⬆️ Import GPX</button>
         <button onclick="openMapExportModal()" style="background:#0ea5e9;">🗺️ Eksport mapy</button>
         <button onclick="openPdfModal()" style="background: #a855f7;">📄 Pobierz PDF</button>
     </div>
@@ -185,11 +185,15 @@
 </div>
 
     <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-        <button onclick="openStyleModal()" style="background: #f59e0b;">🎨 Styl trasy</button>
         <button onclick="playRouteAnimation()" style="background: #ec4899;">▶️ Animuj</button>
+        <button onclick="recordRouteGIF()" style="width: 100%; margin-top: 4px; background: #8b5cf6;">🎞️ Zapisz jako GIF</button>
     </div>
-    <button onclick="recordRouteGIF()" style="width: 100%; margin-top: 4px; background: #8b5cf6;">🎞️ Zapisz jako GIF</button>
-    <button onclick="openCenteredModal('aboutModal')">ℹ️ O programie</button>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+      <button onclick="openStyleModal()" style="background: #f59e0b;">🎨 Styl trasy</button>
+      <button onclick="openCenteredModal('aboutModal')">ℹ️ O programie</button>
+    </div>
+   
+    
     <div style="display:grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px;">
         <button id="btnToggleDraw" onclick="toggleDrawMode()" style="background: #3b82f6;">✏️ Włącz rysowanie trasy</button>
         <button class="danger" onclick="clearAll()">🗑️ Wyczyść mapę</button>
