@@ -1695,19 +1695,21 @@ function toggleTheme() {
 }
 // --- 1. OBSŁUGA ZRZUTU EKRANU I KADROWANIA ---
 
-
-window.handleScreenshotClick = function() {
+// Standardowa deklaracja funkcji (gwarantuje, że HTML ją zobaczy natychmiast)
+function handleScreenshotClick() {
     if (screenshotClickTimer === null) {
+        // Uruchamiamy odliczanie. Jeśli w ciągu 300ms nie będzie drugiego kliku -> robimy zrzut
         screenshotClickTimer = setTimeout(() => {
             screenshotClickTimer = null;
-            takeScreenshot(); // Pojedyncze kliknięcie
+            takeScreenshot(); 
         }, 300);
     } else {
+        // Jeśli kliknięto drugi raz przed upływem 300ms -> anulujemy zrzut i otwieramy modal
         clearTimeout(screenshotClickTimer);
         screenshotClickTimer = null;
-        openCropScreenshotModal(); // Podwójne kliknięcie
+        openCropScreenshotModal(); 
     }
-};
+}
 
 function takeScreenshot() {
     const mapEl = document.getElementById('map');
