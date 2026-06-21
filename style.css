@@ -330,22 +330,11 @@
     z-index: 4000 !important; /* Gwarancja bycia NAD modalem statystyk (z-index:3000) */
 }
 /* --- STYLE DLA MODALU KADROWANIA ZRZUTÓW --- */
-.crop-ratio-btn.active {
-    background: #3b82f6 !important;
-    border-color: #93c5fd !important;
-}
-
+.crop-ratio-btn.active { background: #3b82f6 !important; border-color: #93c5fd !important; }
 .crop-handle {
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    background: #3b82f6;
-    border: 2px solid #fff;
-    border-radius: 50%;
-    box-sizing: border-box;
-    z-index: 10;
+    position: absolute; width: 16px; height: 16px; background: #3b82f6;
+    border: 2px solid #fff; border-radius: 50%; box-sizing: border-box; z-index: 10;
 }
-/* Pozycjonowanie i kursory dla 8 krawędzi */
 .ch-nw { top: -8px; left: -8px; cursor: nwse-resize; }
 .ch-ne { top: -8px; right: -8px; cursor: nesw-resize; }
 .ch-sw { bottom: -8px; left: -8px; cursor: nesw-resize; }
