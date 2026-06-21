@@ -124,7 +124,7 @@
         <button class="nav-item" onclick="openPdfModal(); toggleMobileNav(false)"><i style="color:#a855f7;">📄</i> <span>Pobierz PDF</span></button>
         
         <button class="nav-item" onclick="toggleTheme()"><i>🌓</i> <span>Motyw</span></button>
-        <button class="nav-item" onclick="takeScreenshot(); toggleMobileNav(false)"><i>📸</i> <span>Zrzut mapy</span></button>
+        <button class="nav-item" id="btnMobileScreenshot"><i>📸</i> <span>Zrzut mapy</span></button>
         <button class="nav-item" onclick="exportGPX(); toggleMobileNav(false)"><i>⬇️</i> <span>Zapisz GPX</span></button>
         <button class="nav-item" onclick="document.getElementById('fileInput').click(); toggleMobileNav(false)"><i>⬆️</i> <span>Import GPX</span></button>
         
@@ -167,7 +167,7 @@
 
     <div class="btn-group">
         <button onclick="toggleTheme()">🌓 Motyw</button>
-        <button onclick="takeScreenshot()">📸 Zrzut</button>
+        <button id="btnPcScreenshot">📸 Zrzut</button>
     </div>
 
     <div class="btn-group">
@@ -853,7 +853,47 @@
         <button onclick="closeModal('stopsWarningModal')" style="width: 100%; background: #ef4444; margin-top: 15px;">Zrozumiałem</button>
     </div>
 </div>
+<!-- MODAL: ZAAWANSOWANE KADROWANIE ZRZUTU EKRANU -->
+<div id="screenshotCropModal" class="floating-modal map-export-modal" style="display: none; z-index: 3500;">
+    <div class="modal-header export-header">
+        <div class="export-toolbar" style="flex-wrap: nowrap; overflow-x: auto;">
+            <button class="crop-ratio-btn active" onclick="setCropRatio(null, this)">Wolny kształt</button>
+            <button class="crop-ratio-btn" onclick="setCropRatio(1, this)">1:1 (Kwadrat)</button>
+            <button class="crop-ratio-btn" onclick="setCropRatio(4/3, this)">4:3</button>
+            <button class="crop-ratio-btn" onclick="setCropRatio(16/9, this)">16:9 (Panorama)</button>
+            <button class="crop-ratio-btn" onclick="setCropRatio(9/16, this)">9:16 (Telefon)</button>
+            <div class="toolbar-divider"></div>
+            <button onclick="cropZoom(0.2)" title="Przybliż obszar">🔍 ➕</button>
+            <button onclick="cropZoom(-0.2)" title="Oddal obszar">🔍 ➖</button>
+            <div class="toolbar-divider"></div>
+            <button onclick="executeCropDownload()" style="background: #22c55e;">💾 Pobierz Zrzut</button>
+        </div>
+        <button class="danger icon-only" style="padding: 4px 10px; flex-shrink: 0;" onclick="closeModal('screenshotCropModal')">X</button>
+    </div>
+    
+    <div style="background: #fef08a; color: #854d0e; font-size: 0.85rem; padding: 8px 15px; text-align: center; border-bottom: 1px solid #fde047;">
+        💡 <strong>Wskazówka:</strong> To narzędzie służy do szybkich wycinków ekranu. Jeśli chcesz stworzyć elegancką mapę z własnym tytułem, legendą punktów i wybranym wyglądem statystyk, użyj przycisku <strong>"🗺️ Eksport mapy"</strong> w głównym menu.
+    </div>
 
+    <div class="export-body" style="background: #334155; overflow: auto; display: flex; justify-content: center; align-items: center; position: relative;" id="cropOuterContainer">
+        <!-- Zewnętrzny wrapper kadrujący cień -->
+        <div id="cropAreaWrapper" style="position: relative; width: max-content; transform-origin: center center; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+            <img id="cropSourceImage" src="" style="display: block; max-width: none; pointer-events: none; user-select: none;">
+            
+            <div id="cropBox" style="position: absolute; border: 2px dashed #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,0.65); cursor: move; box-sizing: border-box;">
+                <!-- 8 Suwaków na krawędziach i w rogach -->
+                <div class="crop-handle ch-nw" data-dir="nw"></div>
+                <div class="crop-handle ch-ne" data-dir="ne"></div>
+                <div class="crop-handle ch-sw" data-dir="sw"></div>
+                <div class="crop-handle ch-se" data-dir="se"></div>
+                <div class="crop-handle ch-n" data-dir="n"></div>
+                <div class="crop-handle ch-s" data-dir="s"></div>
+                <div class="crop-handle ch-e" data-dir="e"></div>
+                <div class="crop-handle ch-w" data-dir="w"></div>
+            </div>
+        </div>
+    </div>
+</div>
 <!-- NAKŁADKA DO ZDJĘĆ NA PEŁNYM EKRANIE (LIGHTBOX) -->
 <div id="lightboxOverlay" class="lightbox-overlay" onclick="forceCloseLightbox(event)" style="z-index: 9999999 !important;">
     <button class="lightbox-close" onclick="forceCloseLightbox(event)" style="z-index: 9999999 !important;">✖</button>
