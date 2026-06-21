@@ -6374,8 +6374,7 @@ function triggerStandardScreenshot() {
 }
 
 // 3. MODAL KADROWANIA (CROPPER)
-let cropState = { x: 0, y: 0, w: 0, h: 0, ratio: null, imgW: 0, imgH: 0, zoom: 1 };
-let isCropInitialized = false;
+
 
 async function forceOpenCropModal() {
     console.log("[CropModal] Rozpoczynam otwieranie modalu kadrowania...");
