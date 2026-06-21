@@ -128,6 +128,8 @@ let isPanelScaleMode = false;
 let draggedLegendItem = null;
 let cropState = { x: 0, y: 0, w: 0, h: 0, ratio: null, imgW: 0, imgH: 0, zoom: 1 };
 let isCropInitialized = false;
+let screenshotPressTimer;
+let isScreenshotLongPress = false;
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
@@ -1688,30 +1690,7 @@ function toggleTheme() {
     dark = !dark; document.body.className = dark ? "dark" : "light";
     map.removeLayer(dark ? tiles.light : tiles.dark); (dark ? tiles.dark : tiles.light).addTo(map);
 }
-// POPRAWIONA: Zwykły zrzut ekranu usuwający na czas zdjęcia przyciski interfejsu Leaflet
-function takeScreenshot() {
-    const zoomCtrl = document.querySelector('.leaflet-control-zoom');
-    // Znalezienie skali jeśli jest dodana, ale standardowo wystarczy usunąć zoom
-    
-    if (zoomCtrl) zoomCtrl.style.display = 'none';
-    
-    const mapEl = document.getElementById('map');
-    domtoimage.toPng(mapEl, { width: mapEl.clientWidth, height: mapEl.clientHeight })
-    .then(dataUrl => { 
-        const link = document.createElement('a'); 
-        link.download = 'mapa_puszcza.png'; 
-        link.href = dataUrl; 
-        link.click(); 
-        
-        // Przywrócenie przycisków
-        if (zoomCtrl) zoomCtrl.style.display = '';
-    })
-    .catch(err => {
-        console.error("Błąd zapisu zrzutu:", err);
-        if (zoomCtrl) zoomCtrl.style.display = '';
-        showCustomAlert("Wystąpił problem przy robieniu zrzutu.");
-    });
-}
+
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
     async function fetchOverpassWithRetry(url, retries = 3, delay = 1500) {
     for (let i = 0; i <= retries; i++) {
@@ -6290,70 +6269,111 @@ function setupLegendDragAndDrop(li) {
     });
 }
 /* =========================================================
+   ZWYKŁY ZRZUT EKRANU (Z DOKLEJANYM ŹRÓDŁEM NA DOLE)
+========================================================= */
+function triggerStandardScreenshot() {
+    document.body.style.cursor = 'wait';
+    
+    // 1. Ukrywamy kontrolki mapy oraz źródło
+    const zoomCtrl = document.querySelector('.leaflet-control-zoom');
+    const attrCtrl = document.querySelector('.leaflet-control-attribution');
+    
+    if (zoomCtrl) zoomCtrl.style.display = 'none';
+    if (attrCtrl) attrCtrl.style.display = 'none'; // Znika z mapy na czas zdjęcia
+    
+    const mapEl = document.getElementById('map');
+    
+    // Używamy html2canvas dla lepszej kontroli nad rysowaniem
+    html2canvas(mapEl, { useCORS: true }).then(canvas => {
+        // 2. Natychmiast przywracamy kontrolki w aplikacji
+        if (zoomCtrl) zoomCtrl.style.display = '';
+        if (attrCtrl) attrCtrl.style.display = '';
+        
+        // 3. Rysujemy idealne źródło na wygenerowanym zdjęciu
+        const ctx = canvas.getContext('2d');
+        const copyrightText = (typeof isSatellite !== 'undefined' && isSatellite) ? "© OpenStreetMap, Google Maps" : "© Autorzy OpenStreetMap";
+        
+        ctx.font = 'bold 14px "Segoe UI", sans-serif';
+        const textWidth = ctx.measureText(copyrightText).width;
+        const padding = 6;
+        const bgWidth = textWidth + (padding * 2);
+        const bgHeight = 24;
+        
+        // Wyliczamy pozycję: Prawy dolny róg, na samym dole!
+        const x = canvas.width - bgWidth - 10;
+        const y = canvas.height - bgHeight - 10;
+        
+        // Malujemy tło i tekst
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.beginPath();
+        ctx.roundRect(x, y, bgWidth, bgHeight, 6);
+        ctx.fill();
+        ctx.fillStyle = '#1e293b';
+        ctx.fillText(copyrightText, x + padding, canvas.height - 10 - padding - 1);
+        
+        // 4. Pobieranie pliku
+        const link = document.createElement('a');
+        link.download = `zrzut_mapy_${new Date().toLocaleDateString()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        
+        document.body.style.cursor = '';
+    }).catch(err => {
+        console.error("Błąd zapisu zrzutu:", err);
+        if (zoomCtrl) zoomCtrl.style.display = '';
+        if (attrCtrl) attrCtrl.style.display = '';
+        document.body.style.cursor = '';
+        showCustomAlert("Wystąpił problem przy robieniu zrzutu ekranu.");
+    });
+}
+
+
+/* =========================================================
    ZAAWANSOWANE KADROWANIE ZRZUTU EKRANU (CROPPER)
 ========================================================= */
 
 
-// Podpinanie zdarzeń Prawego Kliknięcia (PC) i Long-Press (Mobile) do przycisków
-document.addEventListener('DOMContentLoaded', () => {
-    const pcBtn = document.getElementById('btnPcScreenshot');
-    const mobBtn = document.getElementById('btnMobileScreenshot');
+function startScreenshotPress(e) {
+    isScreenshotLongPress = false;
+    // Czekamy 600ms, by uznać to za przytrzymanie
+    screenshotPressTimer = setTimeout(() => {
+        isScreenshotLongPress = true;
+        if (navigator.vibrate) navigator.vibrate(50); // Informacja wibracyjna dla telefonu
+        if (window.innerWidth <= 768) toggleMobileNav(false); // Zwiń pasek dolny
+        openAdvancedCropModal();
+    }, 600); 
+}
 
-    let pressTimer;
-    let isLongPress = false;
+function cancelScreenshotPress() {
+    clearTimeout(screenshotPressTimer);
+}
 
-    const startPress = (e) => {
-        isLongPress = false;
-        // Zabezpieczamy przed uruchomieniem zrzutu przy długim dotyku
-        pressTimer = setTimeout(() => {
-            isLongPress = true;
-            if (navigator.vibrate) navigator.vibrate(50); // Wibracja (Android)
-            if (e.type === 'touchstart' && window.innerWidth <= 768) toggleMobileNav(false); // Zwiń pasek dolny
-            openAdvancedCropModal();
-        }, 600); // 600ms = aktywacja potężnego modalu
-    };
-
-    const cancelPress = () => clearTimeout(pressTimer);
-
-    // Konfiguracja PC
-    if (pcBtn) {
-        pcBtn.addEventListener('click', () => { if (!isLongPress) takeScreenshot(); });
-        pcBtn.addEventListener('mousedown', startPress);
-        pcBtn.addEventListener('mouseup', cancelPress);
-        pcBtn.addEventListener('mouseleave', cancelPress);
-        pcBtn.addEventListener('contextmenu', (e) => {
-            e.preventDefault(); // Prawy przycisk myszy na PC
-            openAdvancedCropModal();
-        });
+function handleMobileScreenshotEnd(e) {
+    cancelScreenshotPress();
+    // Jeśli użytkownik puścił szybko palec, robimy zwykły zrzut
+    if (!isScreenshotLongPress) {
+        triggerStandardScreenshot();
+        toggleMobileNav(false);
     }
+}
 
-    // Konfiguracja Mobile
-    if (mobBtn) {
-        mobBtn.addEventListener('touchstart', startPress, {passive: true});
-        mobBtn.addEventListener('touchend', () => {
-            cancelPress();
-            if (!isLongPress) {
-                takeScreenshot();
-                toggleMobileNav(false);
-            }
-        });
-        mobBtn.addEventListener('touchcancel', cancelPress);
-        mobBtn.addEventListener('contextmenu', e => e.preventDefault()); // Blokada systemowego menu
-    }
-});
-
-// Otwieranie Modalu Kadrowania (Snapshot w locie)
+// --- Otwieranie Modalu Kadrowania (Snapshot w locie) ---
 async function openAdvancedCropModal() {
     document.body.style.cursor = 'wait';
+    
+    // Ukrywamy kontrolki żeby nie weszły w kadr do edycji
     const zoomCtrl = document.querySelector('.leaflet-control-zoom');
-    if (zoomCtrl) zoomCtrl.style.display = 'none'; // Ukryj na czas zdjęcia
+    const attrCtrl = document.querySelector('.leaflet-control-attribution');
+    if (zoomCtrl) zoomCtrl.style.display = 'none';
+    if (attrCtrl) attrCtrl.style.display = 'none';
 
     try {
         const mapEl = document.getElementById('map');
-        // Robimy snapshot mapy (html2canvas jest bezpieczniejsze dla transferu do nowej warstwy w tym przypadku)
         const canvas = await html2canvas(mapEl, { useCORS: true });
         
-        if (zoomCtrl) zoomCtrl.style.display = ''; // Przywróć zoom
+        // Przywracamy kontrolki natychmiast po sczytaniu
+        if (zoomCtrl) zoomCtrl.style.display = '';
+        if (attrCtrl) attrCtrl.style.display = '';
 
         const imgEl = document.getElementById('cropSourceImage');
         imgEl.src = canvas.toDataURL('image/png');
@@ -6361,11 +6381,9 @@ async function openAdvancedCropModal() {
         cropState.imgW = canvas.width;
         cropState.imgH = canvas.height;
         
-        // Reset ustawień
         cropState.zoom = 1;
         document.getElementById('cropAreaWrapper').style.transform = `scale(1)`;
         
-        // Domyślny rozmiar okna kadrowania (z marginesem 10%)
         const marginX = cropState.imgW * 0.1;
         const marginY = cropState.imgH * 0.1;
         cropState.x = marginX;
@@ -6373,12 +6391,11 @@ async function openAdvancedCropModal() {
         cropState.w = cropState.imgW - (marginX * 2);
         cropState.h = cropState.imgH - (marginY * 2);
         
-        setCropRatio(null, document.querySelector('.crop-ratio-btn')); // Domyślnie wolny kształt
+        setCropRatio(null, document.querySelector('.crop-ratio-btn')); 
         updateCropBoxDOM();
 
         document.getElementById('screenshotCropModal').style.display = 'flex';
         
-        // Inicjalizacja przeciągania uchwytów tylko przy pierwszym otwarciu
         if (!isCropInitialized) {
             initCustomCropper();
             isCropInitialized = true;
@@ -6388,12 +6405,12 @@ async function openAdvancedCropModal() {
         console.error("Błąd inicjalizacji kadrownicy:", err);
         showCustomAlert("Nie udało się załadować mapy do edytora.");
         if (zoomCtrl) zoomCtrl.style.display = '';
+        if (attrCtrl) attrCtrl.style.display = '';
     } finally {
         document.body.style.cursor = '';
     }
 }
 
-// Logika przybliżania/oddalania całego obszaru w modalu (Wizualne ułatwienie)
 function cropZoom(dir) {
     cropState.zoom += dir;
     cropState.zoom = Math.max(0.4, Math.min(cropState.zoom, 3.0));
@@ -6407,7 +6424,6 @@ function setCropRatio(ratio, btn) {
     cropState.ratio = ratio;
     
     if (ratio) {
-        // Dopasowujemy wysokość do szerokości wymuszając zachowanie proporcji
         let targetH = cropState.w / ratio;
         if (cropState.y + targetH > cropState.imgH) {
             targetH = cropState.imgH - cropState.y;
@@ -6426,7 +6442,6 @@ function updateCropBoxDOM() {
     box.style.height = cropState.h + 'px';
 }
 
-// Silnik przeciągania kadru i suwaków
 function initCustomCropper() {
     const box = document.getElementById('cropBox');
     let isDragging = false;
@@ -6439,9 +6454,8 @@ function initCustomCropper() {
         y: e.touches ? e.touches[0].clientY : e.clientY
     });
 
-    // --- 1. Przesuwanie (Drag) całego okna ---
     const startDrag = (e) => {
-        if (e.target.classList.contains('crop-handle')) return; // Ignoruj jeśli kliknięto krawędź
+        if (e.target.classList.contains('crop-handle')) return; 
         e.preventDefault();
         isDragging = true;
         const coords = getEvCoords(e);
@@ -6458,7 +6472,6 @@ function initCustomCropper() {
         if (!isDragging) return;
         e.preventDefault();
         const coords = getEvCoords(e);
-        // Uwzględniamy skalę obrazka (zoom) w matematyce myszy
         const dx = (coords.x - startX) / cropState.zoom;
         const dy = (coords.y - startY) / cropState.zoom;
         
@@ -6478,7 +6491,6 @@ function initCustomCropper() {
     box.addEventListener('mousedown', startDrag);
     box.addEventListener('touchstart', startDrag, {passive: false});
 
-    // --- 2. Zmiana rozmiaru (Resize) ---
     const startResize = (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -6504,13 +6516,11 @@ function initCustomCropper() {
 
         let nx = startCropX, ny = startCropY, nw = startCropW, nh = startCropH;
 
-        // Obliczanie wektorów ciągnięcia
         if (handleDir.includes('n')) { ny = startCropY + dy; nh = startCropH - dy; }
         if (handleDir.includes('s')) { nh = startCropH + dy; }
         if (handleDir.includes('w')) { nx = startCropX + dx; nw = startCropW - dx; }
         if (handleDir.includes('e')) { nw = startCropW + dx; }
 
-        // Blokowanie proporcji (Aspect Ratio)
         if (cropState.ratio) {
             if (handleDir === 'n' || handleDir === 's') {
                 nw = nh * cropState.ratio;
@@ -6529,11 +6539,9 @@ function initCustomCropper() {
             }
         }
 
-        // Zabezpieczenie minimalnego rozmiaru
         if (nw < 80) { nw = 80; if (handleDir.includes('w')) nx = startCropX + startCropW - 80; }
         if (nh < 80) { nh = 80; if (handleDir.includes('n')) ny = startCropY + startCropH - 80; }
 
-        // Zabezpieczenie przed wyjściem za krawędź obrazu
         if (nx < 0) { nw += nx; nx = 0; if(cropState.ratio) nh = nw/cropState.ratio; }
         if (ny < 0) { nh += ny; ny = 0; if(cropState.ratio) nw = nh*cropState.ratio; }
         if (nx + nw > cropState.imgW) { nw = cropState.imgW - nx; if(cropState.ratio) nh = nw/cropState.ratio; }
@@ -6557,7 +6565,6 @@ function initCustomCropper() {
     });
 }
 
-// Ostateczne Zapisywanie Wykadrowanego Obrazu z doklejonym autorsko źródłem
 function executeCropDownload() {
     const sourceImg = document.getElementById('cropSourceImage');
     const finalCanvas = document.createElement('canvas');
@@ -6565,30 +6572,25 @@ function executeCropDownload() {
     finalCanvas.height = cropState.h;
     const ctx = finalCanvas.getContext('2d');
     
-    // 1. Kopiujemy tylko wykadrowany obszar ze źródła
     ctx.drawImage(sourceImg, cropState.x, cropState.y, cropState.w, cropState.h, 0, 0, cropState.w, cropState.h);
     
-    // 2. Gwarantowane źródło w prawym dolnym rogu (Niezależnie od kształtu cięcia)
     const padding = 6;
-    const copyrightText = isSatellite ? "© OpenStreetMap, Google Maps" : "© Autorzy OpenStreetMap";
-    ctx.font = 'bold 13px "Segoe UI", sans-serif';
+    const copyrightText = (typeof isSatellite !== 'undefined' && isSatellite) ? "© OpenStreetMap, Google Maps" : "© Autorzy OpenStreetMap";
+    ctx.font = 'bold 14px "Segoe UI", sans-serif';
     const textWidth = ctx.measureText(copyrightText).width;
     const bgWidth = textWidth + (padding * 2);
-    const bgHeight = 22;
+    const bgHeight = 24;
     
-    // Rysowanie białej zblendowanej ramki
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
     ctx.beginPath();
-    ctx.roundRect(cropState.w - bgWidth - 5, cropState.h - bgHeight - 5, bgWidth, bgHeight, 4);
+    ctx.roundRect(cropState.w - bgWidth - 10, cropState.h - bgHeight - 10, bgWidth, bgHeight, 6);
     ctx.fill();
     
-    // Rysowanie tekstu
     ctx.fillStyle = '#1e293b';
-    ctx.fillText(copyrightText, cropState.w - bgWidth - 5 + padding, cropState.h - 5 - padding);
+    ctx.fillText(copyrightText, cropState.w - bgWidth - 10 + padding, cropState.h - 10 - padding - 1);
     
-    // 3. Pobieranie pliku
     const link = document.createElement('a');
-    link.download = `zrzut_mapy_${new Date().toLocaleDateString()}.png`;
+    link.download = `zrzut_wykadrowany_${new Date().toLocaleDateString()}.png`;
     link.href = finalCanvas.toDataURL('image/png');
     link.click();
     
