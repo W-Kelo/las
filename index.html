@@ -124,7 +124,14 @@
         <button class="nav-item" onclick="openPdfModal(); toggleMobileNav(false)"><i style="color:#a855f7;">📄</i> <span>Pobierz PDF</span></button>
         
         <button class="nav-item" onclick="toggleTheme()"><i>🌓</i> <span>Motyw</span></button>
-        <button class="nav-item" id="btnMobileScreenshot"><i>📸</i> <span>Zrzut mapy</span></button>
+        <button class="nav-item" id="btnMobileScreenshot"
+        onclick="triggerStandardScreenshot(); toggleMobileNav(false);"
+        oncontextmenu="event.preventDefault(); openAdvancedCropModal(); toggleMobileNav(false);"
+        ontouchstart="startScreenshotPress(event)"
+        ontouchend="handleMobileScreenshotEnd(event)"
+        ontouchcancel="cancelScreenshotPress()">
+    <i>📸</i> <span>Zrzut mapy</span>
+</button>
         <button class="nav-item" onclick="exportGPX(); toggleMobileNav(false)"><i>⬇️</i> <span>Zapisz GPX</span></button>
         <button class="nav-item" onclick="document.getElementById('fileInput').click(); toggleMobileNav(false)"><i>⬆️</i> <span>Import GPX</span></button>
         
@@ -167,7 +174,14 @@
 
     <div class="btn-group">
         <button onclick="toggleTheme()">🌓 Motyw</button>
-        <button id="btnPcScreenshot">📸 Zrzut</button>
+        <button id="btnPcScreenshot"
+        onclick="triggerStandardScreenshot()"
+        oncontextmenu="event.preventDefault(); openAdvancedCropModal();"
+        onmousedown="startScreenshotPress(event)"
+        onmouseup="cancelScreenshotPress()"
+        onmouseleave="cancelScreenshotPress()">
+    📸 Zrzut
+</button>
     </div>
 
     <div class="btn-group">
