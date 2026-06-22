@@ -865,8 +865,8 @@
         <button onclick="closeModal('stopsWarningModal')" style="width: 100%; background: #ef4444; margin-top: 15px;">Zrozumiałem</button>
     </div>
 </div>
-<!-- MODAL: ZAAWANSOWANE KADROWANIE ZRZUTU EKRANU -->
-<div id="screenshotCropModal" class="floating-modal map-export-modal" style="display: none;">
+<!-- MODAL: ZAAWANSOWANE KADROWANIE ZRZUTU EKRANU (V2 - Workspace Engine) -->
+<div id="screenshotCropModal" class="floating-modal map-export-modal" style="display: none; z-index: 99999 !important; background: #0f172a; width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; max-width: none; max-height: none; margin: 0; border-radius: 0;">
     <div class="modal-header export-header">
         <div class="export-toolbar" style="flex-wrap: nowrap; overflow-x: auto;">
             <button class="crop-ratio-btn active" onclick="setCropRatio(null, this)">Wolny kształt</button>
@@ -875,8 +875,8 @@
             <button class="crop-ratio-btn" onclick="setCropRatio(16/9, this)">16:9 (Panorama)</button>
             <button class="crop-ratio-btn" onclick="setCropRatio(9/16, this)">9:16 (Telefon)</button>
             <div class="toolbar-divider"></div>
-            <button onclick="cropZoom(0.2)" title="Przybliż obszar">🔍 ➕</button>
-            <button onclick="cropZoom(-0.2)" title="Oddal obszar">🔍 ➖</button>
+            <button onclick="zoomWorkspace(0.1)" title="Przybliż obszar">🔍 ➕</button>
+            <button onclick="zoomWorkspace(-0.1)" title="Oddal obszar">🔍 ➖</button>
             <div class="toolbar-divider"></div>
             <button onclick="executeCropDownload()" style="background: #22c55e; font-weight: bold;">💾 Pobierz Zrzut</button>
         </div>
@@ -884,13 +884,15 @@
     </div>
     
     <div style="background: #fef08a; color: #854d0e; font-size: 0.85rem; padding: 8px 15px; text-align: center; border-bottom: 1px solid #fde047;">
-        💡 To narzędzie służy do szybkich wycinków ekranu. Do profesjonalnych map z legendą użyj <strong>"🗺️ Eksport mapy"</strong>.
+        💡 <strong>Wskazówka:</strong> Przesuwaj kadr łapiąc wewnątrz ramki. Przesuwaj ekran łapiąc za tło. Użyj kółka myszy lub dwóch palców by przybliżać.
     </div>
 
-    <div class="export-body" style="background: #0f172a; overflow: auto; position: relative; padding: 50px;" id="cropOuterContainer">
-        <!-- Zewnętrzny wrapper kadrujący cień -->
-        <div id="cropAreaWrapper" style="position: relative; width: max-content; margin: 0 auto; transform-origin: top center; box-shadow: 0 4px 20px rgba(0,0,0,0.8);">
-            <img id="cropSourceImage" src="" style="display: block; max-width: none; pointer-events: none; user-select: none;">
+    <!-- Kontener Płótna (Workspace) -->
+    <div id="cropOuterContainer" style="flex-grow: 1; overflow: hidden; position: relative; touch-action: none; background: #1e293b;">
+        
+        <!-- Pływający element obrazu ze zresetowanym Originem -->
+        <div id="cropAreaWrapper" style="position: absolute; top: 0; left: 0; transform-origin: 0 0; box-shadow: 0 10px 40px rgba(0,0,0,0.8);">
+            <img id="cropSourceImage" src="" style="display: block; pointer-events: none; user-select: none;">
             
             <div id="cropBox" style="position: absolute; border: 2px dashed #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,0.75); cursor: move; box-sizing: border-box;">
                 <!-- 8 Suwaków na krawędziach i w rogach -->
