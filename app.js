@@ -129,8 +129,8 @@ let draggedLegendItem = null;
 let cropState = { x: 0, y: 0, w: 0, h: 0, ratio: null, imgW: 0, imgH: 0, zoom: 1 };
 let isCropInitialized = false;
 let screenshotPressTimer;
-let ws = { x: 0, y: 0, zoom: 1 }; // Workspace state
-let crop = { x: 0, y: 0, w: 0, h: 0, ratio: null }; // Crop state (relative to raw image!)
+let ws = { x: 0, y: 0, zoom: 1 }; 
+let crop = { x: 0, y: 0, w: 0, h: 0, ratio: null }; 
 let imgBaseW = 0, imgBaseH = 0;
 let isCropperEventsBound = false;
 let _snapTimer = null;
@@ -6274,19 +6274,139 @@ function setupLegendDragAndDrop(li) {
     });
 }
 /* =========================================================
-   PANCERNY SYSTEM ZRZUTÓW EKRANU (Z OBSŁUGĄ DPR I MULTITOUCH)
+   PANCERNY SYSTEM ZRZUTÓW EKRANU - ARCHITEKTURA 7 FUNKCJI
+========================================================= */
+
+// FUNKCJA 7: Raportująca (Musi być na górze, by reszta mogła z niej korzystać)
+function reportAction(stepName, message, status) {
+    const icon = status === 'OK' ? '✅' : (status === 'WARN' ? '⚠️' : '❌');
+    console.log(`[Krok ${stepName}] ${icon} ${message}`);
+}
+
+// FUNKCJA 1: Mierząca środek ekranu
+function measureScreenCenter() {
+    reportAction(1, "Skanowanie przestrzeni roboczej ekranu...", "OK");
+    const w = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+    const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const cx = w / 2;
+    const cy = h / 2;
+    reportAction(1, `Wymiary ekranu: ${w}x${h}, Środek: X=${cx}, Y=${cy}`, "OK");
+    return { cx, cy, w, h };
+}
+
+// FUNKCJA 2: Ustawiająca modal na podstawie pomiarów
+function placeModal(modalId, metrics) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return reportAction(2, `Nie znaleziono modalu: ${modalId}`, "ERR");
+    
+    // Zdejmujemy ewentualne stare klasy i wymuszamy twarde style CSS
+    modal.style.setProperty('display', 'flex', 'important');
+    modal.style.position = 'fixed';
+    modal.style.top = '50%';
+    modal.style.left = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
+    modal.style.margin = '0';
+    
+    reportAction(2, "Modal został siłowo wrzucony na matematyczny środek ekranu.", "OK");
+}
+
+// FUNKCJA 3: Skaner poprawności (Przekątne i Krawędzie)
+function scanModalPosition(modalId, metrics) {
+    const modal = document.getElementById(modalId);
+    const rect = modal.getBoundingClientRect();
+    
+    const centerX = rect.left + (rect.width / 2);
+    const centerY = rect.top + (rect.height / 2);
+    
+    const diffX = Math.abs(centerX - metrics.cx);
+    const diffY = Math.abs(centerY - metrics.cy);
+    
+    reportAction(3, `Odchylenie od osi symetrii: X=${diffX.toFixed(1)}px, Y=${diffY.toFixed(1)}px`, diffX < 5 && diffY < 5 ? "OK" : "WARN");
+    
+    // Zwraca True jeśli odchylenie jest mniejsze niż 5 pikseli
+    return (diffX < 5 && diffY < 5);
+}
+
+// FUNKCJA 4: Poprawiająca (Korektor układu)
+function correctModalPosition(modalId) {
+    const metrics = measureScreenCenter();
+    placeModal(modalId, metrics);
+    const isPerfect = scanModalPosition(modalId, metrics);
+    
+    if (!isPerfect) {
+        reportAction(4, "Wykryto asymetrię! Wymuszam korektę pozycjonowania absolutnego (Fall-back).", "WARN");
+        const modal = document.getElementById(modalId);
+        modal.style.top = `${metrics.cy - (modal.offsetHeight / 2)}px`;
+        modal.style.left = `${metrics.cx - (modal.offsetWidth / 2)}px`;
+        modal.style.transform = 'none'; // Wyłącza transform, przechodzi na sztywne piksele
+        reportAction(4, "Korekta absolutna zakończona.", "OK");
+    } else {
+        reportAction(4, "Korekta nie była potrzebna, pozycja jest idealna.", "OK");
+    }
+}
+
+// FUNKCJA 5: Analizator Canvas (Pixel-OCR sprawdzający czy tekst istnieje)
+function scanCanvasForCopyright(canvas, ctx, bgX, bgY, bgW, bgH) {
+    reportAction(5, "Uruchamiam Skaner OCR (Pixel Checker)...", "OK");
+    try {
+        // Pobieramy próbkę pikseli ze środka prostokąta, w którym powinno być źródło
+        const sampleX = Math.floor(bgX + (bgW / 2));
+        const sampleY = Math.floor(bgY + (bgH / 2));
+        
+        const pixelData = ctx.getImageData(sampleX, sampleY, 1, 1).data;
+        // Sprawdzamy czy piksel ma kolor tła naklejki (biel/jasny szary -> R, G, B > 200)
+        const isWhiteBg = (pixelData[0] > 200 && pixelData[1] > 200 && pixelData[2] > 200);
+        
+        if (isWhiteBg) {
+            reportAction(5, `Znaleziono naklejkę źródła na koordynatach [${sampleX}, ${sampleY}]!`, "OK");
+            return true;
+        } else {
+            reportAction(5, `OCR nie wykrył jasnego tła naklejki (RGB: ${pixelData[0]},${pixelData[1]},${pixelData[2]}). Źródło prawdopodobnie nie wyrenderowało się!`, "WARN");
+            return false;
+        }
+    } catch(e) {
+        reportAction(5, "Błąd skanowania OCR (CORS / Cross-Origin Canvas). Przechodzę w tryb ostrożnościowy.", "WARN");
+        return false; // W razie błędu zakładamy, że tekstu nie ma, by go wymusić
+    }
+}
+
+// FUNKCJA 6: Wklejająca (Brute-force painter)
+function forcePasteCopyright(canvas, ctx) {
+    reportAction(6, "Uruchamiam procedurę awaryjnego wklejania źródła...", "WARN");
+    const dpr = window.devicePixelRatio || 1;
+    const copyrightText = (typeof isSatellite !== 'undefined' && isSatellite) ? "© OpenStreetMap, Google Maps" : "© Autorzy OpenStreetMap";
+    
+    const fontSize = Math.round(14 * dpr);
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    
+    const textWidth = ctx.measureText(copyrightText).width;
+    const padding = Math.round(8 * dpr);
+    const bgWidth = textWidth + (padding * 2);
+    const bgHeight = Math.round(28 * dpr);
+    
+    const x = canvas.width - bgWidth - (10 * dpr);
+    const y = canvas.height - bgHeight - (10 * dpr);
+
+    // Awaryjne, prymitywne metody rysowania (bez roundRect)
+    ctx.fillStyle = '#ffffff'; 
+    ctx.fillRect(x, y, bgWidth, bgHeight);
+    
+    ctx.fillStyle = '#000000';
+    ctx.textBaseline = "middle";
+    ctx.fillText(copyrightText, x + padding, y + (bgHeight / 2));
+    
+    reportAction(6, "Źródło zostało wklejone siłowo na wierzch grafiki.", "OK");
+}
+
+/* =========================================================
+   LOGIKA INTERAKCJI (KLIKNIĘCIA I GESTY)
 ========================================================= */
 
 
-
-// --- 1. WYKRYWANIE KLIKNIĘĆ ---
 function startSnap(e) {
-    console.log("[Snap] Start: Zarejestrowano interakcję.");
     _isLongPress = false;
     if (_snapTimer) clearTimeout(_snapTimer);
-    
     _snapTimer = setTimeout(() => {
-        console.log("[Snap] Timer: Przekroczono 600ms - Otwieram Kadrownicę!");
         _isLongPress = true;
         _snapTimer = null;
         if (navigator.vibrate) navigator.vibrate(50);
@@ -6296,105 +6416,88 @@ function startSnap(e) {
 }
 
 function cancelSnap() {
-    if (_snapTimer) {
-        console.log("[Snap] Anulowano - Palec puszczony przed 600ms.");
-        clearTimeout(_snapTimer);
-        _snapTimer = null;
-    }
+    if (_snapTimer) { clearTimeout(_snapTimer); _snapTimer = null; }
 }
 
 function endSnapPC(e) {
     cancelSnap();
-    if (!_isLongPress && e.button === 0) { 
-        console.log("[Snap] Krótki klik PC - Uruchamiam Szybki Zrzut.");
-        triggerStandardScreenshot();
-    }
+    if (!_isLongPress && e.button === 0) triggerStandardScreenshot();
 }
 
 function endSnapMobile(e) {
     cancelSnap();
     if (!_isLongPress) {
-        console.log("[Snap] Krótki klik Mobile - Uruchamiam Szybki Zrzut.");
         triggerStandardScreenshot();
         if (typeof toggleMobileNav === 'function') toggleMobileNav(false);
     }
 }
 
-// --- 2. BEZPIECZNY SZYBKI ZRZUT (Z DPR SCALING) ---
+/* =========================================================
+   SZYBKI ZRZUT EKRANU (WYKORZYSTUJE FUNKCJE 5 i 6)
+========================================================= */
 function triggerStandardScreenshot() {
-    console.log("[Zrzut] Zaczynam renderowanie szybkiego zrzutu...");
     document.body.style.cursor = 'wait';
-    
     const mapEl = document.getElementById('map');
     const dpr = window.devicePixelRatio || 1; 
-    console.log("[Zrzut] Device Pixel Ratio wykryte jako:", dpr);
-    
+
     html2canvas(mapEl, { 
         useCORS: true,
         scale: dpr, 
-        ignoreElements: function(element) {
-            if (element.classList && element.classList.contains('leaflet-control-container')) return true; 
-            return false;
-        }
+        ignoreElements: el => el.classList && el.classList.contains('leaflet-control-container')
     }).then(canvas => {
-        console.log("[Zrzut] Canvas wygenerowany. Rozmiar:", canvas.width, "x", canvas.height);
         const ctx = canvas.getContext('2d');
         const copyrightText = (typeof isSatellite !== 'undefined' && isSatellite) ? "© OpenStreetMap, Google Maps" : "© Autorzy OpenStreetMap";
         
-        // Dynamiczne powiększanie fontu i marginesów na podstawie gęstości pikseli (DPR) ekranu!
-        const baseFontSize = 14;
-        const fontSize = Math.round(baseFontSize * dpr);
-        ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
-        
-        const padding = Math.round(6 * dpr);
+        // Zmienne do wklejania
+        const fontSize = Math.round(14 * dpr);
+        ctx.font = `bold ${fontSize}px sans-serif`;
         const textWidth = ctx.measureText(copyrightText).width;
+        const padding = Math.round(8 * dpr);
         const bgWidth = textWidth + (padding * 2);
-        const bgHeight = Math.round(26 * dpr);
-        
-        // Wyliczamy pozycję w prawym dolnym rogu
+        const bgHeight = Math.round(28 * dpr);
         const x = canvas.width - bgWidth - (10 * dpr);
         const y = canvas.height - bgHeight - (10 * dpr);
         
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-        ctx.beginPath();
-        ctx.roundRect(x, y, bgWidth, bgHeight, 6 * dpr);
-        ctx.fill();
-        
+        // Próba normalnego narysowania (Używamy fillRect zamiast roundRect dla lepszej kompatybilności na iOS)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.fillRect(x, y, bgWidth, bgHeight);
         ctx.fillStyle = '#1e293b';
-        // Rysujemy tekst wyśrodkowany pionowo wewnątrz utworzonego tła
         ctx.textBaseline = "middle";
         ctx.fillText(copyrightText, x + padding, y + (bgHeight / 2));
-        
+
+        // FUNKCJE 5 I 6 - Kontrola i Korekta
+        const hasText = scanCanvasForCopyright(canvas, ctx, x, y, bgWidth, bgHeight);
+        if (!hasText) {
+            forcePasteCopyright(canvas, ctx);
+        }
+
         const link = document.createElement('a');
         link.download = `szybki_zrzut_${new Date().toLocaleDateString()}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
         
         document.body.style.cursor = '';
-        console.log("[Zrzut] Sukces! Zapisano obraz z czytelnym źródłem.");
     }).catch(err => {
-        console.error("[Zrzut] BŁĄD KRYTYCZNY:", err);
+        console.error("Błąd zrzutu:", err);
         document.body.style.cursor = '';
-        showCustomAlert("Wystąpił problem przy robieniu zrzutu ekranu.");
     });
 }
 
-// --- 3. POTĘŻNY EDYTOR KADROWANIA (WORKSPACE ENGINE) ---
+/* =========================================================
+   WORKSPACE KADROWANIA (WYKORZYSTUJE FUNKCJE 1, 2, 3, 4)
+========================================================= */
 
 
 async function forceOpenCropModal() {
-    console.log("[Kadrownica] Inicjacja...");
     document.body.style.cursor = 'wait';
-    const modal = document.getElementById('screenshotCropModal');
+    const modalId = 'screenshotCropModal';
     
-    // Wymuszamy otwarcie, by móc mierzyć wymiary kontenera
-    document.body.appendChild(modal);
-    modal.style.setProperty('display', 'flex', 'important');
-    
+    // Zastosowanie cyklu centrowania (Funkcje 1-4)
+    correctModalPosition(modalId);
+
     try {
         const mapEl = document.getElementById('map');
         const dpr = window.devicePixelRatio || 1;
-        console.log("[Kadrownica] Rendering mapy w tle (DPR:", dpr, ")...");
 
         const canvas = await html2canvas(mapEl, { 
             useCORS: true, scale: dpr,
@@ -6406,20 +6509,16 @@ async function forceOpenCropModal() {
         
         imgBaseW = canvas.width;
         imgBaseH = canvas.height;
-        console.log(`[Kadrownica] Rozmiar źródła: ${imgBaseW}x${imgBaseH}`);
 
-        // OBLICZANIE IDEALNEGO DOPASOWANIA DO EKRANU (Fit-to-Screen)
         const container = document.getElementById('cropOuterContainer');
         const cw = container.clientWidth;
         const ch = container.clientHeight;
         
-        // Skala, która zmieści 90% obrazu na ekranie
+        // Automatyczne dopasowanie do wymiarów okna!
         ws.zoom = Math.min(cw / imgBaseW, ch / imgBaseH) * 0.9;
-        // Centrowanie
         ws.x = (cw - (imgBaseW * ws.zoom)) / 2;
         ws.y = (ch - (imgBaseH * ws.zoom)) / 2;
 
-        // Domyślny rozmiar kadru (margines 10% od krawędzi oryginału)
         crop.x = imgBaseW * 0.1;
         crop.y = imgBaseH * 0.1;
         crop.w = imgBaseW * 0.8;
@@ -6432,13 +6531,9 @@ async function forceOpenCropModal() {
         if (!isCropperEventsBound) {
             bindWorkspaceEvents();
             isCropperEventsBound = true;
-            console.log("[Kadrownica] Podpięto logikę przestrzeni roboczej (Pan & Zoom).");
         }
-
     } catch(err) {
-        console.error("[Kadrownica] BŁĄD:", err);
-        showCustomAlert("Nie udało się załadować mapy do edytora.");
-        closeCropModal();
+        console.error("Błąd ładowania kadrownicy:", err);
     } finally {
         document.body.style.cursor = '';
     }
@@ -6446,10 +6541,9 @@ async function forceOpenCropModal() {
 
 function closeCropModal() {
     const modal = document.getElementById('screenshotCropModal');
-    if (modal) modal.style.setProperty('display', 'none', 'important');
+    if (modal) modal.style.display = 'none';
 }
 
-// Logika aktualizacji widoku CSS
 function updateWorkspaceDOM() {
     const wrapper = document.getElementById('cropAreaWrapper');
     wrapper.style.transform = `translate(${ws.x}px, ${ws.y}px) scale(${ws.zoom})`;
@@ -6464,32 +6558,26 @@ function updateCropBoxDOM() {
 }
 
 function zoomWorkspace(delta) {
-    // Zoom przyciskiem kieruje do środka ekranu
     const container = document.getElementById('cropOuterContainer');
-    const centerX = container.clientWidth / 2;
-    const centerY = container.clientHeight / 2;
-    applyZoom(delta, centerX, centerY);
+    applyZoom(delta, container.clientWidth / 2, container.clientHeight / 2);
 }
 
 function applyZoom(delta, mouseX, mouseY) {
     const oldZoom = ws.zoom;
     let newZoom = oldZoom + delta;
-    if(delta > 1) newZoom = oldZoom * delta; // Używane w pinch-to-zoom jako mnożnik
+    if(delta > 1 || delta < -1) newZoom = oldZoom * delta; // Mnożnik dla Pinch
     
-    newZoom = Math.max(0.1, Math.min(newZoom, 5.0)); // Ograniczenia
+    newZoom = Math.max(0.05, Math.min(newZoom, 5.0)); 
     if (newZoom === oldZoom) return;
 
-    // Przesunięcie punktu (x,y) by zachować powiększenie w miejscu kursora
     const ratio = newZoom / oldZoom;
     ws.x = mouseX - (mouseX - ws.x) * ratio;
     ws.y = mouseY - (mouseY - ws.y) * ratio;
     ws.zoom = newZoom;
-
     updateWorkspaceDOM();
 }
 
 function setCropRatio(ratio, btn) {
-    console.log("[Kadrownica] Ustawiono proporcje:", ratio);
     document.querySelectorAll('.crop-ratio-btn').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
     
@@ -6505,21 +6593,24 @@ function setCropRatio(ratio, btn) {
     }
 }
 
-// --- 4. ZAAWANSOWANE GESTY (PAN, ZOOM, RESIZE) ---
 function bindWorkspaceEvents() {
     const container = document.getElementById('cropOuterContainer');
-    const box = document.getElementById('cropBox');
 
-    // Mysz: Kółko (Przybliżanie w miejscu myszki)
+    // Mysz: Kółko
     container.addEventListener('wheel', (e) => {
         e.preventDefault();
         const delta = e.deltaY < 0 ? 0.1 : -0.1;
-        applyZoom(delta, e.clientX, e.clientY);
+        
+        // Obliczamy fizyczną pozycję kursora wewnątrz kontenera!
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        applyZoom(delta, mouseX, mouseY);
     }, {passive: false});
 
     let isPan = false, isCropDrag = false, isCropResize = false;
-    let startCx, startCy; // Dla płótna
-    let startX, startY, sCropX, sCropY, sCropW, sCropH, handleDir;
+    let startCx, startCy, startX, startY, sCropX, sCropY, sCropW, sCropH, handleDir;
     let initialPinchDist = null, initialPinchZoom = 1;
 
     const getCoords = (e) => ({
@@ -6528,38 +6619,31 @@ function bindWorkspaceEvents() {
     });
 
     const getPinchDist = (e) => {
-        if(e.touches.length < 2) return null;
         return Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
     };
 
     const handlePointerDown = (e) => {
         if (e.touches && e.touches.length === 2) {
-            // Start dwoma palcami = Pinch to Zoom
             initialPinchDist = getPinchDist(e);
             initialPinchZoom = ws.zoom;
-            isPan = false; isCropDrag = false; isCropResize = false;
+            isPan = isCropDrag = isCropResize = false;
             return;
         }
 
         const coords = getCoords(e);
         if (e.target.classList.contains('crop-handle')) {
-            // Zmiana rozmiaru
-            isCropResize = true;
-            handleDir = e.target.dataset.dir;
+            isCropResize = true; handleDir = e.target.dataset.dir;
             startX = coords.x; startY = coords.y;
             sCropX = crop.x; sCropY = crop.y; sCropW = crop.w; sCropH = crop.h;
             e.preventDefault(); e.stopPropagation();
         } else if (e.target.id === 'cropBox' || e.target.parentNode.id === 'cropBox') {
-            // Przesuwanie kadru
             isCropDrag = true;
             startX = coords.x; startY = coords.y;
             sCropX = crop.x; sCropY = crop.y;
             e.preventDefault(); e.stopPropagation();
         } else {
-            // Przesuwanie Płótna (Workspace Pan)
             isPan = true;
-            startCx = coords.x - ws.x;
-            startCy = coords.y - ws.y;
+            startCx = coords.x - ws.x; startCy = coords.y - ws.y;
         }
     };
 
@@ -6569,11 +6653,11 @@ function bindWorkspaceEvents() {
             const dist = getPinchDist(e);
             const ratio = dist / initialPinchDist;
             
-            // Środek między palcami
-            const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-            const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            const rect = container.getBoundingClientRect();
+            const midX = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - rect.left;
+            const midY = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - rect.top;
             
-            applyZoom((initialPinchZoom * ratio) / ws.zoom, midX, midY); // Delta to mnożnik w tym przypadku
+            applyZoom((initialPinchZoom * ratio) / ws.zoom, midX, midY); 
             return;
         }
 
@@ -6581,12 +6665,10 @@ function bindWorkspaceEvents() {
 
         if (isPan) {
             e.preventDefault();
-            ws.x = coords.x - startCx;
-            ws.y = coords.y - startCy;
+            ws.x = coords.x - startCx; ws.y = coords.y - startCy;
             updateWorkspaceDOM();
         } else if (isCropDrag) {
             e.preventDefault();
-            // Przesunięcie myszy dzielimy przez ZOOM, by kadr poruszał się synchronicznie z kursorem!
             const dx = (coords.x - startX) / ws.zoom;
             const dy = (coords.y - startY) / ws.zoom;
             crop.x = Math.max(0, Math.min(sCropX + dx, imgBaseW - crop.w));
@@ -6622,7 +6704,6 @@ function bindWorkspaceEvents() {
                 }
             }
 
-            // Ograniczenia i granice obrazu
             const minSize = 100;
             if (nw < minSize) { nw = minSize; if (handleDir.includes('w')) nx = sCropX + sCropW - minSize; }
             if (nh < minSize) { nh = minSize; if (handleDir.includes('n')) ny = sCropY + sCropH - minSize; }
@@ -6638,7 +6719,7 @@ function bindWorkspaceEvents() {
     };
 
     const handlePointerUp = () => {
-        isPan = false; isCropDrag = false; isCropResize = false;
+        isPan = isCropDrag = isCropResize = false;
         initialPinchDist = null;
     };
 
@@ -6650,47 +6731,41 @@ function bindWorkspaceEvents() {
     window.addEventListener('touchend', handlePointerUp);
 }
 
-// --- 5. EKSPORT Z KADROWNICY ---
+// EKSPORT Z KADROWNICY (Wykorzystuje Funkcję 5 i 6)
 function executeCropDownload() {
-    console.log("[Kadrownica] Składanie końcowego zdjęcia...");
     const sourceImg = document.getElementById('cropSourceImage');
     const finalCanvas = document.createElement('canvas');
     finalCanvas.width = crop.w;
     finalCanvas.height = crop.h;
     const ctx = finalCanvas.getContext('2d');
     
-    // Rysowanie precyzyjnie wyciętego obszaru
     ctx.drawImage(sourceImg, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
     
-    // Doklejanie wyraźnego źródła skalowanego przez DPR
     const dpr = window.devicePixelRatio || 1;
-    const padding = Math.round(6 * dpr);
     const copyrightText = (typeof isSatellite !== 'undefined' && isSatellite) ? "© OpenStreetMap, Google Maps" : "© Autorzy OpenStreetMap";
-    
     const fontSize = Math.round(14 * dpr);
-    ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+    ctx.font = `bold ${fontSize}px sans-serif`;
     
     const textWidth = ctx.measureText(copyrightText).width;
+    const padding = Math.round(8 * dpr);
     const bgWidth = textWidth + (padding * 2);
-    const bgHeight = Math.round(26 * dpr);
-    
+    const bgHeight = Math.round(28 * dpr);
     const x = crop.w - bgWidth - (10 * dpr);
     const y = crop.h - bgHeight - (10 * dpr);
     
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.beginPath();
-    ctx.roundRect(x, y, bgWidth, bgHeight, 6 * dpr);
-    ctx.fill();
-    ctx.fillStyle = '#1e293b';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x, y, bgWidth, bgHeight);
+    ctx.fillStyle = '#000000';
     ctx.textBaseline = "middle";
     ctx.fillText(copyrightText, x + padding, y + (bgHeight / 2));
+
+    const hasText = scanCanvasForCopyright(finalCanvas, ctx, x, y, bgWidth, bgHeight);
+    if (!hasText) forcePasteCopyright(finalCanvas, ctx);
     
-    // Pobieranie
     const link = document.createElement('a');
     link.download = `zrzut_wykadrowany_${new Date().toLocaleDateString()}.png`;
     link.href = finalCanvas.toDataURL('image/png');
     link.click();
-    console.log("[Kadrownica] Sukces!");
     
     closeCropModal();
 }
