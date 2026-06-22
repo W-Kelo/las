@@ -129,7 +129,6 @@ let draggedLegendItem = null;
 let cropState = { x: 0, y: 0, w: 0, h: 0, ratio: null, imgW: 0, imgH: 0, zoom: 1 };
 let isCropInitialized = false;
 let screenshotPressTimer;
-let isScreenshotLongPress = false;
 let _snapTimer = null;
 let _isLongPress = false;
 let exportPointSettings = {
@@ -6271,37 +6270,39 @@ function setupLegendDragAndDrop(li) {
     });
 }
 /* =========================================================
-   PANCERNY SYSTEM ZRZUTÓW EKRANU I KADROWANIA
+   PANCERNY SYSTEM ZRZUTÓW EKRANU I KADROWANIA (BRUTE FORCE)
 ========================================================= */
 
 
-// 1. Detekcja kliknięć i przytrzymań
+
+// 1. Logika Kliknięć
 function startSnap(e) {
-    console.log("[Snap] StartPress: Zarejestrowano dotyk/kliknięcie:", e.type);
+    console.log("[Snap] Dotyk/Kliknięcie zarejestrowane.");
     _isLongPress = false;
-    clearTimeout(_snapTimer);
+    if (_snapTimer) clearTimeout(_snapTimer);
     
-    // Ustawiamy timer na 600ms
     _snapTimer = setTimeout(() => {
-        console.log("[Snap] Timer: Osiągnięto 600ms - Uruchamiam długie przytrzymanie!");
+        console.log("[Snap] Przytrzymano dłużej niż 600ms - Otwieram Modal Kadrowania!");
         _isLongPress = true;
+        _snapTimer = null;
         if (navigator.vibrate) navigator.vibrate(50);
-        if (window.innerWidth <= 768) toggleMobileNav(false);
+        if (window.innerWidth <= 768 && typeof toggleMobileNav === 'function') toggleMobileNav(false);
         forceOpenCropModal();
     }, 600);
 }
 
 function cancelSnap() {
     if (_snapTimer) {
-        console.log("[Snap] Cancel: Przerwano timer (palec zsunął się z przycisku).");
+        console.log("[Snap] Palec puszczony przed czasem.");
         clearTimeout(_snapTimer);
+        _snapTimer = null;
     }
 }
 
 function endSnapPC(e) {
     cancelSnap();
-    if (!_isLongPress && e.button === 0) { // e.button === 0 to lewy przycisk myszy
-        console.log("[Snap] EndPC: Zwykłe krótkie kliknięcie (LPM). Robię standardowy zrzut.");
+    if (!_isLongPress && e.button === 0) { // Krótkie kliknięcie (LPM)
+        console.log("[Snap] Krótkie kliknięcie PC - Szybki zrzut.");
         triggerStandardScreenshot();
     }
 }
@@ -6309,36 +6310,31 @@ function endSnapPC(e) {
 function endSnapMobile(e) {
     cancelSnap();
     if (!_isLongPress) {
-        console.log("[Snap] EndMobile: Zwykłe krótkie kliknięcie (Touch). Robię standardowy zrzut.");
+        console.log("[Snap] Krótkie kliknięcie Mobile - Szybki zrzut.");
         triggerStandardScreenshot();
-        toggleMobileNav(false);
+        if (typeof toggleMobileNav === 'function') toggleMobileNav(false);
     }
 }
 
-// 2. BEZPIECZNY ZWYKŁY ZRZUT EKRANU (Z ignorowaniem UI)
+// 2. BEZPIECZNY SZYBKI ZRZUT (Zignoruje UI Leafleta, nie psując go!)
 function triggerStandardScreenshot() {
-    console.log("[Screenshot] Rozpoczynam generowanie standardowego zrzutu...");
+    console.log("[Zrzut] Zaczynam renderowanie...");
     document.body.style.cursor = 'wait';
     
     const mapEl = document.getElementById('map');
     
-    // Klucz do sukcesu: Nie modyfikujemy DOM (więc Strażnik nie wariuje).
-    // Ignorujemy przyciski i oryginalne źródło w czasie renderowania canvasu.
     html2canvas(mapEl, { 
         useCORS: true,
+        scale: window.devicePixelRatio || 1, // Ostry obraz
         ignoreElements: function(element) {
-            // Ignoruje przyciski Leafleta (+/-) oraz oryginalne źródło (Attribution)
-            if (element.classList && (
-                element.classList.contains('leaflet-control-zoom') ||
-                element.classList.contains('leaflet-control-attribution')
-            )) {
+            // Nakazuje kamerze zignorować kontrolki Leafleta (zamiast je ukrywać przed zrobieniem zdjęcia)
+            if (element.classList && element.classList.contains('leaflet-control-container')) {
                 return true; 
             }
             return false;
         }
     }).then(canvas => {
-        console.log("[Screenshot] Canvas wygenerowany pomyślnie!");
-        
+        console.log("[Zrzut] Render gotowy. Dodaję własne źródło na sam dół zdjęcia.");
         const ctx = canvas.getContext('2d');
         const copyrightText = (typeof isSatellite !== 'undefined' && isSatellite) ? "© OpenStreetMap, Google Maps" : "© Autorzy OpenStreetMap";
         
@@ -6346,70 +6342,78 @@ function triggerStandardScreenshot() {
         const textWidth = ctx.measureText(copyrightText).width;
         const padding = 6;
         const bgWidth = textWidth + (padding * 2);
-        const bgHeight = 24;
+        const bgHeight = 26;
         
-        // Oblicz pozycję: Idealnie w prawym dolnym rogu ZDJĘCIA
+        // ZAWSZE na samym dole w prawym rogu obrazu
         const x = canvas.width - bgWidth - 10;
         const y = canvas.height - bgHeight - 10;
         
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
         ctx.beginPath();
-        ctx.roundRect(x, y, bgWidth, bgHeight, 6);
+        ctx.roundRect(x, y, bgWidth, bgHeight, 4);
         ctx.fill();
         ctx.fillStyle = '#1e293b';
-        ctx.fillText(copyrightText, x + padding, canvas.height - 10 - padding - 1);
+        ctx.fillText(copyrightText, x + padding, canvas.height - 10 - padding - 2);
         
         const link = document.createElement('a');
-        link.download = `zrzut_mapy_${new Date().toLocaleDateString()}.png`;
+        link.download = `szybki_zrzut_${new Date().toLocaleDateString()}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
-        console.log("[Screenshot] Plik pobrany!");
         
         document.body.style.cursor = '';
+        console.log("[Zrzut] Zakończono z sukcesem.");
     }).catch(err => {
-        console.error("[Screenshot] BŁĄD KRYTYCZNY:", err);
+        console.error("[Zrzut] BŁĄD KRYTYCZNY:", err);
         document.body.style.cursor = '';
         showCustomAlert("Wystąpił problem przy robieniu zrzutu ekranu.");
     });
 }
 
-// 3. MODAL KADROWANIA (CROPPER)
-
+// 3. MODAL KADROWANIA (BRUTE-FORCE OPENER)
+let cropState = { x: 0, y: 0, w: 0, h: 0, ratio: null, imgW: 0, imgH: 0, zoom: 1 };
+let isCropInitialized = false;
 
 async function forceOpenCropModal() {
-    console.log("[CropModal] Rozpoczynam otwieranie modalu kadrowania...");
+    console.log("[Kadrownica] Inicjalizacja potężnego Modalu...");
     document.body.style.cursor = 'wait';
 
-    const modal = document.getElementById('screenshotCropModal');
-    if (!modal) {
-        console.error("[CropModal] NIE ZNALEZIONO MODALU W HTML!");
-        return;
-    }
+    let modal = document.getElementById('screenshotCropModal');
+    
+    // WYRYWAMY modal i wrzucamy do <body> by zlikwidować problemy CSS (Z-indexy itp.)
+    document.body.appendChild(modal);
+
+    // BRUTALNE wymuszenie bycia na wierzchu całego ekranu
+    modal.style.setProperty('display', 'flex', 'important');
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100vw';
+    modal.style.height = '100vh';
+    modal.style.zIndex = '2147483647'; // Limit systemowy przeglądarek
+    modal.style.margin = '0';
+    modal.style.borderRadius = '0';
+    modal.style.transform = 'none';
 
     const mapEl = document.getElementById('map');
 
     try {
-        console.log("[CropModal] Zlecam html2canvas...");
+        console.log("[Kadrownica] Robię ukryte zdjęcie mapy...");
         const canvas = await html2canvas(mapEl, { 
             useCORS: true,
             ignoreElements: function(element) {
-                if (element.classList && (
-                    element.classList.contains('leaflet-control-zoom') ||
-                    element.classList.contains('leaflet-control-attribution')
-                )) {
-                    return true; 
-                }
+                if (element.classList && element.classList.contains('leaflet-control-container')) return true; 
                 return false;
             }
         });
         
-        console.log("[CropModal] Canvas gotowy, ładuję do obrazka...");
+        console.log("[Kadrownica] Canvas udany. Montuję obraz...");
         const imgEl = document.getElementById('cropSourceImage');
         imgEl.src = canvas.toDataURL('image/png');
         
         cropState.imgW = canvas.width;
         cropState.imgH = canvas.height;
         cropState.zoom = 1;
+        
         document.getElementById('cropAreaWrapper').style.transform = `scale(1)`;
         
         const marginX = cropState.imgW * 0.1;
@@ -6422,33 +6426,35 @@ async function forceOpenCropModal() {
         setCropRatio(null, document.querySelector('.crop-ratio-btn')); 
         updateCropBoxDOM();
 
-        // Otwieramy modal z siłą wodospadu (display flex + z-index)
-        modal.style.display = 'flex';
-        console.log("[CropModal] Modal wyświetlony na ekranie!");
-        
         if (!isCropInitialized) {
             initCustomCropper();
             isCropInitialized = true;
-            console.log("[CropModal] Silnik przeciągania zainicjalizowany.");
+            console.log("[Kadrownica] Zainicjowano suwaki po raz pierwszy.");
         }
+        
+        console.log("[Kadrownica] Otwarto pomyślnie. Czekam na edycję użytkownika.");
 
     } catch(err) {
-        console.error("[CropModal] BŁĄD:", err);
-        showCustomAlert("Nie udało się załadować mapy do edytora.");
+        console.error("[Kadrownica] BŁĄD:", err);
+        showCustomAlert("Nie udało się załadować edytora.");
+        closeCropModal();
     } finally {
         document.body.style.cursor = '';
     }
+}
+
+function closeCropModal() {
+    const modal = document.getElementById('screenshotCropModal');
+    if (modal) modal.style.setProperty('display', 'none', 'important');
 }
 
 function cropZoom(dir) {
     cropState.zoom += dir;
     cropState.zoom = Math.max(0.4, Math.min(cropState.zoom, 3.0));
     document.getElementById('cropAreaWrapper').style.transform = `scale(${cropState.zoom})`;
-    console.log("[CropModal] Zmiana zooma:", cropState.zoom);
 }
 
 function setCropRatio(ratio, btn) {
-    console.log("[CropModal] Ustawiam proporcje kadru na:", ratio || "Wolny");
     document.querySelectorAll('.crop-ratio-btn').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
     
@@ -6589,17 +6595,15 @@ function initCustomCropper() {
 }
 
 function executeCropDownload() {
-    console.log("[CropModal] Rozpoczynam wycinanie i zapis pliku...");
+    console.log("[Kadrownica] Pobieranie wycinka...");
     const sourceImg = document.getElementById('cropSourceImage');
     const finalCanvas = document.createElement('canvas');
     finalCanvas.width = cropState.w;
     finalCanvas.height = cropState.h;
     const ctx = finalCanvas.getContext('2d');
     
-    // 1. Kopiujemy tylko wykadrowany obszar ze źródła
     ctx.drawImage(sourceImg, cropState.x, cropState.y, cropState.w, cropState.h, 0, 0, cropState.w, cropState.h);
     
-    // 2. Gwarantowane źródło w prawym dolnym rogu (Niezależnie od kształtu cięcia)
     const padding = 6;
     const copyrightText = (typeof isSatellite !== 'undefined' && isSatellite) ? "© OpenStreetMap, Google Maps" : "© Autorzy OpenStreetMap";
     ctx.font = 'bold 14px "Segoe UI", sans-serif';
@@ -6607,20 +6611,19 @@ function executeCropDownload() {
     const bgWidth = textWidth + (padding * 2);
     const bgHeight = 24;
     
+    // Zawsze w rogu wynikowego pliku
     ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
     ctx.beginPath();
     ctx.roundRect(cropState.w - bgWidth - 10, cropState.h - bgHeight - 10, bgWidth, bgHeight, 6);
     ctx.fill();
-    
     ctx.fillStyle = '#1e293b';
     ctx.fillText(copyrightText, cropState.w - bgWidth - 10 + padding, cropState.h - 10 - padding - 1);
     
-    // 3. Pobieranie pliku
     const link = document.createElement('a');
     link.download = `zrzut_wykadrowany_${new Date().toLocaleDateString()}.png`;
     link.href = finalCanvas.toDataURL('image/png');
     link.click();
-    console.log("[CropModal] Plik pobrany pomyślnie.");
+    console.log("[Kadrownica] Plik wygenerowany pomyślnie!");
     
-    document.getElementById('screenshotCropModal').style.display = 'none';
+    closeCropModal();
 }
