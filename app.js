@@ -6509,10 +6509,12 @@ function triggerStandardScreenshot() {
 
 async function forceOpenCropModal() {
     document.body.style.cursor = 'wait';
-    const modalId = 'screenshotCropModal';
+    const modal = document.getElementById('screenshotCropModal');
     
-    // Zastosowanie inteligentnego centrowania (Funkcje 1-4)
-    correctModalPosition(modalId);
+    // Gwarancja wyrwania modalu na wierzch struktury DOM
+    if (modal.parentNode !== document.body) document.body.appendChild(modal);
+    modal.style.setProperty('display', 'flex', 'important');
+    modal.style.visibility = 'visible';
 
     try {
         const mapEl = document.getElementById('map');
@@ -6529,26 +6531,12 @@ async function forceOpenCropModal() {
         imgBaseW = canvas.width;
         imgBaseH = canvas.height;
 
-        const container = document.getElementById('cropOuterContainer');
-        const cw = container.clientWidth;
-        const ch = container.clientHeight;
-        
-        // Płótno dopasowane do okna (margines 10%)
-        ws.zoom = Math.min(cw / imgBaseW, ch / imgBaseH) * 0.9;
-        ws.x = (cw - (imgBaseW * ws.zoom)) / 2;
-        ws.y = (ch - (imgBaseH * ws.zoom)) / 2;
-
-        crop.x = imgBaseW * 0.1;
-        crop.y = imgBaseH * 0.1;
-        crop.w = imgBaseW * 0.8;
-        crop.h = imgBaseH * 0.8;
-        
-        setCropRatio(null, document.querySelector('.crop-ratio-btn')); 
-        updateWorkspaceDOM();
-        updateCropBoxDOM();
+        // Idealne dopasowanie do wymiarów okna! (Auto-Fit)
+        fitWorkspaceToScreen();
 
         if (!isCropperEventsBound) {
             bindWorkspaceEvents();
+            observeModalResize(); // Aktywuje nasłuchiwanie zmian wielkości okna!
             isCropperEventsBound = true;
         }
     } catch(err) {
@@ -6614,9 +6602,12 @@ function setCropRatio(ratio, btn) {
     }
 }
 
+// PODMIEŃ FUNKCJĘ: Usunięto pan/zoom dla telefonów + Siłowe powiększenie uchwytów
 function bindWorkspaceEvents() {
     const container = document.getElementById('cropOuterContainer');
+    const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
+    // Kółko myszy działa dalej tylko dla PC (przybliżanie na środek)
     container.addEventListener('wheel', (e) => {
         e.preventDefault();
         const delta = e.deltaY < 0 ? 0.1 : -0.1;
@@ -6626,22 +6617,36 @@ function bindWorkspaceEvents() {
 
     let isPan = false, isCropDrag = false, isCropResize = false;
     let startCx, startCy, startX, startY, sCropX, sCropY, sCropW, sCropH, handleDir;
-    let initialPinchDist = null, initialPinchZoom = 1;
+
+    // --- Siłowe egzekwowanie ogromnych uchwytów dla urządzeń dotykowych ---
+    if (isTouchDevice) {
+        reportAction("UI", "Zastosowano twarde powiększenie uchwytów na dotykowym urządzeniu.", "OK");
+        document.querySelectorAll('.crop-handle').forEach(h => {
+            h.style.setProperty('width', '35px', 'important');
+            h.style.setProperty('height', '35px', 'important');
+        });
+        
+        // Z uwagi na zwiększenie ich z 16px na 35px, korygujemy ich odsunięcie (aby były na środku krawędzi)
+        document.querySelector('.ch-nw').style.setProperty('top', '-17px', 'important'); document.querySelector('.ch-nw').style.setProperty('left', '-17px', 'important');
+        document.querySelector('.ch-ne').style.setProperty('top', '-17px', 'important'); document.querySelector('.ch-ne').style.setProperty('right', '-17px', 'important');
+        document.querySelector('.ch-sw').style.setProperty('bottom', '-17px', 'important'); document.querySelector('.ch-sw').style.setProperty('left', '-17px', 'important');
+        document.querySelector('.ch-se').style.setProperty('bottom', '-17px', 'important'); document.querySelector('.ch-se').style.setProperty('right', '-17px', 'important');
+        
+        document.querySelector('.ch-n').style.setProperty('top', '-17px', 'important'); document.querySelector('.ch-n').style.setProperty('left', 'calc(50% - 17px)', 'important');
+        document.querySelector('.ch-s').style.setProperty('bottom', '-17px', 'important'); document.querySelector('.ch-s').style.setProperty('left', 'calc(50% - 17px)', 'important');
+        document.querySelector('.ch-e').style.setProperty('right', '-17px', 'important'); document.querySelector('.ch-e').style.setProperty('top', 'calc(50% - 17px)', 'important');
+        document.querySelector('.ch-w').style.setProperty('left', '-17px', 'important'); document.querySelector('.ch-w').style.setProperty('top', 'calc(50% - 17px)', 'important');
+    }
 
     const getCoords = (e) => ({
         x: e.touches ? e.touches[0].clientX : e.clientX,
         y: e.touches ? e.touches[0].clientY : e.clientY
     });
 
-    const getPinchDist = (e) => {
-        return Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-    };
-
     const handlePointerDown = (e) => {
-        if (e.touches && e.touches.length === 2) {
-            initialPinchDist = getPinchDist(e);
-            initialPinchZoom = ws.zoom;
-            isPan = isCropDrag = isCropResize = false;
+        // Blokada multigestów (Odrzucenie drugiego palca na dotyku)
+        if (e.touches && e.touches.length > 1) {
+            e.preventDefault();
             return;
         }
 
@@ -6657,28 +6662,24 @@ function bindWorkspaceEvents() {
             sCropX = crop.x; sCropY = crop.y;
             e.preventDefault(); e.stopPropagation();
         } else {
-            isPan = true;
-            startCx = coords.x - ws.x; startCy = coords.y - ws.y;
+            // ZABLOKOWANIE PRZESUWANIA (PAN) DLA TELEFONÓW (Pozwól na to tylko PC-tom)
+            if (!isTouchDevice) {
+                isPan = true;
+                startCx = coords.x - ws.x; startCy = coords.y - ws.y;
+            }
         }
     };
 
     const handlePointerMove = (e) => {
-        if (e.touches && e.touches.length === 2 && initialPinchDist) {
+        // Zablokuj wszystkie zoomy dwupalcowe z urzędu
+        if (e.touches && e.touches.length > 1) {
             e.preventDefault();
-            const dist = getPinchDist(e);
-            const ratio = dist / initialPinchDist;
-            
-            const rect = container.getBoundingClientRect();
-            const midX = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - rect.left;
-            const midY = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - rect.top;
-            
-            applyZoom((initialPinchZoom * ratio) / ws.zoom, midX, midY); 
             return;
         }
 
         const coords = getCoords(e);
 
-        if (isPan) {
+        if (isPan && !isTouchDevice) {
             e.preventDefault();
             ws.x = coords.x - startCx; ws.y = coords.y - startCy;
             updateWorkspaceDOM();
@@ -6735,7 +6736,6 @@ function bindWorkspaceEvents() {
 
     const handlePointerUp = () => {
         isPan = isCropDrag = isCropResize = false;
-        initialPinchDist = null;
     };
 
     container.addEventListener('mousedown', handlePointerDown);
@@ -6788,4 +6788,40 @@ function executeCropCopy() {
             showCustomAlert("Twoja przeglądarka lub system nie obsługuje bezpośredniego kopiowania obrazów.");
         }
     });
+}
+// NOWA FUNKCJA: Wymusza idealne dopasowanie obrazu do aktualnego rozmiaru okna Modalu
+function fitWorkspaceToScreen() {
+    const container = document.getElementById('cropOuterContainer');
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    
+    // Auto-Fit: Dopasuj skalę, by 95% obrazu wypełniło najwęższy bok, zachowując proporcje
+    ws.zoom = Math.min(cw / imgBaseW, ch / imgBaseH) * 0.95;
+    
+    // Ścisłe centrowanie matematyczne
+    ws.x = (cw - (imgBaseW * ws.zoom)) / 2;
+    ws.y = (ch - (imgBaseH * ws.zoom)) / 2;
+
+    // Resetowanie pozycji "wycinanki" na domyślne 80% rozmiaru
+    crop.x = imgBaseW * 0.1;
+    crop.y = imgBaseH * 0.1;
+    crop.w = imgBaseW * 0.8;
+    crop.h = imgBaseH * 0.8;
+    
+    setCropRatio(null, document.querySelector('.crop-ratio-btn')); 
+    updateWorkspaceDOM();
+    updateCropBoxDOM();
+}
+
+// NOWA FUNKCJA: Całodobowy monitoring wielkości modalu
+function observeModalResize() {
+    const modal = document.getElementById('screenshotCropModal');
+    // ResizeObserver to natywne i bardzo wydajne rozwiązanie przeglądarkowe
+    const resizeObserver = new ResizeObserver(() => {
+        if (modal.style.display !== 'none' && imgBaseW > 0) {
+            // Natychmiastowo przelicza proporcje po rotacji ekranu lub zmianie okna w PC
+            fitWorkspaceToScreen();
+        }
+    });
+    resizeObserver.observe(modal);
 }
