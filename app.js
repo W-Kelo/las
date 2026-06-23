@@ -6390,10 +6390,16 @@ function scanCanvasForCopyright(canvas, ctx, x, y, w, h) {
 // FUNKCJA 6: Ostateczne wymuszenie źródła
 function forcePasteCopyright(canvas, ctx) {
     reportAction(6, "Procedura twardego wklejania źródła uruchomiona.", "WARN");
+    
+    // KLUCZ DO SUKCESU: Kasujemy "potajemne" skalowanie nałożone przez html2canvas.
+    // Dzięki temu canvas.width i canvas.height to znowu surowe, fizyczne piksele!
+    ctx.setTransform(1, 0, 0, 1, 0, 0); 
+    ctx.globalAlpha = 1.0;
+    
     const dpr = window.devicePixelRatio || 1;
     const text = (typeof isSatellite !== 'undefined' && isSatellite) ? "© OpenStreetMap, Google Maps" : "© Autorzy OpenStreetMap";
     
-    // Zapewniamy czytelność - minimum 14px bez względu na zmniejszanie ekranu
+    // Obliczamy wielkość ramki na podstawie twardych pikseli
     const fontSize = Math.max(14, Math.round(14 * dpr)); 
     ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
     
@@ -6402,10 +6408,10 @@ function forcePasteCopyright(canvas, ctx) {
     const bgW = txtW + (pad * 2);
     const bgH = fontSize + (pad * 2.5);
     
-    const x = canvas.width - bgW - 10;
-    const y = canvas.height - bgH - 10;
+    // Pozycja X, Y to teraz bezwzględne piksele wewnętrzne - nie ma opcji by uciekło z ekranu!
+    const x = canvas.width - bgW - (10 * dpr);
+    const y = canvas.height - bgH - (10 * dpr);
 
-    // Najprostsza metoda na świecie: fillRect. Działa na KAŻDEJ przeglądarce.
     ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'; 
     ctx.fillRect(x, y, bgW, bgH);
     
@@ -6413,7 +6419,7 @@ function forcePasteCopyright(canvas, ctx) {
     ctx.textBaseline = "middle";
     ctx.fillText(text, x + pad, y + (bgH / 2));
     
-    reportAction(6, `Źródło naklejone: ${bgW}x${bgH}px w punkcie [${x}, ${y}]`, "OK");
+    reportAction(6, `Źródło bezpiecznie naklejone: ${bgW}x${bgH}px w punkcie [${x}, ${y}] na płótnie [${canvas.width}x${canvas.height}]`, "OK");
 }
 
 /* =========================================================
@@ -6579,9 +6585,10 @@ function zoomWorkspace(delta) {
 function applyZoom(delta, mouseX, mouseY) {
     const oldZoom = ws.zoom;
     let newZoom = oldZoom + delta;
-    if(delta > 1 || delta < -1) newZoom = oldZoom * delta; // System mnożnika dla Pinch-To-Zoom
+    if(delta > 1 || delta < -1) newZoom = oldZoom * delta; 
     
-    newZoom = Math.max(0.05, Math.min(newZoom, 5.0)); 
+    // TWARDE BLOKADY ZOOMU (Zapobiega ucieczce obrazu przy Pinch-to-zoom)
+    newZoom = Math.max(0.1, Math.min(newZoom, 4.0)); 
     if (newZoom === oldZoom) return;
 
     const ratio = newZoom / oldZoom;
@@ -6750,7 +6757,7 @@ function executeCropDownload() {
     
     ctx.drawImage(sourceImg, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
     
-    // NAKŁADANIE ŹRÓDŁA BEZPOŚREDNIO NA WYCIĘTY KADR PRZEZ FUNKCJE 6
+    // Zawsze wkleja źródło bezpieczną metodą
     forcePasteCopyright(finalCanvas, ctx);
     
     const link = document.createElement('a');
@@ -6759,4 +6766,26 @@ function executeCropDownload() {
     link.click();
     
     closeCropModal();
+}
+function executeCropCopy() {
+    reportAction("MODAL_ZRZUT", "Kopiowanie wycinka do schowka...", "OK");
+    const sourceImg = document.getElementById('cropSourceImage');
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = crop.w;
+    finalCanvas.height = crop.h;
+    const ctx = finalCanvas.getContext('2d');
+    
+    ctx.drawImage(sourceImg, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+    forcePasteCopyright(finalCanvas, ctx);
+    
+    finalCanvas.toBlob(blob => {
+        try {
+            navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            showCustomAlert("Zrzut został pomyślnie skopiowany do schowka!");
+            closeCropModal();
+        } catch(e) {
+            console.error("Błąd kopiowania:", e);
+            showCustomAlert("Twoja przeglądarka lub system nie obsługuje bezpośredniego kopiowania obrazów.");
+        }
+    });
 }
