@@ -135,7 +135,7 @@ let imgBaseW = 0, imgBaseH = 0;
 let isCropperEventsBound = false;
 let routePrefAnimPoints = localStorage.getItem('gpx_anim_points') || 'all';
 let legendNumberStyles = JSON.parse(localStorage.getItem('gpx_number_styles')) || {
-    global: { color: '#ffffff', bg: 'rgba(59, 130, 246, 0.9)', dotSize: 35, numSize: 12, dist: 2, pos: 'right', fontStyle: 'bold' },
+    global: { color: '#0f172a', bg: 'rgba(241, 245, 249, 0.95)', dotSize: 24, numSize: 12, dist: 4, pos: 'right', fontStyle: 'bold' },
     perEmoji: {}
 };
 let currentEditEmoji = 'global';
@@ -3254,9 +3254,6 @@ function saveLegendItem() {
 
 // POMOCNICZA: Czyste generowanie HTML numerka bazujące na stylach z konfiguracji
 function generateStyledNumberHtml(baseEmoji, number, conf) {
-    f10_report(9, `Budowa DOM. Tryb kropki. Konfiguracja załadowana.`);
-    
-    // Obliczanie układu Flex względem Kropki (Która jest bazą)
     let flexDir = 'row';
     let txtMargin = '';
     let isOverlap = false;
@@ -3267,8 +3264,6 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
     else if(conf.pos === 'left') { flexDir = 'row'; txtMargin = `margin-right: ${conf.dist}px;`; }
     else if(conf.pos === 'right') { flexDir = 'row-reverse'; txtMargin = `margin-left: ${conf.dist}px;`; }
 
-    // W trybie OVERLAP Numerek i Emotka lądują na środku Kropki.
-    // W Innych Trybach Emotka ląduje na środku Kropki, a Numerek żyje obok niej we Flexboxie.
     const numHtml = `<span style="
         font-size: ${conf.numSize}px; 
         color: ${conf.color}; 
@@ -3276,7 +3271,6 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
         font-weight: ${conf.fontStyle.includes('bold') ? 'bold' : 'normal'};
         ${txtMargin}
         ${isOverlap ? `position: absolute; transform: translate(${conf.dist}px, ${conf.dist}px); z-index: 5;` : `z-index: 5;`}
-        text-shadow: 0px 1px 2px rgba(0,0,0,0.8);
     ">${number}</span>`;
 
     const dotHtml = `
@@ -3289,8 +3283,8 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
             align-items: center;
             justify-content: center;
             position: relative;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
-            border: 2px solid rgba(255,255,255,0.3);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            border: 1px solid rgba(0,0,0,0.1);
             z-index: 1;
         ">
             <span style="font-size: ${conf.dotSize * 0.6}px; z-index: 2;">${baseEmoji}</span>
@@ -3298,8 +3292,9 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
         </div>
     `;
 
+    // KLUCZOWE: width: 65px i flex-shrink: 0 gwarantują, że tekst obok zawsze zacznie się w tym samym miejscu!
     return `
-        <div style="display: flex; flex-direction: ${flexDir}; align-items: center; justify-content: center;">
+        <div style="width: 65px; flex-shrink: 0; display: flex; flex-direction: ${flexDir}; align-items: center; justify-content: center;">
             ${!isOverlap && (conf.pos === 'left' || conf.pos === 'top') ? numHtml : ''}
             ${dotHtml}
             ${!isOverlap && (conf.pos === 'right' || conf.pos === 'bottom') ? numHtml : ''}
@@ -3308,6 +3303,7 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
 }
 
 // FUNKCJA 5 & 6: Skaner i Korektor Legendy (Wykrywa błędy natychmiast)
+// PODMIEŃ FUNKCJĘ F5:
 function f5_scanLegend() {
     const list = document.getElementById('exportLegendList');
     if(!list) return;
@@ -3321,10 +3317,11 @@ function f5_scanLegend() {
     const hasDuplicates = Object.values(frequencies).some(count => count > 1);
     const isNumberingActive = document.getElementById('btnNumberStyles').style.display !== 'none';
     
-    // ZAWSZE pyta kulturalnie za pomocą bannera, niczego nie forsuje
+    // Jeśli są duplikaty, a numeracja nie jest włączona -> POKAŻ KULTURALNE PYTANIE
     if (hasDuplicates && !isNumberingActive) {
         checkDuplicateEmojis(true); 
     } 
+    // Jeśli numeracja JEST włączona, sprawdzamy czy nie ma luk (np. usunięto punkt)
     else if (isNumberingActive) {
         let needsRebuild = false;
         Object.entries(exportLegendItems).forEach(([id, item]) => {
@@ -3332,9 +3329,8 @@ function f5_scanLegend() {
             if (frequencies[item.baseEmoji] === 1 && item.isNumbered) needsRebuild = true;
         });
 
-        // Jeśli wyrwa w strukturze to naprawia istniejący układ numeryczny (bo User się już zgodził w przeszłości)
         if (needsRebuild) {
-            f10_report(6, "Znaleziono wyrwę w już aktywnej numeracji. Ciche łatanie struktury.");
+            f10_report(6, "Znaleziono wyrwę w aktywnej numeracji. Łatam strukturę.");
             Object.values(exportLegendItems).forEach(item => {
                 item.emoji = item.baseEmoji;
                 item.isNumbered = false;
@@ -3342,7 +3338,6 @@ function f5_scanLegend() {
             executeNumberingAndSorting(false);
         }
     } else {
-        // Jeśli nie ma duplikatów, chowamy banner i przycisk
         const banner = document.getElementById('emoji-duplicate-banner');
         if(banner) banner.style.display = 'none';
         document.getElementById('btnNumberStyles').style.display = 'none';
@@ -3473,22 +3468,30 @@ function executeNumberingAndSorting(shouldSort) {
    NOWY MODAL STYLU NUMERÓW
 ========================================================= */
 function openNumberStyleModal() {
-    openCenteredModal('numberStyleModal'); // Nareszcie wywoła się poprawnie!
-    
-    const select = document.getElementById('numStyleEmojiSelect');
-    select.innerHTML = '<option value="global">Globalne (Wszystkie)</option>';
-    
-    const freqs = {};
-    Object.values(exportLegendItems).forEach(item => {
-        if(item.baseEmoji) freqs[item.baseEmoji] = (freqs[item.baseEmoji] || 0) + 1;
-    });
-    Object.keys(freqs).forEach(em => {
-        if(freqs[em] > 1) select.innerHTML += `<option value="${em}">Tylko: ${em}</option>`;
-    });
+    try {
+        // Wymuszamy pokazanie modalu jako pierwsze, by błąd w danych go nie zablokował
+        document.getElementById('numberStyleModal').style.display = 'flex';
+        
+        const select = document.getElementById('numStyleEmojiSelect');
+        select.innerHTML = '<option value="global">Globalne (Wszystkie)</option>';
+        
+        const freqs = {};
+        Object.values(exportLegendItems).forEach(item => {
+            if(item.baseEmoji) freqs[item.baseEmoji] = (freqs[item.baseEmoji] || 0) + 1;
+        });
+        Object.keys(freqs).forEach(em => {
+            if(freqs[em] > 1) select.innerHTML += `<option value="${em}">Tylko: ${em}</option>`;
+        });
 
-    currentEditEmoji = 'global';
-    select.value = 'global';
-    loadNumberStyleToUI();
+        currentEditEmoji = 'global';
+        select.value = 'global';
+        loadNumberStyleToUI();
+    } catch (e) {
+        console.error("Błąd podczas otwierania modalu stylów:", e);
+        showCustomAlert("Wystąpił błąd odczytu stylów. Zresetowano do domyślnych.");
+        legendNumberStyles = { global: { color: '#0f172a', bg: 'rgba(241, 245, 249, 0.95)', dotSize: 24, numSize: 12, dist: 4, pos: 'right', fontStyle: 'bold' }, perEmoji: {} };
+        loadNumberStyleToUI();
+    }
 }
 
 
@@ -4188,24 +4191,26 @@ function playRouteAnimation() {
 }
 
 // FUNKCJA 3 & 4: Niezawodny Wirus CSS usuwający interfejs Leafleta
-function f3_checkGifZoom() {
-    f10_report(3, "Wstrzykiwanie bloku CSS niszczącego UI Leafleta przed renderem GIF.");
-    let styleEl = document.getElementById('gif-ui-blocker');
-    if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = 'gif-ui-blocker';
-        // Niszczymy jakikolwiek ślad kontrolek mapy
-        styleEl.innerHTML = '.leaflet-control-container { display: none !important; opacity: 0 !important; visibility: hidden !important; }';
-        document.head.appendChild(styleEl);
-        return true;
-    }
-    return false;
+async function f3_checkGifZoom() {
+    f10_report(3, "Twarde ukrywanie kontrolek Leafleta (Inline Style).");
+    const controls = document.querySelectorAll('.leaflet-control-container');
+    controls.forEach(ctrl => {
+        ctrl.setAttribute('data-html2canvas-ignore', 'true'); // Rozkaz dla html2canvas
+        ctrl.style.setProperty('display', 'none', 'important'); // Rozkaz dla przeglądarki
+    });
+    // KLUCZOWE: Czekamy 100ms, by przeglądarka na 100% przemalowała ekran przed startem GIFa
+    await new Promise(r => setTimeout(r, 100)); 
+    return false; 
 }
 
+
 function f4_restoreGifZoom() {
-    f10_report(4, "Odsysanie wirusa CSS. UI Leafleta powraca.");
-    const styleEl = document.getElementById('gif-ui-blocker');
-    if (styleEl) styleEl.remove();
+    f10_report(4, "Przywracanie kontrolek Leafleta.");
+    const controls = document.querySelectorAll('.leaflet-control-container');
+    controls.forEach(ctrl => {
+        ctrl.removeAttribute('data-html2canvas-ignore');
+        ctrl.style.setProperty('display', '', 'important');
+    });
 }
 
 async function recordRouteGIF() {
@@ -4216,12 +4221,17 @@ async function recordRouteGIF() {
     const progressBar = document.getElementById('gifProgressBar');
     overlay.style.display = 'flex';
     map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
+    
+    // Czekamy na dopasowanie mapy
     await new Promise(r => setTimeout(r, 1000));
 
-    f3_checkGifZoom(); // ATAK CSS NA LEAFLETA
+    // 1. TWARDE UKRYCIE KONTROLEK LEAFLETA
+    await f3_checkGifZoom();
 
+    // 2. TWARDE UKRYCIE KROPEK (Z wymuszonym odświeżeniem Canvasa)
     polyline.setStyle({ opacity: 0 });
     f1_scanAnimation(routePrefAnimPoints);
+    await new Promise(r => setTimeout(r, 200)); // Czekamy aż Leaflet zmaże kropki z płótna!
 
     if (animLineLayer) map.removeLayer(animLineLayer);
     if (animDotMarker) map.removeLayer(animDotMarker);
@@ -4244,12 +4254,12 @@ async function recordRouteGIF() {
         currentLineCoords.push(posData.latLng);
         animLineLayer.setLatLngs(currentLineCoords);
         animDotMarker.setLatLng(posData.latLng);
+        
         await new Promise(r => setTimeout(r, 50));
 
         progressText.innerText = `Robienie zrzutów: ${i} / ${framesCount}`;
         progressBar.style.width = `${(i / framesCount) * 50}%`; 
         
-        // Czysty canvas bez ignoreElements, bo UI zabiliśmy w CSS
         const canvas = await html2canvas(mapContainer, { useCORS: true, scale: 1 });
         let delay = i === 0 ? 1000 : (i === framesCount ? 2000 : 100);
         gif.addFrame(canvas, {delay: delay, copy: true});
@@ -4262,8 +4272,9 @@ async function recordRouteGIF() {
         map.removeLayer(animLineLayer); map.removeLayer(animDotMarker);
         polyline.setStyle({ opacity: 0.9 });
         
-        f1_scanAnimation('all'); // ZAWSZE przywracaj na koniec
-        f4_restoreGifZoom();     // Uleczenie Leafleta
+        // 3. PRZYWRACANIE STANU MAPY
+        f1_scanAnimation('all'); 
+        f4_restoreGifZoom();     
 
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
