@@ -6387,9 +6387,8 @@ function scanCanvasForCopyright(canvas, ctx, x, y, w, h) {
     }
 }
 
-// FUNKCJA 6: Ostateczne wymuszenie źródła
 /* =========================================================
-   STRAŻNIK KAFELKA ŹRÓDŁA (ARCHITEKTURA 8 FUNKCJI)
+   STRAŻNIK KAFELKA ŹRÓDŁA (ARCHITEKTURA 8 FUNKCJI - POPRAWIONA)
 ========================================================= */
 
 // FUNKCJA 8: Raportująca kontrolę
@@ -6400,13 +6399,12 @@ function reportBadgeStatus(step, message) {
 // FUNKCJA 1: Oblicza wymiary standardowego kafelka ze źródłem
 function calcStandardBadge(ctx, dpr, text) {
     reportBadgeStatus(1, "Obliczam wymiary standardowego kafelka...");
-    const fontSize = Math.max(14, Math.round(14 * dpr)); 
+    const fontSize = Math.max(12, Math.round(14 * dpr)); 
     ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
-    const padding = Math.max(6, Math.round(6 * dpr));
-    const textWidth = ctx.measureText(text).width;
+    const padding = Math.max(4, Math.round(6 * dpr));
     
     return {
-        w: textWidth + (padding * 2),
+        w: ctx.measureText(text).width + (padding * 2),
         h: fontSize + (padding * 2.5),
         fontSize: fontSize,
         padding: padding,
@@ -6416,53 +6414,79 @@ function calcStandardBadge(ctx, dpr, text) {
 
 // FUNKCJA 2: Monitoruje szerokość kadrowania (zrzutu)
 function monitorCropWidth(canvas) {
-    reportBadgeStatus(2, `Skanuję szerokość fizyczną płótna: ${canvas.width}px`);
+    reportBadgeStatus(2, `Skanuję fizyczną szerokość płótna: ${canvas.width}px`);
     return canvas.width;
 }
 
-// FUNKCJA 3: Decyduje na podstawie różnicy szerokości
-function compareWidthsAndDecide(canvas, ctx, standardBadge, cropW) {
-    const safeArea = cropW - 10; // Zostawiamy 10px marginesu
-    const diff = safeArea - standardBadge.w;
-    reportBadgeStatus(3, `Różnica szerokości (Obszar - Kafelek): ${diff}px`);
-    
-    if (diff >= 0) {
-        reportBadgeStatus(3, "Różnica dodatnia. Wklejam standardowy kafelek.");
-        pasteBadge(canvas, ctx, standardBadge);
-        return standardBadge;
-    } else {
-        reportBadgeStatus(3, "Różnica ujemna! Zrzut jest za wąski. Przesyłam dane do Funkcji 4.");
-        return calcScaledBadge(safeArea, standardBadge, ctx);
-    }
+// FUNKCJA 3: Sprawdza, czy standardowy kafelek się zmieści
+function compareWidthsAndDecide(badge, cropW) {
+    const diff = cropW - badge.w - 10; 
+    reportBadgeStatus(3, `Różnica szerokości (Zrzut - Kafelek): ${diff}px`);
+    return diff >= 0; // Zwraca true jeśli jest miejsce, false jeśli trzeba pomniejszać
 }
 
-// FUNKCJA 4: Oblicza proporcjonalnie mniejszy kafelek dla wąskiego zrzutu
-function calcScaledBadge(safeW, standardBadge, ctx) {
-    reportBadgeStatus(4, "Kalkuluję zredukowane proporcje kafelka...");
-    const ratio = Math.max(0.4, safeW / standardBadge.w); // Maksymalne zmniejszenie do 40%
+// FUNKCJA 4: Oblicza proporcjonalnie mniejszy kafelek
+function calcScaledBadge(cropW, badge, ctx) {
+    reportBadgeStatus(4, "Kalkuluję zredukowane proporcje kafelka dla wąskiego zrzutu...");
+    const safeW = Math.max(20, cropW - 10);
+    const ratio = safeW / badge.w;
     
-    const newFontSize = Math.max(8, Math.floor(standardBadge.fontSize * ratio));
-    const newPadding = Math.max(2, Math.floor(standardBadge.padding * ratio));
+    const newFontSize = Math.max(8, Math.floor(badge.fontSize * ratio));
+    const newPadding = Math.max(2, Math.floor(badge.padding * ratio));
     
     ctx.font = `bold ${newFontSize}px "Segoe UI", sans-serif`;
-    const newTextW = ctx.measureText(standardBadge.text).width;
     
     const scaledBadge = {
-        w: newTextW + (newPadding * 2),
+        w: ctx.measureText(badge.text).width + (newPadding * 2),
         h: newFontSize + (newPadding * 2.5),
         fontSize: newFontSize,
         padding: newPadding,
-        text: standardBadge.text
+        text: badge.text
     };
-    reportBadgeStatus(4, `Nowe wymiary zatwierdzone: Czcionka ${newFontSize}px, Szer. ${scaledBadge.w}px`);
+    reportBadgeStatus(4, `Nowe wymiary: Czcionka ${newFontSize}px, Szer. ${scaledBadge.w}px`);
     return scaledBadge;
 }
 
-// FUNKCJA 5: Tworzy i wkleja kafelek
+// FUNKCJA 6: Skaner ucieczki kafelka (Symuluje pozycję X bez malowania)
+function scanForCutoff(canvasW, badgeW) {
+    reportBadgeStatus(6, "Symuluję położenie kafelka pod kątem wyjścia poza kadr.");
+    const simulatedX = canvasW - badgeW - 5;
+    
+    if (simulatedX < 0) {
+        reportBadgeStatus(6, "BŁĄD: Wykryto ucieczkę kafelka poza matrycę! Zrzut jest ekstremalnie wąski.");
+        return true;
+    }
+    reportBadgeStatus(6, "Weryfikacja pomyślna. Kafelek w 100% zmieści się na zrzucie.");
+    return false;
+}
+
+// FUNKCJA 7: Awaryjne wymuszenie mikroskopijnego kafelka
+function forceReduceBadge(ctx, dpr) {
+    reportBadgeStatus(7, "Awaryjne wymuszanie trybu minimalnego (Skrócony tekst '© OSM')!");
+    
+    const shortText = "© OSM";
+    const fontSize = Math.max(8, Math.round(9 * dpr));
+    const padding = Math.max(2, Math.round(3 * dpr));
+    
+    ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+    
+    return {
+        w: ctx.measureText(shortText).width + (padding * 2),
+        h: fontSize + (padding * 2.5),
+        fontSize: fontSize,
+        padding: padding,
+        text: shortText
+    };
+}
+
+// FUNKCJA 5: OSTATECZNE WKLEJANIE (Wykonywane tylko RAZ, nie nadpisuje tekstów!)
 function pasteBadge(canvas, ctx, badge) {
-    reportBadgeStatus(5, "Nakładam grafikę kafelka na płótno...");
-    const x = canvas.width - badge.w - 5;
-    const y = canvas.height - badge.h - 5;
+    reportBadgeStatus(5, "Nakładam ostateczną grafikę kafelka (brak powielania).");
+    
+    // ZABEZPIECZENIE OSTATECZNE: Math.max(0, ...) gwarantuje, 
+    // że nawet jeśli zrzut to pasek o szerokości 10px, X nie wyniesie -50px, lecz zablokuje się na 0.
+    const x = Math.max(0, canvas.width - badge.w - 5);
+    const y = Math.max(0, canvas.height - badge.h - 5);
 
     ctx.font = `bold ${badge.fontSize}px "Segoe UI", sans-serif`;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'; 
@@ -6471,76 +6495,39 @@ function pasteBadge(canvas, ctx, badge) {
     ctx.fillStyle = '#0f172a';
     ctx.textBaseline = "middle";
     ctx.fillText(badge.text, x + badge.padding, y + (badge.h / 2));
-    
-    badge.x = x; // Zapisujemy pozycję wstrzyknięcia do skanera
-    badge.y = y;
-}
-
-// FUNKCJA 6: Skaner ucieczki kafelka (Wykrywanie wyjścia poza krawędź)
-function scanForCutoff(canvas, badge) {
-    reportBadgeStatus(6, "Skanuję położenie nałożonego kafelka pod kątem wyjścia poza kadr.");
-    if (badge.x < 0 || badge.x + badge.w > canvas.width) {
-        reportBadgeStatus(6, "BŁĄD: Wykryto ucieczkę kafelka poza matrycę!");
-        return true;
-    }
-    reportBadgeStatus(6, "Weryfikacja pomyślna. Kafelek mieści się na zrzucie.");
-    return false;
-}
-
-// FUNKCJA 7: Twarde wymuszenie mikroskopijnego kafelka w razie błędu skanera
-function forceReduceBadge(canvas, ctx) {
-    reportBadgeStatus(7, "Awaryjne wymuszanie trybu minimalnego (Skrócony tekst)!");
-    
-    const shortText = "© OSM";
-    const extremeFontSize = 9;
-    const extremePadding = 2;
-    
-    ctx.font = `bold ${extremeFontSize}px "Segoe UI", sans-serif`;
-    const newTextW = ctx.measureText(shortText).width;
-    const newW = newTextW + (extremePadding * 2);
-    const newH = extremeFontSize + (extremePadding * 2.5);
-    
-    // Klei równo do krawędzi (zabezpieczone 0, by X nie wpadło w minus)
-    const x = Math.max(0, canvas.width - newW - 2);
-    const y = Math.max(0, canvas.height - newH - 2);
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'; 
-    ctx.fillRect(x, y, newW, newH);
-    
-    ctx.fillStyle = '#0f172a';
-    ctx.textBaseline = "middle";
-    ctx.fillText(shortText, x + extremePadding, y + (newH / 2));
-    
-    reportBadgeStatus(7, "Tryb minimalny wdrożony.");
 }
 
 // =========================================================================
-// ZASTĄPIONA GŁÓWNA FUNKCJA WKLEJANIA (Uruchamia cały powyższy łańcuch)
+// ZASTĄPIONA GŁÓWNA FUNKCJA KONTROLUJĄCA (Mózg operacji)
 // =========================================================================
 function forcePasteCopyright(canvas, ctx) {
-    // Reset "zepsutej" skali html2canvas
+    // 1. Zabezpieczenie płótna przed deformacją
     ctx.setTransform(1, 0, 0, 1, 0, 0); 
     ctx.globalAlpha = 1.0;
     
     const dpr = window.devicePixelRatio || 1;
-    const text = (typeof isSatellite !== 'undefined' && isSatellite) ? "© OSM, Google" : "© Autorzy OpenStreetMap";
+    const text = (typeof isSatellite !== 'undefined' && isSatellite) ? "© OSM, Google Maps" : "© Autorzy OpenStreetMap";
     
-    // Łańcuch egzekucyjny
-    const standardBadge = calcStandardBadge(ctx, dpr, text);             // F1
-    const cropW = monitorCropWidth(canvas);                              // F2
-    const finalBadge = compareWidthsAndDecide(canvas, ctx, standardBadge, cropW); // F3 + (F4 & F5)
+    // 2. Łańcuch decyzyjny (Zbieranie parametrów)
+    let currentBadge = calcStandardBadge(ctx, dpr, text);                 // F1
+    const cropW = monitorCropWidth(canvas);                               // F2
     
-    // Jeżeli decyzja F3 poszła ścieżką negatywną, wklejamy przeskalowany (Zwrócony z F4)
-    if (finalBadge !== standardBadge) {
-        pasteBadge(canvas, ctx, finalBadge);                             // F5 dla zredukowanego
+    const isStandardFitting = compareWidthsAndDecide(currentBadge, cropW); // F3
+    
+    if (!isStandardFitting) {
+        currentBadge = calcScaledBadge(cropW, currentBadge, ctx);         // F4
     }
     
-    const isCutoff = scanForCutoff(canvas, finalBadge);                  // F6
+    const isCutoff = scanForCutoff(cropW, currentBadge.w);                // F6
+    
     if (isCutoff) {
-        forceReduceBadge(canvas, ctx);                                   // F7
+        currentBadge = forceReduceBadge(ctx, dpr);                        // F7
     }
     
-    reportBadgeStatus(8, "Ochrona i wklejanie źródła zakończone z pełnym sukcesem."); // F8
+    // 3. Finał - Malowanie odbywa się dokładnie jeden raz z prawidłowymi danymi!
+    pasteBadge(canvas, ctx, currentBadge);                                // F5
+    
+    reportBadgeStatus(8, "System ochronny zakończył pracę. Źródło zostało wklejone prawidłowo.");
 }
 
 /* =========================================================
