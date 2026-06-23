@@ -171,24 +171,24 @@
         <button id="searchBtn" onclick="searchLocation()" title="Szukaj" disabled>🔍</button>
     </div>
 
-    // Pierwsza grupa: eksport i import
+    <!-- Pierwsza grupa: eksport i import -->
 <div class="btn-group"> 
     <button id="btnPcScreenshot" onmousedown="startSnap(event)" onmouseup="endSnapPC(event)" onmouseleave="cancelSnap()" oncontextmenu="event.preventDefault(); forceOpenCropModal();"> 📸 Zrzut</button>
     <button onclick="openMapExportModal()" style="background:#0ea5e9;">🗺️ Eksport mapy</button> 
     <button class="secondary" onclick="exportGPX()">⬇️ Eksport GPX</button>
     <button class="secondary" onclick="document.getElementById('fileInput').click()">⬆️ Import GPX</button>
-    <button onclick="recordRouteGIF()" background: #8b5cf6;">🎞️ GIF</button> //style="width: 100%; margin-top: 4px;
+    <button onclick="recordRouteGIF()" background: #8b5cf6;">🎞️ GIF</button> <!--style="width: 100%; margin-top: 4px;-->
     <button onclick="openPdfModal()" style="background: #a855f7;">📄 Pobierz PDF</button>
 </div>
 
-    // Grupa punktów trasy
+    <!-- Grupa punktów trasy-->
 <div class="btn-group">
     <button onclick="openPointsModal()">📑 Punkty trasy</button>
     <button onclick="openDescModal()">📜 Opis Trasy</button>
     <button onclick="openStopsModal()" style="background: #f59e0b;">☕ Postoje</button>
     <button onclick="openMyPointsModal()" style="background: #10b981;">📋 Moje punkty</button>
 </div>
-    // Grupa animacji i stylu linii trasy
+    <!--Grupa animacji i stylu linii trasy-->
 <div class="btn-group">
      <button onclick="playRouteAnimation()" style="background: #ec4899;">▶️ Animuj</button>
      <button onclick="toggleTheme()">🌓 Motyw</button>
