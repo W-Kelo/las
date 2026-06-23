@@ -433,6 +433,7 @@
             <div class="toolbar-divider"></div>
             <button onclick="toggleLegendMode()" id="btnLegend">Własna Legenda</button>
             <button onclick="toggleEmptyLegend()">Pusta Legenda</button>
+            <button onclick="openNumberStyleModal()" id="btnNumberStyles" >🎨 Styl Numerków</button>
             <button onclick="activateScissorsMode()" id="btnScissors" >Rozłącz panele</button>
             <button onclick="resetSplitPanels()" id="btnMerge">Złącz wszystko</button>
             <button onclick="openExportDataModal()">Baza Punktów</button>
@@ -577,10 +578,16 @@
 
         <div class="style-control-group">
             <label>Szybkość animacji:</label>
-            <select id="styleSpeed" class="style-select">
+            <select id="styleSpeed" class="style-select" style="margin-bottom: 10px;">
                 <option value="slow">Wolno</option>
                 <option value="medium" selected>Średnio</option>
                 <option value="fast">Szybko</option>
+            </select>
+            <label>Widoczność kropek w animacji/GIF:</label>
+            <select id="styleAnimPoints" class="style-select">
+                <option value="all">Pokaż wszystkie punkty</option>
+                <option value="none">Ukryj kropki (tylko linia)</option>
+                <option value="start-end">Tylko kropka początkowa i końcowa</option>
             </select>
         </div>
 
@@ -895,6 +902,60 @@
                 <div class="crop-handle ch-e" data-dir="e"></div><div class="crop-handle ch-w" data-dir="w"></div>
             </div>
         </div>
+    </div>
+</div>
+        <!-- MODAL: STYLIZACJA NUMERACJI LEGENDY -->
+<div id="numberStyleModal" class="floating-modal" style="width: 380px; z-index: 3500; display: none;" data-html2canvas-ignore>
+    <div class="modal-header" style="background: rgba(139, 92, 246, 0.2);">
+        <span style="color: #a855f7; font-weight:bold;">🔢 Ustawienia Numeracji</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="document.getElementById('numberStyleModal').style.display='none'">X</button>
+    </div>
+    <div class="modal-body">
+        <label>Edytuj styl dla:</label>
+        <select id="numStyleEmojiSelect" class="style-select" style="margin-bottom:15px;" onchange="loadNumberStyleToUI()"></select>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <div>
+                <label>Kolor kropki:</label>
+                <input type="color" id="numBgColor" style="width:100%; height:35px;" oninput="applyNumberStylePreview()">
+            </div>
+            <div>
+                <label>Kolor czcionki:</label>
+                <input type="color" id="numTextColor" style="width:100%; height:35px;" oninput="applyNumberStylePreview()">
+            </div>
+        </div>
+
+        <label>Rozmiar kropki:</label>
+        <input type="range" id="numDotSize" min="10" max="40" value="20" class="thick-slider" oninput="applyNumberStylePreview()">
+        
+        <label style="margin-top:10px;">Rozmiar numeru:</label>
+        <input type="range" id="numFontSize" min="8" max="24" value="12" class="thick-slider" oninput="applyNumberStylePreview()">
+
+        <label style="margin-top:10px;">Położenie numeru:</label>
+        <select id="numPosition" class="style-select" onchange="applyNumberStylePreview()">
+            <option value="overlap">Na emotce (Nałożone)</option>
+            <option value="right">Po prawej</option>
+            <option value="left">Po lewej</option>
+            <option value="top">Nad emotką</option>
+            <option value="bottom">Pod emotką</option>
+        </select>
+
+        <label style="margin-top:10px;">Dystans od emotki (piksele):</label>
+        <input type="range" id="numDist" min="-20" max="20" value="-5" class="thick-slider" oninput="applyNumberStylePreview()">
+
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button onclick="saveNumberStyles()" style="flex:1; background: #22c55e;">Zastosuj</button>
+            <button onclick="saveNumberStyles(true)" style="flex:1; background: #3b82f6;">Zapisz w Pamięci</button>
+        </div>
+    </div>
+</div>
+
+<!-- KONTENER NA CUSTOMOWY ALERT (Zamiast przeglądarkowego) -->
+<div id="f8CustomAlert" style="display:none; position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(15,23,42,0.95); color:white; padding:15px; border-radius:8px; border:2px solid #eab308; box-shadow:0 10px 30px rgba(0,0,0,0.5); z-index:999999; text-align:center;">
+    <p style="margin:0 0 10px 0; font-size:0.95rem;">Wykryto, że ręcznie przesuwałeś punkty legendy. Czy zresetować kolejność (1, 2, 3...), czy zachować Twój układ?</p>
+    <div style="display:flex; gap:10px; justify-content:center;">
+        <button onclick="f8_resolveSort(true)" style="background:#22c55e; padding:5px 15px;">Sortuj numerycznie</button>
+        <button onclick="f8_resolveSort(false)" style="background:#64748b; padding:5px 15px;">Zostaw mój układ</button>
     </div>
 </div>
 <!-- NAKŁADKA DO ZDJĘĆ NA PEŁNYM EKRANIE (LIGHTBOX) -->
