@@ -135,7 +135,7 @@ let imgBaseW = 0, imgBaseH = 0;
 let isCropperEventsBound = false;
 let routePrefAnimPoints = localStorage.getItem('gpx_anim_points') || 'all';
 let legendNumberStyles = JSON.parse(localStorage.getItem('gpx_number_styles')) || {
-    global: { color: '#ffffff', bg: 'rgba(239, 68, 68, 0.95)', dotSize: 20, numSize: 12, dist: -5, pos: 'overlap' },
+    global: { color: '#ffffff', bg: 'rgba(59, 130, 246, 0.9)', dotSize: 35, numSize: 12, dist: 2, pos: 'right', fontStyle: 'bold' },
     perEmoji: {}
 };
 let currentEditEmoji = 'global';
@@ -3244,28 +3244,55 @@ function saveLegendItem() {
 
 // POMOCNICZA: Czyste generowanie HTML numerka bazujące na stylach z konfiguracji
 function generateStyledNumberHtml(baseEmoji, number, conf) {
-    f10_report(9, `Wdrażanie stylów dla: ${baseEmoji} (Zapisane konfiguracje)`);
-    // Rozszyfrowanie pozycji
-    let translateObj = '';
-    let flowObj = 'flex-direction: row;';
-    if(conf.pos === 'overlap') translateObj = `position: absolute; transform: translate(${conf.dist}px, ${conf.dist}px); z-index: 2;`;
-    else if(conf.pos === 'top') { flowObj = 'flex-direction: column-reverse;'; translateObj = `margin-bottom: ${conf.dist}px;`; }
-    else if(conf.pos === 'bottom') { flowObj = 'flex-direction: column;'; translateObj = `margin-top: ${conf.dist}px;`; }
-    else if(conf.pos === 'left') { flowObj = 'flex-direction: row-reverse;'; translateObj = `margin-right: ${conf.dist}px;`; }
-    else if(conf.pos === 'right') { flowObj = 'flex-direction: row;'; translateObj = `margin-left: ${conf.dist}px;`; }
+    f10_report(9, `Budowa DOM. Tryb kropki. Konfiguracja załadowana.`);
+    
+    // Obliczanie układu Flex względem Kropki (Która jest bazą)
+    let flexDir = 'row';
+    let txtMargin = '';
+    let isOverlap = false;
+
+    if(conf.pos === 'overlap') { isOverlap = true; }
+    else if(conf.pos === 'top') { flexDir = 'column'; txtMargin = `margin-bottom: ${conf.dist}px;`; }
+    else if(conf.pos === 'bottom') { flexDir = 'column-reverse'; txtMargin = `margin-top: ${conf.dist}px;`; }
+    else if(conf.pos === 'left') { flexDir = 'row'; txtMargin = `margin-right: ${conf.dist}px;`; }
+    else if(conf.pos === 'right') { flexDir = 'row-reverse'; txtMargin = `margin-left: ${conf.dist}px;`; }
+
+    // W trybie OVERLAP Numerek i Emotka lądują na środku Kropki.
+    // W Innych Trybach Emotka ląduje na środku Kropki, a Numerek żyje obok niej we Flexboxie.
+    const numHtml = `<span style="
+        font-size: ${conf.numSize}px; 
+        color: ${conf.color}; 
+        font-style: ${conf.fontStyle.includes('italic') ? 'italic' : 'normal'};
+        font-weight: ${conf.fontStyle.includes('bold') ? 'bold' : 'normal'};
+        ${txtMargin}
+        ${isOverlap ? `position: absolute; transform: translate(${conf.dist}px, ${conf.dist}px); z-index: 5;` : `z-index: 5;`}
+        text-shadow: 0px 1px 2px rgba(0,0,0,0.8);
+    ">${number}</span>`;
+
+    const dotHtml = `
+        <div style="
+            background: ${conf.bg};
+            width: ${conf.dotSize}px;
+            height: ${conf.dotSize}px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+            border: 2px solid rgba(255,255,255,0.3);
+            z-index: 1;
+        ">
+            <span style="font-size: ${conf.dotSize * 0.6}px; z-index: 2;">${baseEmoji}</span>
+            ${isOverlap ? numHtml : ''}
+        </div>
+    `;
 
     return `
-        <div class="emoji-num-wrapper" style="display: flex; ${flowObj} align-items: center; justify-content: center; position: relative;">
-            <span style="font-size:24px; filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.4)); z-index: 1;">${baseEmoji}</span>
-            <span style="
-                ${translateObj}
-                display: flex; align-items: center; justify-content: center;
-                background: ${conf.bg}; color: ${conf.color};
-                width: ${conf.dotSize}px; height: ${conf.dotSize}px;
-                border-radius: 50%; font-size: ${conf.numSize}px;
-                font-weight: bold; border: 1px solid rgba(255,255,255,0.5);
-                box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-            ">${number}</span>
+        <div style="display: flex; flex-direction: ${flexDir}; align-items: center; justify-content: center;">
+            ${!isOverlap && (conf.pos === 'left' || conf.pos === 'top') ? numHtml : ''}
+            ${dotHtml}
+            ${!isOverlap && (conf.pos === 'right' || conf.pos === 'bottom') ? numHtml : ''}
         </div>
     `;
 }
@@ -3275,7 +3302,6 @@ function f5_scanLegend() {
     const list = document.getElementById('exportLegendList');
     if(!list) return;
     
-    // Oczyszczanie "surowych" emoji w pamięci, by móc dobrze kalkulować
     const frequencies = {};
     Object.values(exportLegendItems).forEach(item => {
         if(!item.baseEmoji) item.baseEmoji = item.emoji.replace(/<[^>]*>/g, '').replace(/\d+/g, '').trim();
@@ -3285,29 +3311,35 @@ function f5_scanLegend() {
     const hasDuplicates = Object.values(frequencies).some(count => count > 1);
     const isNumberingActive = document.getElementById('btnNumberStyles').style.display !== 'none';
     
-    let needsCompleteRebuild = false;
-
+    // ZAWSZE pyta kulturalnie za pomocą bannera, niczego nie forsuje
     if (hasDuplicates && !isNumberingActive) {
-        f10_report(5, "Wykryto nowe duplikaty! Brak aktywnej numeracji. Żądam akcji.");
-        checkDuplicateEmojis(true); // Wyświetla stary baner "Czy ponumerować?"
+        checkDuplicateEmojis(true); 
     } 
     else if (isNumberingActive) {
-        // Jeśli dodano/usunięto element, musimy sprawdzić, czy numeracja (np. 1, 2, 4) ma lukę,
-        // albo czy trzeba dorysować numerki dla nowo dodanych ikon.
+        let needsRebuild = false;
         Object.entries(exportLegendItems).forEach(([id, item]) => {
-            if (frequencies[item.baseEmoji] > 1 && !item.isNumbered) needsCompleteRebuild = true;
-            if (frequencies[item.baseEmoji] === 1 && item.isNumbered) needsCompleteRebuild = true;
+            if (frequencies[item.baseEmoji] > 1 && !item.isNumbered) needsRebuild = true;
+            if (frequencies[item.baseEmoji] === 1 && item.isNumbered) needsRebuild = true;
         });
 
-        if (needsCompleteRebuild) {
-            f10_report(5, "Stan panelu nie zgadza się ze statusem numeracji (luka lub nowy element). Zgłaszam do F6!");
-            f6_correctLegend();
+        // Jeśli wyrwa w strukturze to naprawia istniejący układ numeryczny (bo User się już zgodził w przeszłości)
+        if (needsRebuild) {
+            f10_report(6, "Znaleziono wyrwę w już aktywnej numeracji. Ciche łatanie struktury.");
+            Object.values(exportLegendItems).forEach(item => {
+                item.emoji = item.baseEmoji;
+                item.isNumbered = false;
+            });
+            executeNumberingAndSorting(false);
         }
+    } else {
+        // Jeśli nie ma duplikatów, chowamy banner i przycisk
+        const banner = document.getElementById('emoji-duplicate-banner');
+        if(banner) banner.style.display = 'none';
+        document.getElementById('btnNumberStyles').style.display = 'none';
     }
 }
-
-// Interwał 24/7 dla F5
 setInterval(f5_scanLegend, 1000);
+
 
 function f6_correctLegend() {
     f10_report(6, "Błyskawiczne korygowanie panelu legendy - Reset i Rekalkulacja.");
@@ -3431,15 +3463,15 @@ function executeNumberingAndSorting(shouldSort) {
    NOWY MODAL STYLU NUMERÓW
 ========================================================= */
 function openNumberStyleModal() {
+    openCenteredModal('numberStyleModal'); // Nareszcie wywoła się poprawnie!
+    
     const select = document.getElementById('numStyleEmojiSelect');
     select.innerHTML = '<option value="global">Globalne (Wszystkie)</option>';
     
-    // Sprawdzamy jakie emotki są ponumerowane by dodać je do listy wykluczeń
     const freqs = {};
     Object.values(exportLegendItems).forEach(item => {
         if(item.baseEmoji) freqs[item.baseEmoji] = (freqs[item.baseEmoji] || 0) + 1;
     });
-    
     Object.keys(freqs).forEach(em => {
         if(freqs[em] > 1) select.innerHTML += `<option value="${em}">Tylko: ${em}</option>`;
     });
@@ -3447,21 +3479,24 @@ function openNumberStyleModal() {
     currentEditEmoji = 'global';
     select.value = 'global';
     loadNumberStyleToUI();
-    
-    document.getElementById('numberStyleModal').style.display = 'flex';
 }
+
 
 function loadNumberStyleToUI() {
     currentEditEmoji = document.getElementById('numStyleEmojiSelect').value;
     const conf = (currentEditEmoji === 'global' ? legendNumberStyles.global : (legendNumberStyles.perEmoji[currentEditEmoji] || legendNumberStyles.global));
     
-    // Konwersja RGBA na HEX dla inputa color (uproszczona)
-    let hexBg = '#ef4444'; 
-    const rgbaMatch = conf.bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-    if(rgbaMatch) hexBg = "#" + ((1 << 24) + (parseInt(rgbaMatch[1]) << 16) + (parseInt(rgbaMatch[2]) << 8) + parseInt(rgbaMatch[3])).toString(16).slice(1);
+    let hexBg = '#3b82f6', opacity = 90; 
+    const rgbaMatch = conf.bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if(rgbaMatch) {
+        hexBg = "#" + ((1 << 24) + (parseInt(rgbaMatch[1]) << 16) + (parseInt(rgbaMatch[2]) << 8) + parseInt(rgbaMatch[3])).toString(16).slice(1);
+        if(rgbaMatch[4]) opacity = Math.round(parseFloat(rgbaMatch[4]) * 100);
+    }
 
     document.getElementById('numBgColor').value = hexBg;
+    document.getElementById('numBgOpacity').value = opacity;
     document.getElementById('numTextColor').value = conf.color;
+    document.getElementById('numFontStyle').value = conf.fontStyle || 'bold';
     document.getElementById('numDotSize').value = conf.dotSize;
     document.getElementById('numFontSize').value = conf.numSize;
     document.getElementById('numDist').value = conf.dist;
@@ -3470,14 +3505,15 @@ function loadNumberStyleToUI() {
 
 function applyNumberStylePreview() {
     const hexBg = document.getElementById('numBgColor').value;
-    // Ręczna budowa RGBA z hex (stała przezroczystość dla ładnego efektu)
+    const opacity = document.getElementById('numBgOpacity').value / 100;
     const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
     
     const newConf = {
         color: document.getElementById('numTextColor').value,
-        bg: `rgba(${r}, ${g}, ${b}, 0.95)`,
+        bg: `rgba(${r}, ${g}, ${b}, ${opacity})`,
         dotSize: parseInt(document.getElementById('numDotSize').value),
         numSize: parseInt(document.getElementById('numFontSize').value),
+        fontStyle: document.getElementById('numFontStyle').value,
         dist: parseInt(document.getElementById('numDist').value),
         pos: document.getElementById('numPosition').value
     };
@@ -3485,17 +3521,17 @@ function applyNumberStylePreview() {
     if(currentEditEmoji === 'global') legendNumberStyles.global = newConf;
     else legendNumberStyles.perEmoji[currentEditEmoji] = newConf;
 
-    // Przebudowa tylko i wyłącznie widoków (bez wpływu na kolejność)
-    executeNumberingAndSorting(false); 
+    executeNumberingAndSorting(false); // Live Preview
 }
 
+
 function saveNumberStyles(toLocal = false) {
-    applyNumberStylePreview(); // Wymuś zapisanie z UI do zmiennej
+    applyNumberStylePreview(); 
     if(toLocal) {
         localStorage.setItem('gpx_number_styles', JSON.stringify(legendNumberStyles));
-        showCustomAlert("Style zapisane w przeglądarce!");
+        showCustomAlert("Style zostały bezpowrotnie zabetonowane w LocalStorage!");
     }
-    document.getElementById('numberStyleModal').style.display = 'none';
+    closeModal('numberStyleModal');
 }
 function editLegendItem(id) {
     const item = exportLegendItems[id];
@@ -4064,34 +4100,40 @@ function f10_report(fid, msg) {
     console.log(`[Strażnik Animacji i Legendy - F${fid}] ${msg}`);
 }
 
-// FUNKCJA 1 & 2: Nadzorca i Korektor kropek animacji
+// FUNKCJA 1 & 2: Skaner i Korektor Kropek w trybie PreferCanvas
 function f1_scanAnimation(mode) {
-    f10_report(1, `Skanowanie widoczności kropek (Tryb: ${mode}).`);
+    f10_report(1, `Analiza kropek. Tryb: ${mode}`);
     let errorsFound = false;
+    
     routePoints.forEach((p, index) => {
         const isStart = index === 0;
-        const shouldBeVisible = (mode === 'all') || (mode === 'start-end' && isStart);
+        const isEnd = index === routePoints.length - 1;
+        let shouldBeVisible = true;
         
-        // Leaflet: marker._icon określa fizyczną obecność w DOM
-        if (p.marker._icon) {
-            const isVisible = p.marker._icon.style.display !== 'none';
-            if (isVisible !== shouldBeVisible) {
-                errorsFound = true;
-                f10_report(1, `Wykryto błędny stan kropki ${index}. Przekazuję do F2.`);
-                f2_correctAnimation(p.marker, shouldBeVisible);
-            }
+        if (mode === 'none') shouldBeVisible = false;
+        if (mode === 'start-end') shouldBeVisible = (isStart || isEnd);
+
+        // Tryb Canvas Leafleta wymaga całkowitego usunięcia z mapy, by zniknęły
+        const isCurrentlyVisible = map.hasLayer(p.marker);
+        
+        if (isCurrentlyVisible !== shouldBeVisible) {
+            errorsFound = true;
+            f2_correctAnimation(p.marker, shouldBeVisible);
         }
     });
-    if(!errorsFound) f10_report(1, "Wszystkie kropki trasy ukryte/pokazane poprawnie.");
+    if(!errorsFound) f10_report(1, "Wszystkie kropki są w idealnym stanie.");
 }
 
 function f2_correctAnimation(marker, show) {
-    f10_report(2, `Korekta markera. Wymuszam: ${show ? 'POKAŻ' : 'UKRYJ'}`);
-    if (marker._icon) marker._icon.style.display = show ? '' : 'none';
+    if (show) {
+        if (!map.hasLayer(marker)) map.addLayer(marker);
+    } else {
+        if (map.hasLayer(marker)) map.removeLayer(marker);
+    }
 }
 
 function playRouteAnimation() {
-    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy do animacji.");
+    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy.");
     if (animInterval) clearInterval(animInterval);
     if (animLineLayer) map.removeLayer(animLineLayer);
     if (animDotMarker) map.removeLayer(animDotMarker);
@@ -4099,8 +4141,7 @@ function playRouteAnimation() {
     map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
     polyline.setStyle({ opacity: 0 });
 
-    // F1/F2 Zabezpieczają widoczność oryginalnych kropek przed startem animacji
-    f1_scanAnimation(routePrefAnimPoints);
+    f1_scanAnimation(routePrefAnimPoints); // APLIKACJA TRYBU NA CZAS ANIMACJI
 
     animLineLayer = L.polyline([routeGeometry[0]], { 
         color: routePrefColor, weight: routePrefWeight, opacity: 0.9, lineJoin: 'round' 
@@ -4124,7 +4165,7 @@ function playRouteAnimation() {
                 if (animLineLayer) map.removeLayer(animLineLayer);
                 if (animDotMarker) map.removeLayer(animDotMarker);
                 polyline.setStyle({ opacity: 0.9 });
-                f1_scanAnimation('all'); // Przywraca widoczność
+                f1_scanAnimation('all'); // BEZWZGLĘDNY POWRÓT KROPEK DO WIDOKU MAPY PO ZAKOŃCZENIU
             }, 2000);
         }
 
@@ -4136,35 +4177,29 @@ function playRouteAnimation() {
     }, 16);
 }
 
-// FUNKCJA 3 & 4: Nadzorca Leaflet Zoom podczas renderowania GIF
-async function f3_checkGifZoom() {
-    f10_report(3, "Skanowanie DOM w poszukiwaniu kontrolek Leafleta przed renderem GIF...");
-    const zoomCtrl = document.querySelector('.leaflet-control-zoom');
-    if (zoomCtrl && zoomCtrl.style.display !== 'none') {
-        f10_report(3, "Wykryto kontrolki +/- ! Wstrzymuję generowanie i przekazuję do F4.");
-        await f4_removeGifZoom(zoomCtrl);
-        return true; // Prawda = była interwencja
+// FUNKCJA 3 & 4: Niezawodny Wirus CSS usuwający interfejs Leafleta
+function f3_checkGifZoom() {
+    f10_report(3, "Wstrzykiwanie bloku CSS niszczącego UI Leafleta przed renderem GIF.");
+    let styleEl = document.getElementById('gif-ui-blocker');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'gif-ui-blocker';
+        // Niszczymy jakikolwiek ślad kontrolek mapy
+        styleEl.innerHTML = '.leaflet-control-container { display: none !important; opacity: 0 !important; visibility: hidden !important; }';
+        document.head.appendChild(styleEl);
+        return true;
     }
-    f10_report(3, "Brak zanieczyszczeń. Można renderować GIF.");
     return false;
 }
 
-async function f4_removeGifZoom(zoomCtrl) {
-    f10_report(4, "Usuwam kontrolki powiększania.");
-    zoomCtrl.style.display = 'none';
-    await new Promise(r => setTimeout(r, 100)); // Czekamy aż przeglądarka odświeży widok
-    f10_report(4, "Kontrolki ukryte. Zgłaszam sukces.");
+function f4_restoreGifZoom() {
+    f10_report(4, "Odsysanie wirusa CSS. UI Leafleta powraca.");
+    const styleEl = document.getElementById('gif-ui-blocker');
+    if (styleEl) styleEl.remove();
 }
 
 async function recordRouteGIF() {
     if (routeGeometry.length < 2) return showCustomAlert("Brak trasy.");
-    
-    // Uruchomienie Strażnika F3/F4 przed rozpoczęciem!
-    const wasZoomRemoved = await f3_checkGifZoom();
-    if (wasZoomRemoved) {
-        f10_report(3, "Uruchamiam proces recordRouteGIF od początku z czystym widokiem.");
-        return recordRouteGIF(); // Automatyczny restart po wyczyszczeniu!
-    }
 
     const overlay = document.getElementById('recordingOverlay');
     const progressText = document.getElementById('gifProgressText');
@@ -4173,8 +4208,10 @@ async function recordRouteGIF() {
     map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
     await new Promise(r => setTimeout(r, 1000));
 
+    f3_checkGifZoom(); // ATAK CSS NA LEAFLETA
+
     polyline.setStyle({ opacity: 0 });
-    f1_scanAnimation(routePrefAnimPoints); // Zastosowanie widoczności kropek
+    f1_scanAnimation(routePrefAnimPoints);
 
     if (animLineLayer) map.removeLayer(animLineLayer);
     if (animDotMarker) map.removeLayer(animDotMarker);
@@ -4202,12 +4239,8 @@ async function recordRouteGIF() {
         progressText.innerText = `Robienie zrzutów: ${i} / ${framesCount}`;
         progressBar.style.width = `${(i / framesCount) * 50}%`; 
         
-        // Zabezpieczający ignorer dla Leafleta
-        const canvas = await html2canvas(mapContainer, { 
-            useCORS: true, scale: 1, 
-            ignoreElements: el => el.classList && el.classList.contains('leaflet-control-container') 
-        });
-        
+        // Czysty canvas bez ignoreElements, bo UI zabiliśmy w CSS
+        const canvas = await html2canvas(mapContainer, { useCORS: true, scale: 1 });
         let delay = i === 0 ? 1000 : (i === framesCount ? 2000 : 100);
         gif.addFrame(canvas, {delay: delay, copy: true});
     }
@@ -4218,10 +4251,10 @@ async function recordRouteGIF() {
         overlay.style.display = 'none';
         map.removeLayer(animLineLayer); map.removeLayer(animDotMarker);
         polyline.setStyle({ opacity: 0.9 });
-        f1_scanAnimation('all'); // Przywrócenie
-        const zoomCtrl = document.querySelector('.leaflet-control-zoom');
-        if(zoomCtrl) zoomCtrl.style.display = ''; // Przywrócenie leafleta po GIFie
         
+        f1_scanAnimation('all'); // ZAWSZE przywracaj na koniec
+        f4_restoreGifZoom();     // Uleczenie Leafleta
+
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `animacja_trasy_${new Date().toLocaleDateString()}.gif`;
@@ -4229,7 +4262,6 @@ async function recordRouteGIF() {
     });
     gif.render();
 }
-
 /* ================= EKSPORT DO GIF ================= */
 async function recordRouteGIF() {
     if (routeGeometry.length < 2) return showCustomAlert("Brak trasy do nagrania. Najpierw wyznacz trasę lub zaimportuj plik GPX.");
@@ -6527,8 +6559,6 @@ function setupLegendDragAndDrop(li) {
     });
 
     li.addEventListener('drop', function(e) {
-        userReorderedLegend = true;
-        f10_report(7, "Zarejestrowano drag&drop użytkownika.");
         e.stopPropagation();
         this.classList.remove('drag-over');
 
@@ -6547,6 +6577,8 @@ function setupLegendDragAndDrop(li) {
             }
         }
         return false;
+        userReorderedLegend = true; 
+        f10_report(7, "Zarejestrowano fizyczne przesunięcie elementu w DOM. Ostrzegam F8.");
     });
 
     li.addEventListener('dragend', function() {
