@@ -133,6 +133,13 @@ let ws = { x: 0, y: 0, zoom: 1 };
 let crop = { x: 0, y: 0, w: 0, h: 0, ratio: null }; 
 let imgBaseW = 0, imgBaseH = 0;
 let isCropperEventsBound = false;
+let routePrefAnimPoints = localStorage.getItem('gpx_anim_points') || 'all';
+let legendNumberStyles = JSON.parse(localStorage.getItem('gpx_number_styles')) || {
+    global: { color: '#ffffff', bg: 'rgba(239, 68, 68, 0.95)', dotSize: 20, numSize: 12, dist: -5, pos: 'overlap' },
+    perEmoji: {}
+};
+let currentEditEmoji = 'global';
+let userReorderedLegend = false;
 let _snapTimer = null;
 let _isLongPress = false;
 let exportPointSettings = {
@@ -3231,105 +3238,265 @@ function saveLegendItem() {
     closeEmojiPicker();
     checkDuplicateEmojis();
 }
-// --- NOWE: Inteligentna numeracja powtarzających się ikon ---
-function checkDuplicateEmojis() {
-    if (!exportMap || Object.keys(exportLegendItems).length === 0) return;
+/* =========================================================
+   ZAAWANSOWANY SYSTEM LEGENDY I NUMERACJI
+========================================================= */
 
-    const emojiCounts = {};
+// POMOCNICZA: Czyste generowanie HTML numerka bazujące na stylach z konfiguracji
+function generateStyledNumberHtml(baseEmoji, number, conf) {
+    f10_report(9, `Wdrażanie stylów dla: ${baseEmoji} (Zapisane konfiguracje)`);
+    // Rozszyfrowanie pozycji
+    let translateObj = '';
+    let flowObj = 'flex-direction: row;';
+    if(conf.pos === 'overlap') translateObj = `position: absolute; transform: translate(${conf.dist}px, ${conf.dist}px); z-index: 2;`;
+    else if(conf.pos === 'top') { flowObj = 'flex-direction: column-reverse;'; translateObj = `margin-bottom: ${conf.dist}px;`; }
+    else if(conf.pos === 'bottom') { flowObj = 'flex-direction: column;'; translateObj = `margin-top: ${conf.dist}px;`; }
+    else if(conf.pos === 'left') { flowObj = 'flex-direction: row-reverse;'; translateObj = `margin-right: ${conf.dist}px;`; }
+    else if(conf.pos === 'right') { flowObj = 'flex-direction: row;'; translateObj = `margin-left: ${conf.dist}px;`; }
+
+    return `
+        <div class="emoji-num-wrapper" style="display: flex; ${flowObj} align-items: center; justify-content: center; position: relative;">
+            <span style="font-size:24px; filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.4)); z-index: 1;">${baseEmoji}</span>
+            <span style="
+                ${translateObj}
+                display: flex; align-items: center; justify-content: center;
+                background: ${conf.bg}; color: ${conf.color};
+                width: ${conf.dotSize}px; height: ${conf.dotSize}px;
+                border-radius: 50%; font-size: ${conf.numSize}px;
+                font-weight: bold; border: 1px solid rgba(255,255,255,0.5);
+                box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            ">${number}</span>
+        </div>
+    `;
+}
+
+// FUNKCJA 5 & 6: Skaner i Korektor Legendy (Wykrywa błędy natychmiast)
+function f5_scanLegend() {
+    const list = document.getElementById('exportLegendList');
+    if(!list) return;
+    
+    // Oczyszczanie "surowych" emoji w pamięci, by móc dobrze kalkulować
+    const frequencies = {};
     Object.values(exportLegendItems).forEach(item => {
-        // Usuwamy ewentualne spcje i cyfry na końcu, żeby wykryć "czystą" emotkę
-        const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim(); 
-        emojiCounts[baseEmoji] = (emojiCounts[baseEmoji] || 0) + 1;
+        if(!item.baseEmoji) item.baseEmoji = item.emoji.replace(/<[^>]*>/g, '').replace(/\d+/g, '').trim();
+        frequencies[item.baseEmoji] = (frequencies[item.baseEmoji] || 0) + 1;
     });
 
-    // Sprawdź czy jest jakakolwiek emotka występująca więcej niż 1 raz
-    const hasDuplicates = Object.values(emojiCounts).some(count => count > 1);
+    const hasDuplicates = Object.values(frequencies).some(count => count > 1);
+    const isNumberingActive = document.getElementById('btnNumberStyles').style.display !== 'none';
+    
+    let needsCompleteRebuild = false;
 
-    let banner = document.getElementById('emoji-duplicate-banner');
+    if (hasDuplicates && !isNumberingActive) {
+        f10_report(5, "Wykryto nowe duplikaty! Brak aktywnej numeracji. Żądam akcji.");
+        checkDuplicateEmojis(true); // Wyświetla stary baner "Czy ponumerować?"
+    } 
+    else if (isNumberingActive) {
+        // Jeśli dodano/usunięto element, musimy sprawdzić, czy numeracja (np. 1, 2, 4) ma lukę,
+        // albo czy trzeba dorysować numerki dla nowo dodanych ikon.
+        Object.entries(exportLegendItems).forEach(([id, item]) => {
+            if (frequencies[item.baseEmoji] > 1 && !item.isNumbered) needsCompleteRebuild = true;
+            if (frequencies[item.baseEmoji] === 1 && item.isNumbered) needsCompleteRebuild = true;
+        });
 
-    if (hasDuplicates) {
-        if (!banner) {
-            banner = document.createElement('div');
-            banner.id = 'emoji-duplicate-banner';
-            banner.setAttribute('data-html2canvas-ignore', 'true'); // Ignorowane przy generowaniu PDF/PNG
-            banner.style.cssText = "position:absolute; top:70px; left:50%; transform:translateX(-50%); background:rgba(59, 130, 246, 0.95); color:white; padding:10px 20px; border-radius:30px; box-shadow:0 4px 15px rgba(0,0,0,0.3); z-index:4000; display:flex; align-items:center; gap:10px; font-size:0.85rem; backdrop-filter:blur(4px); white-space:nowrap;";
-            banner.innerHTML = `
-                <span>💡 Powtarzające się ikony. Ponumerować?</span>
-                <button onclick="applyEmojiNumbering()" style="background:#22c55e; padding:4px 12px; border-radius:15px; border:none; color:white; cursor:pointer; font-weight:bold;">Tak</button>
-                <button onclick="this.parentElement.style.display='none'" style="background:transparent; padding:4px; border:none; color:white; cursor:pointer; font-size:1.1rem;">✖</button>
-            `;
-            document.getElementById('exportWrapper').appendChild(banner);
+        if (needsCompleteRebuild) {
+            f10_report(5, "Stan panelu nie zgadza się ze statusem numeracji (luka lub nowy element). Zgłaszam do F6!");
+            f6_correctLegend();
         }
-        banner.style.display = 'flex';
-    } else if (banner) {
-        banner.style.display = 'none';
     }
 }
 
-window.applyEmojiNumbering = function() {
+// Interwał 24/7 dla F5
+setInterval(f5_scanLegend, 1000);
+
+function f6_correctLegend() {
+    f10_report(6, "Błyskawiczne korygowanie panelu legendy - Reset i Rekalkulacja.");
+    // Zdejmujemy flagi, resetujemy ikony na czyste i odpalamy główny silnik od nowa
+    Object.values(exportLegendItems).forEach(item => {
+        item.emoji = item.baseEmoji;
+        item.isNumbered = false;
+        item.marker.setIcon(L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${item.baseEmoji}</div>`, className: 'poi-icon' }));
+    });
+    applyEmojiNumbering(false); // Rekalkuluje bez pytania
+}
+
+
+function checkDuplicateEmojis(forceShowBanner = false) {
+    if (!exportMap || Object.keys(exportLegendItems).length === 0) return;
+    if (!forceShowBanner) return; // F5 zarządza teraz logiką w tle
+
+    let banner = document.getElementById('emoji-duplicate-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'emoji-duplicate-banner';
+        banner.setAttribute('data-html2canvas-ignore', 'true');
+        banner.style.cssText = "position:absolute; top:70px; left:50%; transform:translateX(-50%); background:rgba(59, 130, 246, 0.95); color:white; padding:10px 20px; border-radius:30px; box-shadow:0 4px 15px rgba(0,0,0,0.3); z-index:4000; display:flex; align-items:center; gap:10px; font-size:0.85rem; backdrop-filter:blur(4px); white-space:nowrap;";
+        banner.innerHTML = `
+            <span>💡 Powtarzające się ikony. Ponumerować od nowa?</span>
+            <button onclick="applyEmojiNumbering(true)" style="background:#22c55e; padding:4px 12px; border-radius:15px; border:none; color:white; cursor:pointer; font-weight:bold;">Tak</button>
+            <button onclick="this.parentElement.style.display='none'" style="background:transparent; padding:4px; border:none; color:white; cursor:pointer; font-size:1.1rem;">✖</button>
+        `;
+        document.getElementById('exportWrapper').appendChild(banner);
+    }
+    banner.style.display = 'flex';
+}
+
+
+// OSTATECZNY SILNIK NUMERACJI
+window.applyEmojiNumbering = function(fromUserClick = false) {
+    f10_report(6, "Rozpoczynam proces budowy kaskady numerycznej z czyszczeniem.");
+    document.getElementById('btnNumberStyles').style.display = 'inline-block';
+    
+    if (document.getElementById('emoji-duplicate-banner')) {
+        document.getElementById('emoji-duplicate-banner').style.display = 'none';
+    }
+
+    // F8: Pytanie o sortowanie (Tylko jeśli przyszło z re-kalkulacji i użytkownik coś ruszał)
+    if (!fromUserClick && userReorderedLegend) {
+        document.getElementById('f8CustomAlert').style.display = 'block';
+        return; // Zatrzymujemy do czasu odpowiedzi F8
+    }
+
+    executeNumberingAndSorting(true); // Domyślnie sortujemy przy ręcznym kliku lub gdy user nie ruszał
+};
+
+// F8: Callback z customowego alertu
+window.f8_resolveSort = function(doSort) {
+    f10_report(8, `Użytkownik podjął decyzję: ${doSort ? 'Sortuj' : 'Zachowaj mój układ'}`);
+    document.getElementById('f8CustomAlert').style.display = 'none';
+    if(doSort) userReorderedLegend = false; // Resetujemy flagę jeśli pozwolił posortować
+    executeNumberingAndSorting(doSort);
+}
+
+function executeNumberingAndSorting(shouldSort) {
+    const list = document.getElementById('exportLegendList');
+    const domItems = Array.from(list.children);
     const frequencies = {}; 
     const counters = {};    
 
-    // Prosta funkcja wykrywająca przybliżony kolor "bańki" na podstawie samej emotki
-    function getEmojiThemeColor(emoji) {
-        if(emoji.includes('🌲') || emoji.includes('⛰️')) return 'rgba(34, 197, 94, 0.7)'; // Zielony
-        if(emoji.includes('💧') || emoji.includes('🏊')) return 'rgba(59, 130, 246, 0.7)'; // Niebieski
-        if(emoji.includes('🔥') || emoji.includes('⚠️') || emoji.includes('⛺') || emoji.includes('🍔')) return 'rgba(245, 158, 11, 0.7)'; // Pomarańczowy/Czerwony
-        if(emoji.includes('🅿️') || emoji.includes('ℹ️') || emoji.includes('🚑')) return 'rgba(51, 65, 85, 0.7)'; // Szary/Ciemny
-        return 'rgba(255, 255, 255, 0.75)'; // Domyślny jasny (np. dla klasycznej 📍)
+    // Resetowanie zawartości
+    Object.values(exportLegendItems).forEach(item => {
+        if(!item.baseEmoji) item.baseEmoji = item.emoji.replace(/<[^>]*>/g, '').replace(/\d+/g, '').trim();
+        frequencies[item.baseEmoji] = (frequencies[item.baseEmoji] || 0) + 1;
+    });
+
+    // Sortowanie DOM (jeśli zezwolono) - grupujemy emotki
+    if (shouldSort) {
+        domItems.sort((a, b) => {
+            const itemA = exportLegendItems[a.id];
+            const itemB = exportLegendItems[b.id];
+            if(itemA.baseEmoji === itemB.baseEmoji) return 0; // w obrębie grupy nie zmieniamy kolejności by ID było stabilne
+            return itemA.baseEmoji.localeCompare(itemB.baseEmoji);
+        });
+        list.innerHTML = '';
+        domItems.forEach(li => list.appendChild(li));
     }
 
-    Object.values(exportLegendItems).forEach(item => {
-        const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim();
-        frequencies[baseEmoji] = (frequencies[baseEmoji] || 0) + 1;
-    });
-
-    Object.entries(exportLegendItems).forEach(([id, item]) => {
-        const baseEmoji = item.emoji.replace(/\s\d+$/, '').trim();
+    // Aplikowanie HTML na podstawie ustawień (Przelatujemy po fizycznym DOM, by numery szły 1, 2, 3 z góry na dół)
+    Array.from(list.children).forEach(li => {
+        const id = li.id;
+        const item = exportLegendItems[id];
         
-        if (frequencies[baseEmoji] > 1) {
-            counters[baseEmoji] = (counters[baseEmoji] || 0) + 1;
+        if (frequencies[item.baseEmoji] > 1) {
+            counters[item.baseEmoji] = (counters[item.baseEmoji] || 0) + 1;
+            const myNum = counters[item.baseEmoji];
             
-            // --- NOWY WYGLĄD IKONY NA MAPIE ---
-            const themeColor = getEmojiThemeColor(baseEmoji);
-            const textColor = themeColor === 'rgba(255, 255, 255, 0.75)' ? '#000' : '#fff';
+            // F9: Weryfikacja stylów
+            const conf = legendNumberStyles.perEmoji[item.baseEmoji] || legendNumberStyles.global;
             
-            // Marker mapy (Zbliżony numerek, zamknięty w bańce)
-            const mapIconHtml = `
-                <div style="
-                    display: inline-flex; 
-                    align-items: center; 
-                    background: ${themeColor}; 
-                    padding: 2px 6px 2px 4px; 
-                    border-radius: 12px; 
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-                    border: 1px solid rgba(255,255,255,0.4);
-                ">
-                    <span style="font-size:20px; filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.3));">${baseEmoji}</span>
-                    <span style="font-size:12px; font-weight:bold; color:${textColor}; margin-left: -1px;">${counters[baseEmoji]}</span>
-                </div>
-            `;
+            const htmlNode = generateStyledNumberHtml(item.baseEmoji, myNum, conf);
             
-            // Surowy tekst dla systemu by wiedział, jaka to pozycja (np. "📍 1")
-            const rawNewEmoji = `${baseEmoji} ${counters[baseEmoji]}`;
+            item.emoji = htmlNode; // Nadpisujemy dla bezpieczeństwa eksportu
+            item.isNumbered = true;
+            item.marker.setIcon(L.divIcon({ html: htmlNode, className: 'poi-icon' }));
 
-            item.emoji = rawNewEmoji;
-            item.marker.setIcon(L.divIcon({
-                html: mapIconHtml,
-                className: 'poi-icon'
-            }));
-
-            // Aktualizacja w bocznym panelu legendy
-            const li = document.getElementById(id);
-            if (li) {
-                const iconSpan = li.querySelector('.leg-icon');
-                if (iconSpan) iconSpan.innerHTML = rawNewEmoji;
-            }
+            const iconSpan = li.querySelector('.leg-icon');
+            if (iconSpan) iconSpan.innerHTML = htmlNode;
         }
     });
+}
 
-    document.getElementById('emoji-duplicate-banner').style.display = 'none';
-};
+// FUNKCJA 7: Śledzenie drag & drop
+// (Dodaj tę linijkę DO ŚRODKA SWOJEJ ISTNIEJĄCEJ FUNKCJI setupLegendDragAndDrop(li), wewnątrz zdarzenia 'drop')
+/*
+    li.addEventListener('drop', function(e) {
+        // ... twój stary kod zamieniający miejscami DOM ...
+        userReorderedLegend = true; // <--- DODAJ TĘ LINIKJĘ Z F7 DO SWOJEGO KODU DROP!
+        f10_report(7, "Zarejestrowano fizyczne przesunięcie elementu w DOM. Ostrzegam F8.");
+    });
+*/
+
+
+/* =========================================================
+   NOWY MODAL STYLU NUMERÓW
+========================================================= */
+function openNumberStyleModal() {
+    const select = document.getElementById('numStyleEmojiSelect');
+    select.innerHTML = '<option value="global">Globalne (Wszystkie)</option>';
+    
+    // Sprawdzamy jakie emotki są ponumerowane by dodać je do listy wykluczeń
+    const freqs = {};
+    Object.values(exportLegendItems).forEach(item => {
+        if(item.baseEmoji) freqs[item.baseEmoji] = (freqs[item.baseEmoji] || 0) + 1;
+    });
+    
+    Object.keys(freqs).forEach(em => {
+        if(freqs[em] > 1) select.innerHTML += `<option value="${em}">Tylko: ${em}</option>`;
+    });
+
+    currentEditEmoji = 'global';
+    select.value = 'global';
+    loadNumberStyleToUI();
+    
+    document.getElementById('numberStyleModal').style.display = 'flex';
+}
+
+function loadNumberStyleToUI() {
+    currentEditEmoji = document.getElementById('numStyleEmojiSelect').value;
+    const conf = (currentEditEmoji === 'global' ? legendNumberStyles.global : (legendNumberStyles.perEmoji[currentEditEmoji] || legendNumberStyles.global));
+    
+    // Konwersja RGBA na HEX dla inputa color (uproszczona)
+    let hexBg = '#ef4444'; 
+    const rgbaMatch = conf.bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if(rgbaMatch) hexBg = "#" + ((1 << 24) + (parseInt(rgbaMatch[1]) << 16) + (parseInt(rgbaMatch[2]) << 8) + parseInt(rgbaMatch[3])).toString(16).slice(1);
+
+    document.getElementById('numBgColor').value = hexBg;
+    document.getElementById('numTextColor').value = conf.color;
+    document.getElementById('numDotSize').value = conf.dotSize;
+    document.getElementById('numFontSize').value = conf.numSize;
+    document.getElementById('numDist').value = conf.dist;
+    document.getElementById('numPosition').value = conf.pos;
+}
+
+function applyNumberStylePreview() {
+    const hexBg = document.getElementById('numBgColor').value;
+    // Ręczna budowa RGBA z hex (stała przezroczystość dla ładnego efektu)
+    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
+    
+    const newConf = {
+        color: document.getElementById('numTextColor').value,
+        bg: `rgba(${r}, ${g}, ${b}, 0.95)`,
+        dotSize: parseInt(document.getElementById('numDotSize').value),
+        numSize: parseInt(document.getElementById('numFontSize').value),
+        dist: parseInt(document.getElementById('numDist').value),
+        pos: document.getElementById('numPosition').value
+    };
+
+    if(currentEditEmoji === 'global') legendNumberStyles.global = newConf;
+    else legendNumberStyles.perEmoji[currentEditEmoji] = newConf;
+
+    // Przebudowa tylko i wyłącznie widoków (bez wpływu na kolejność)
+    executeNumberingAndSorting(false); 
+}
+
+function saveNumberStyles(toLocal = false) {
+    applyNumberStylePreview(); // Wymuś zapisanie z UI do zmiennej
+    if(toLocal) {
+        localStorage.setItem('gpx_number_styles', JSON.stringify(legendNumberStyles));
+        showCustomAlert("Style zapisane w przeglądarce!");
+    }
+    document.getElementById('numberStyleModal').style.display = 'none';
+}
 function editLegendItem(id) {
     const item = exportLegendItems[id];
     if(!item) return;
@@ -3680,6 +3847,7 @@ function openStyleModal() {
     document.getElementById('styleWeight').value = routePrefWeight;
     document.getElementById('styleWeightVal').innerText = routePrefWeight;
     document.getElementById('styleSpeed').value = routePrefSpeed;
+    document.getElementById('styleAnimPoints').value = routePrefAnimPoints; // NOWE
     
     document.getElementById('stylePointsToggle').checked = routePrefPointsEnabled;
     document.getElementById('stylePointsColor').value = routePrefPointsColor;
@@ -3689,14 +3857,11 @@ function openStyleModal() {
     openCenteredModal('styleModal');
 }
 
-function togglePointsColorInput(isChecked) {
-    document.getElementById('stylePointsColorWrap').style.display = isChecked ? 'flex' : 'none';
-}
-
 function saveStyle(saveToLocal) {
     routePrefColor = document.getElementById('styleColor').value;
     routePrefWeight = parseInt(document.getElementById('styleWeight').value);
     routePrefSpeed = document.getElementById('styleSpeed').value;
+    routePrefAnimPoints = document.getElementById('styleAnimPoints').value; // NOWE
     
     routePrefPointsEnabled = document.getElementById('stylePointsToggle').checked;
     routePrefPointsColor = document.getElementById('stylePointsColor').value;
@@ -3705,19 +3870,22 @@ function saveStyle(saveToLocal) {
         localStorage.setItem('gpx_color', routePrefColor);
         localStorage.setItem('gpx_weight', routePrefWeight);
         localStorage.setItem('gpx_speed', routePrefSpeed);
+        localStorage.setItem('gpx_anim_points', routePrefAnimPoints); // NOWE
         localStorage.setItem('gpx_points_enabled', routePrefPointsEnabled);
         localStorage.setItem('gpx_points_color', routePrefPointsColor);
     }
 
-    // Aktualizuj główną linię
     polyline.setStyle({ color: routePrefColor, weight: routePrefWeight });
-    
-    // Aktualizuj wszystkie kropki na mapie głównej w locie!
     const dotColor = routePrefPointsEnabled ? routePrefPointsColor : '#22c55e';
     routePoints.forEach(p => p.marker.setStyle({ fillColor: dotColor }));
-
     document.getElementById('styleModal').style.display = 'none';
 }
+
+function togglePointsColorInput(isChecked) {
+    document.getElementById('stylePointsColorWrap').style.display = isChecked ? 'flex' : 'none';
+}
+
+
 /* ================= STYLIZACJA TYLKO W EKSPORCIE ================= */
 
 
@@ -3891,18 +4059,48 @@ function getPointAtDistance(geometry, targetDist) {
     return { latLng: geometry[geometry.length - 1], segmentIndex: geometry.length - 1 };
 }
 
+// FUNKCJA 10: Główny Raporter Systemu Zabezpieczeń
+function f10_report(fid, msg) {
+    console.log(`[Strażnik Animacji i Legendy - F${fid}] ${msg}`);
+}
+
+// FUNKCJA 1 & 2: Nadzorca i Korektor kropek animacji
+function f1_scanAnimation(mode) {
+    f10_report(1, `Skanowanie widoczności kropek (Tryb: ${mode}).`);
+    let errorsFound = false;
+    routePoints.forEach((p, index) => {
+        const isStart = index === 0;
+        const shouldBeVisible = (mode === 'all') || (mode === 'start-end' && isStart);
+        
+        // Leaflet: marker._icon określa fizyczną obecność w DOM
+        if (p.marker._icon) {
+            const isVisible = p.marker._icon.style.display !== 'none';
+            if (isVisible !== shouldBeVisible) {
+                errorsFound = true;
+                f10_report(1, `Wykryto błędny stan kropki ${index}. Przekazuję do F2.`);
+                f2_correctAnimation(p.marker, shouldBeVisible);
+            }
+        }
+    });
+    if(!errorsFound) f10_report(1, "Wszystkie kropki trasy ukryte/pokazane poprawnie.");
+}
+
+function f2_correctAnimation(marker, show) {
+    f10_report(2, `Korekta markera. Wymuszam: ${show ? 'POKAŻ' : 'UKRYJ'}`);
+    if (marker._icon) marker._icon.style.display = show ? '' : 'none';
+}
+
 function playRouteAnimation() {
-    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy do animacji. Najpierw wyznacz trasę lub zaimportuj plik GPX");
-    
-    // Jeśli animacja trwa, zatrzymaj ją
+    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy do animacji.");
     if (animInterval) clearInterval(animInterval);
     if (animLineLayer) map.removeLayer(animLineLayer);
     if (animDotMarker) map.removeLayer(animDotMarker);
 
     map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
-
-    // Ukryj główną linię
     polyline.setStyle({ opacity: 0 });
+
+    // F1/F2 Zabezpieczają widoczność oryginalnych kropek przed startem animacji
+    f1_scanAnimation(routePrefAnimPoints);
 
     animLineLayer = L.polyline([routeGeometry[0]], { 
         color: routePrefColor, weight: routePrefWeight, opacity: 0.9, lineJoin: 'round' 
@@ -3913,39 +4111,123 @@ function playRouteAnimation() {
     }).addTo(map);
 
     const totalDist = calculateTotalDist();
-    
-    // Obliczanie prędkości (ile metrów pokonujemy na jedną klatkę animacji - ok 60fps)
-    let speedMetersPerFrame = totalDist / 100; 
-    if (routePrefSpeed === 'slow') speedMetersPerFrame = totalDist / 400;
-    else if (routePrefSpeed === 'fast') speedMetersPerFrame = totalDist / 40;
-
+    let speedMetersPerFrame = totalDist / (routePrefSpeed === 'slow' ? 400 : (routePrefSpeed === 'fast' ? 40 : 100));
     let currentAnimDist = 0;
 
     animInterval = setInterval(() => {
         currentAnimDist += speedMetersPerFrame;
-        
         if (currentAnimDist >= totalDist) {
             currentAnimDist = totalDist;
             clearInterval(animInterval);
             animInterval = null;
             setTimeout(() => {
-                // Po 2 sekundach od zakończenia przywróć normalną mapę
                 if (animLineLayer) map.removeLayer(animLineLayer);
                 if (animDotMarker) map.removeLayer(animDotMarker);
                 polyline.setStyle({ opacity: 0.9 });
+                f1_scanAnimation('all'); // Przywraca widoczność
             }, 2000);
         }
 
-        const currentPosData = getPointAtDistance(routeGeometry, currentAnimDist);
-        
-        // Zbuduj linię od 0 do aktualnego segmentu, plus interpolowany punkt na końcu
-        const currentLineCoords = routeGeometry.slice(0, currentPosData.segmentIndex);
-        currentLineCoords.push(currentPosData.latLng);
-        
+        const posData = getPointAtDistance(routeGeometry, currentAnimDist);
+        const currentLineCoords = routeGeometry.slice(0, posData.segmentIndex);
+        currentLineCoords.push(posData.latLng);
         animLineLayer.setLatLngs(currentLineCoords);
-        animDotMarker.setLatLng(currentPosData.latLng);
+        animDotMarker.setLatLng(posData.latLng);
+    }, 16);
+}
+
+// FUNKCJA 3 & 4: Nadzorca Leaflet Zoom podczas renderowania GIF
+async function f3_checkGifZoom() {
+    f10_report(3, "Skanowanie DOM w poszukiwaniu kontrolek Leafleta przed renderem GIF...");
+    const zoomCtrl = document.querySelector('.leaflet-control-zoom');
+    if (zoomCtrl && zoomCtrl.style.display !== 'none') {
+        f10_report(3, "Wykryto kontrolki +/- ! Wstrzymuję generowanie i przekazuję do F4.");
+        await f4_removeGifZoom(zoomCtrl);
+        return true; // Prawda = była interwencja
+    }
+    f10_report(3, "Brak zanieczyszczeń. Można renderować GIF.");
+    return false;
+}
+
+async function f4_removeGifZoom(zoomCtrl) {
+    f10_report(4, "Usuwam kontrolki powiększania.");
+    zoomCtrl.style.display = 'none';
+    await new Promise(r => setTimeout(r, 100)); // Czekamy aż przeglądarka odświeży widok
+    f10_report(4, "Kontrolki ukryte. Zgłaszam sukces.");
+}
+
+async function recordRouteGIF() {
+    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy.");
+    
+    // Uruchomienie Strażnika F3/F4 przed rozpoczęciem!
+    const wasZoomRemoved = await f3_checkGifZoom();
+    if (wasZoomRemoved) {
+        f10_report(3, "Uruchamiam proces recordRouteGIF od początku z czystym widokiem.");
+        return recordRouteGIF(); // Automatyczny restart po wyczyszczeniu!
+    }
+
+    const overlay = document.getElementById('recordingOverlay');
+    const progressText = document.getElementById('gifProgressText');
+    const progressBar = document.getElementById('gifProgressBar');
+    overlay.style.display = 'flex';
+    map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
+    await new Promise(r => setTimeout(r, 1000));
+
+    polyline.setStyle({ opacity: 0 });
+    f1_scanAnimation(routePrefAnimPoints); // Zastosowanie widoczności kropek
+
+    if (animLineLayer) map.removeLayer(animLineLayer);
+    if (animDotMarker) map.removeLayer(animDotMarker);
+
+    animLineLayer = L.polyline([routeGeometry[0]], { color: routePrefColor, weight: routePrefWeight, opacity: 0.9, lineJoin: 'round' }).addTo(map);
+    animDotMarker = L.circleMarker(routeGeometry[0], { radius: routePrefWeight + 2, color: '#fff', weight: 2, fillColor: routePrefColor, fillOpacity: 1 }).addTo(map);
+
+    const workerBlob = new Blob([`importScripts('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js');`], { type: 'application/javascript' });
+    const gif = new GIF({ workers: 2, quality: 10, workerScript: URL.createObjectURL(workerBlob), width: map.getSize().x, height: map.getSize().y });
+
+    const totalDist = calculateTotalDist();
+    let framesCount = routePrefSpeed === 'slow' ? 45 : (routePrefSpeed === 'fast' ? 10 : 20);
+    const distStep = totalDist / framesCount;
+    const mapContainer = document.getElementById('map');
+
+    for (let i = 0; i <= framesCount; i++) {
+        let targetDist = Math.min(i * distStep, totalDist);
+        const posData = getPointAtDistance(routeGeometry, targetDist);
+        const currentLineCoords = routeGeometry.slice(0, posData.segmentIndex);
+        currentLineCoords.push(posData.latLng);
+        animLineLayer.setLatLngs(currentLineCoords);
+        animDotMarker.setLatLng(posData.latLng);
+        await new Promise(r => setTimeout(r, 50));
+
+        progressText.innerText = `Robienie zrzutów: ${i} / ${framesCount}`;
+        progressBar.style.width = `${(i / framesCount) * 50}%`; 
         
-    }, 16); // ~60 fps
+        // Zabezpieczający ignorer dla Leafleta
+        const canvas = await html2canvas(mapContainer, { 
+            useCORS: true, scale: 1, 
+            ignoreElements: el => el.classList && el.classList.contains('leaflet-control-container') 
+        });
+        
+        let delay = i === 0 ? 1000 : (i === framesCount ? 2000 : 100);
+        gif.addFrame(canvas, {delay: delay, copy: true});
+    }
+
+    progressText.innerText = `Składanie pliku GIF...`;
+    gif.on('progress', p => progressBar.style.width = `${50 + (p * 50)}%`);
+    gif.on('finished', blob => {
+        overlay.style.display = 'none';
+        map.removeLayer(animLineLayer); map.removeLayer(animDotMarker);
+        polyline.setStyle({ opacity: 0.9 });
+        f1_scanAnimation('all'); // Przywrócenie
+        const zoomCtrl = document.querySelector('.leaflet-control-zoom');
+        if(zoomCtrl) zoomCtrl.style.display = ''; // Przywrócenie leafleta po GIFie
+        
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `animacja_trasy_${new Date().toLocaleDateString()}.gif`;
+        a.click();
+    });
+    gif.render();
 }
 
 /* ================= EKSPORT DO GIF ================= */
@@ -6245,6 +6527,8 @@ function setupLegendDragAndDrop(li) {
     });
 
     li.addEventListener('drop', function(e) {
+        userReorderedLegend = true;
+        f10_report(7, "Zarejestrowano drag&drop użytkownika.");
         e.stopPropagation();
         this.classList.remove('drag-over');
 
