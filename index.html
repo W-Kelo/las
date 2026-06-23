@@ -904,48 +904,67 @@
         </div>
     </div>
 </div>
-        <!-- MODAL: STYLIZACJA NUMERACJI LEGENDY -->
+
+<!-- MODAL: STYLIZACJA NUMERACJI LEGENDY -->
 <div id="numberStyleModal" class="floating-modal" style="width: 380px; z-index: 3500; display: none;" data-html2canvas-ignore>
     <div class="modal-header" style="background: rgba(139, 92, 246, 0.2);">
         <span style="color: #a855f7; font-weight:bold;">🔢 Ustawienia Numeracji</span>
-        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="document.getElementById('numberStyleModal').style.display='none'">X</button>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('numberStyleModal')">X</button>
     </div>
     <div class="modal-body">
         <label>Edytuj styl dla:</label>
         <select id="numStyleEmojiSelect" class="style-select" style="margin-bottom:15px;" onchange="loadNumberStyleToUI()"></select>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-            <div>
-                <label>Kolor kropki:</label>
-                <input type="color" id="numBgColor" style="width:100%; height:35px;" oninput="applyNumberStylePreview()">
+        <div style="background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px; margin-bottom: 10px;">
+            <label style="color: var(--accent); margin-top:0;">1. Tło ikony (Kropka)</label>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="color" id="numBgColor" style="width:40px; height:35px;" oninput="applyNumberStylePreview()">
+                <div style="flex-grow:1;">
+                    <label style="margin:0; font-size:0.75rem;">Przezroczystość:</label>
+                    <input type="range" id="numBgOpacity" min="0" max="100" value="95" class="thick-slider" oninput="applyNumberStylePreview()">
+                </div>
             </div>
-            <div>
-                <label>Kolor czcionki:</label>
-                <input type="color" id="numTextColor" style="width:100%; height:35px;" oninput="applyNumberStylePreview()">
-            </div>
+            <label style="margin-top:10px; font-size:0.75rem;">Wielkość kropki:</label>
+            <input type="range" id="numDotSize" min="20" max="60" value="35" class="thick-slider" oninput="applyNumberStylePreview()">
         </div>
 
-        <label>Rozmiar kropki:</label>
-        <input type="range" id="numDotSize" min="10" max="40" value="20" class="thick-slider" oninput="applyNumberStylePreview()">
-        
-        <label style="margin-top:10px;">Rozmiar numeru:</label>
-        <input type="range" id="numFontSize" min="8" max="24" value="12" class="thick-slider" oninput="applyNumberStylePreview()">
+        <div style="background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px;">
+            <label style="color: #3b82f6; margin-top:0;">2. Numerek</label>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <div style="flex: 1;">
+                    <label style="margin:0; font-size:0.75rem;">Kolor czcionki:</label>
+                    <input type="color" id="numTextColor" value="#ffffff" style="width:100%; height:35px;" oninput="applyNumberStylePreview()">
+                </div>
+                <div style="flex: 1;">
+                    <label style="margin:0; font-size:0.75rem;">Styl czcionki:</label>
+                    <select id="numFontStyle" class="style-select" onchange="applyNumberStylePreview()">
+                        <option value="normal">Zwykły</option>
+                        <option value="bold">Pogrubiony</option>
+                        <option value="italic">Kursywa</option>
+                        <option value="italic bold">Pogrubiona kursywa</option>
+                    </select>
+                </div>
+            </div>
+            
+            <label style="font-size:0.75rem;">Rozmiar numeru:</label>
+            <input type="range" id="numFontSize" min="8" max="24" value="12" class="thick-slider" oninput="applyNumberStylePreview()">
 
-        <label style="margin-top:10px;">Położenie numeru:</label>
-        <select id="numPosition" class="style-select" onchange="applyNumberStylePreview()">
-            <option value="overlap">Na emotce (Nałożone)</option>
-            <option value="right">Po prawej</option>
-            <option value="left">Po lewej</option>
-            <option value="top">Nad emotką</option>
-            <option value="bottom">Pod emotką</option>
-        </select>
+            <label style="margin-top:10px; font-size:0.75rem;">Położenie względem ikony:</label>
+            <select id="numPosition" class="style-select" onchange="applyNumberStylePreview()">
+                <option value="right">Po prawej</option>
+                <option value="left">Po lewej</option>
+                <option value="top">Nad ikoną</option>
+                <option value="bottom">Pod ikoną</option>
+                <option value="overlap">Na ikonie (Nałożone)</option>
+            </select>
 
-        <label style="margin-top:10px;">Dystans od emotki (piksele):</label>
-        <input type="range" id="numDist" min="-20" max="20" value="-5" class="thick-slider" oninput="applyNumberStylePreview()">
+            <label style="margin-top:10px; font-size:0.75rem;">Odległość numeru od ikony:</label>
+            <input type="range" id="numDist" min="-20" max="30" value="2" class="thick-slider" oninput="applyNumberStylePreview()">
+        </div>
 
-        <div style="display:flex; gap:10px; margin-top:20px;">
-            <button onclick="saveNumberStyles()" style="flex:1; background: #22c55e;">Zastosuj</button>
-            <button onclick="saveNumberStyles(true)" style="flex:1; background: #3b82f6;">Zapisz w Pamięci</button>
+        <div style="display:flex; gap:10px; margin-top:15px;">
+            <button onclick="saveNumberStyles(false)" style="flex:1; background: #22c55e;">Zastosuj tymczasowo</button>
+            <button onclick="saveNumberStyles(true)" style="flex:1; background: #3b82f6;">Zapisz domyślnie</button>
         </div>
     </div>
 </div>
