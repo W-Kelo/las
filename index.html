@@ -171,41 +171,37 @@
         <button id="searchBtn" onclick="searchLocation()" title="Szukaj" disabled>🔍</button>
     </div>
 
-    <div class="btn-group">
-        <button onclick="toggleTheme()">🌓 Motyw</button>
-       <button id="btnPcScreenshot"
-        onmousedown="startSnap(event)"
-        onmouseup="endSnapPC(event)"
-        onmouseleave="cancelSnap()"
-        oncontextmenu="event.preventDefault(); forceOpenCropModal();">
-    📸 Zrzut
-</button>
-    </div>
+    // Pierwsza grupa: eksport i import
+<div class="btn-group"> 
+    <button id="btnPcScreenshot" onmousedown="startSnap(event)" onmouseup="endSnapPC(event)" onmouseleave="cancelSnap()" oncontextmenu="event.preventDefault(); forceOpenCropModal();"> 📸 Zrzut</button>
+    <button onclick="openMapExportModal()" style="background:#0ea5e9;">🗺️ Eksport mapy</button> 
+    <button class="secondary" onclick="exportGPX()">⬇️ Eksport GPX</button>
+    <button class="secondary" onclick="document.getElementById('fileInput').click()">⬆️ Import GPX</button>
+    <button onclick="recordRouteGIF()" background: #8b5cf6;">🎞️ GIF</button> //style="width: 100%; margin-top: 4px;
+    <button onclick="openPdfModal()" style="background: #a855f7;">📄 Pobierz PDF</button>
+</div>
 
-    <div class="btn-group">
-        <button class="secondary" onclick="exportGPX()">⬇️ Eksport</button>
-        <button class="secondary" onclick="document.getElementById('fileInput').click()">⬆️ Import</button>
-        <button onclick="openMapExportModal()" style="background:#0ea5e9;">🗺️ Eksport mapy</button>
-        <button onclick="openPdfModal()" style="background: #a855f7;">📄 Pobierz PDF</button>
-    </div>
-    <input type="file" id="fileInput" hidden accept=".gpx" onchange="importGPX(event)">
+    // Grupa punktów trasy
 <div class="btn-group">
     <button onclick="openPointsModal()">📑 Punkty trasy</button>
     <button onclick="openDescModal()">📜 Opis Trasy</button>
     <button onclick="openStopsModal()" style="background: #f59e0b;">☕ Postoje</button>
     <button onclick="openMyPointsModal()" style="background: #10b981;">📋 Moje punkty</button>
 </div>
+    // Grupa animacji i stylu linii trasy
+<div class="btn-group">
+     <button onclick="playRouteAnimation()" style="background: #ec4899;">▶️ Animuj</button>
+     <button onclick="toggleTheme()">🌓 Motyw</button>
+     <button onclick="openStyleModal()" style="background: #f59e0b;">🎨 Styl trasy</button>
+     <button onclick="openCenteredModal('aboutModal')">ℹ️ O programie</button>
+</div>
 
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
-        <button onclick="openStyleModal()" style="background: #f59e0b;">🎨 Styl trasy</button>
-        <button onclick="playRouteAnimation()" style="background: #ec4899;">▶️ Animuj</button>
-    </div>
-    <button onclick="recordRouteGIF()" style="width: 100%; margin-top: 4px; background: #8b5cf6;">🎞️ Zapisz jako GIF</button>
-    <button onclick="openCenteredModal('aboutModal')">ℹ️ O programie</button>
+    
     <div style="display:grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px;">
         <button id="btnToggleDraw" onclick="toggleDrawMode()" style="background: #3b82f6;">✏️ Włącz rysowanie trasy</button>
         <button class="danger" onclick="clearAll()">🗑️ Wyczyść mapę</button>
     </div>
+    <input type="file" id="fileInput" hidden accept=".gpx" onchange="importGPX(event)">
 
     <hr>
 
