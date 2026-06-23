@@ -1898,6 +1898,16 @@ const OSM_DICT = {
     "underground": "Podziemny",
     "picnic_shelter": "Wiata piknikowa",
     "citymap": "Mapa miasta",
+    "history": "Historia",
+    "stela": "slupek przystankowy",
+    "gazebo": "altana/pawilon",
+    "fireplace": "miejsce na ognisko",
+    "street side": "wzdłuż ulicy",
+    "ground": "nawierzchnia",
+    "supervised": "nadzorowany",
+    "capacity": "pojedmność",
+    
+    
     
     
 
