@@ -33,7 +33,7 @@ function isForbiddenOSM(tags) {
         // Sprawdzamy, czy dla tego klucza (np. "access") mamy jakieś zakazane wartości
         if (OSM_HIDE_RULES[key]) {
             if (OSM_HIDE_RULES[key].includes(value)) {
-                console.log(`[Filtr OSM] Ukryto obiekt: ${tags.name || 'bez nazwy'} z powodu ${key}=${value}`);
+              //  console.log(`[Filtr OSM] Ukryto obiekt: ${tags.name || 'bez nazwy'} z powodu ${key}=${value}`);
                 return true; // Znaleziono zakazaną parę - ukryj!
             }
         }
