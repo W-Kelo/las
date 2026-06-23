@@ -6277,131 +6277,155 @@ function setupLegendDragAndDrop(li) {
    PANCERNY SYSTEM ZRZUTÓW EKRANU - ARCHITEKTURA 7 FUNKCJI
 ========================================================= */
 
+// FUNKCJA 7: Raportująca
 function reportAction(stepName, message, status) {
     const icon = status === 'OK' ? '✅' : (status === 'WARN' ? '⚠️' : '❌');
     console.log(`[Krok ${stepName}] ${icon} ${message}`);
 }
 
+// FUNKCJA 1: Mierząca środek ekranu
 function measureScreenCenter() {
-    reportAction(1, "Wykrywam wymiary i typ urządzenia...", "OK");
-    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-    return { isTouch };
+    reportAction(1, "Skanowanie przestrzeni roboczej ekranu...", "OK");
+    const w = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+    const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const cx = w / 2;
+    const cy = h / 2;
+    reportAction(1, `Wymiary ekranu: ${w}x${h}, Środek: X=${cx.toFixed(1)}, Y=${cy.toFixed(1)}`, "OK");
+    return { cx, cy, w, h };
 }
 
-function placeModal(modalId) {
+// FUNKCJA 2: Ustawiająca modal na podstawie pomiarów
+function placeModal(modalId, metrics) {
     const modal = document.getElementById(modalId);
-    if (!modal) return reportAction(2, "Brak modalu!", "ERR");
+    if (!modal) return reportAction(2, `Nie znaleziono modalu: ${modalId}`, "ERR");
     
-    // Niezawodne centrowanie GPU-Accelerated (CSS) - Działa perfekcyjnie na Desktopie i Mobile
+    // Gwarancja uwolnienia z okowów DOM
+    if (modal.parentNode !== document.body) document.body.appendChild(modal);
+    
+    // 1. Włączamy fizyczną obecność, ale ukrywamy wzrokowo by móc zmierzyć
     modal.style.setProperty('display', 'flex', 'important');
+    modal.style.visibility = 'hidden'; 
+    modal.style.transform = 'none'; // Resetujemy wbudowane transformacje
+
+    // Pobieramy prawdziwe wymiary fizyczne panelu!
+    const modalW = modal.offsetWidth;
+    const modalH = modal.offsetHeight;
+    
+    if (modalW === 0) reportAction(2, "Błąd! Szerokość modalu to nadal 0px!", "ERR");
+    else reportAction(2, `Modal stał się fizyczny. Wymiary: ${modalW}x${modalH}`, "OK");
+
+    // 2. Pozycjonujemy używając czystej matematyki
     modal.style.position = 'fixed';
-    modal.style.top = '50%';
-    modal.style.left = '50%';
-    modal.style.transform = 'translate(-50%, -50%)';
-    modal.style.margin = '0';
-    reportAction(2, "Wymuszono centrowanie natywne CSS.", "OK");
+    modal.style.left = `${metrics.cx - (modalW / 2)}px`;
+    modal.style.top = `${metrics.cy - (modalH / 2)}px`;
+    
+    reportAction(2, `Zastosowano pozycję X:${modal.style.left}, Y:${modal.style.top}`, "OK");
 }
 
-function scanModalPosition(modalId) {
-    reportAction(3, "Skanowanie integralności modalu...", "OK");
+// FUNKCJA 3: Skaner poprawności
+function scanModalPosition(modalId, metrics) {
     const modal = document.getElementById(modalId);
-    return (modal.offsetWidth > 0 && modal.offsetHeight > 0);
+    const rect = modal.getBoundingClientRect();
+    
+    const centerX = rect.left + (rect.width / 2);
+    const centerY = rect.top + (rect.height / 2);
+    
+    const diffX = Math.abs(centerX - metrics.cx);
+    const diffY = Math.abs(centerY - metrics.cy);
+    
+    reportAction(3, `Odchylenie centrum od osi ekranu: X=${diffX.toFixed(1)}px, Y=${diffY.toFixed(1)}px`, diffX < 5 && diffY < 5 ? "OK" : "WARN");
+    
+    return (diffX < 5 && diffY < 5);
 }
 
+// FUNKCJA 4: Poprawiająca
 function correctModalPosition(modalId) {
     const metrics = measureScreenCenter();
-    placeModal(modalId);
-    const isValid = scanModalPosition(modalId);
+    placeModal(modalId, metrics);
+    const isPerfect = scanModalPosition(modalId, metrics);
     
-    if (!isValid) {
-        reportAction(4, "Ostrzeżenie! Modal nie ma wymiarów fizycznych. Wymuszam 90vw / 90vh.", "WARN");
-        const modal = document.getElementById(modalId);
-        modal.style.width = '90vw';
-        modal.style.height = '90vh';
+    const modal = document.getElementById(modalId);
+    if (!isPerfect) {
+        reportAction(4, "Wykryto asymetrię. Nakładam korygujący transform(-50%, -50%).", "WARN");
+        modal.style.top = '50%';
+        modal.style.left = '50%';
+        modal.style.transform = 'translate(-50%, -50%)';
     } else {
-        reportAction(4, "Pozycja i wymiary poprawne.", "OK");
+        reportAction(4, "Korekta nie była potrzebna, pozycja jest idealna.", "OK");
     }
-
-    // Nowość: Powiększanie uchwytów dla urządzeń dotykowych
-    if (metrics.isTouch) {
-        reportAction(4, "Wykryto ekran dotykowy. Powiększam uchwyty kadrowania do 36x36px dla wygody palca!", "OK");
-        document.querySelectorAll('.crop-handle').forEach(h => {
-            h.style.width = '36px';
-            h.style.height = '36px';
-            // Przesunięcie marginesów, by powiększony suwak nadal był wyśrodkowany na rogu/krawędzi
-            const cl = h.classList;
-            if(cl.contains('ch-nw')) { h.style.top='-18px'; h.style.left='-18px'; }
-            else if(cl.contains('ch-ne')) { h.style.top='-18px'; h.style.right='-18px'; }
-            else if(cl.contains('ch-sw')) { h.style.bottom='-18px'; h.style.left='-18px'; }
-            else if(cl.contains('ch-se')) { h.style.bottom='-18px'; h.style.right='-18px'; }
-            else if(cl.contains('ch-n')) { h.style.top='-18px'; h.style.left='calc(50% - 18px)'; }
-            else if(cl.contains('ch-s')) { h.style.bottom='-18px'; h.style.left='calc(50% - 18px)'; }
-            else if(cl.contains('ch-w')) { h.style.left='-18px'; h.style.top='calc(50% - 18px)'; }
-            else if(cl.contains('ch-e')) { h.style.right='-18px'; h.style.top='calc(50% - 18px)'; }
-        });
-    }
+    
+    // ODSŁANIAMY MODAL!
+    modal.style.visibility = 'visible';
+    reportAction(4, "Modal w pełni widoczny dla użytkownika.", "OK");
 }
 
+// FUNKCJA 5: Analizator OCR (Teraz szuka czarnych pikseli tekstu)
 function scanCanvasForCopyright(canvas, ctx, x, y, w, h) {
     reportAction(5, "Uruchamiam Skaner OCR...", "OK");
     try {
+        // Zbieramy całą paczkę pikseli z pola, gdzie ma być tekst
         const imgData = ctx.getImageData(x, y, w, h).data;
         let blackPixelsCount = 0;
+        
+        // Szukamy ciemnych pikseli (R<100, G<100, B<100, Alpha>200)
         for (let i = 0; i < imgData.length; i += 4) {
             if (imgData[i] < 100 && imgData[i+1] < 100 && imgData[i+2] < 100 && imgData[i+3] > 200) {
                 blackPixelsCount++;
             }
         }
-        if (blackPixelsCount > 20) { 
-            reportAction(5, `Znaleziono tekst! Ilość pikseli farby: ${blackPixelsCount}`, "OK");
+        
+        if (blackPixelsCount > 50) { // W napisie jest na pewno więcej niż 50 ciemnych pikseli
+            reportAction(5, `Znaleziono tekst źródła! Ilość pikseli farby: ${blackPixelsCount}`, "OK");
             return true;
         } else {
-            reportAction(5, "Brak tekstu w strefie.", "WARN");
+            reportAction(5, "Pusto! Brak tekstu w analizowanym obszarze.", "WARN");
             return false;
         }
     } catch(e) {
-        reportAction(5, "CORS zablokował OCR.", "WARN");
+        reportAction(5, "Zabezpieczenia CORS zablokowały OCR. Przechodzę do domyślnego wklejania.", "WARN");
         return false;
     }
 }
 
+// FUNKCJA 6: Ostateczne wymuszenie źródła
 function forcePasteCopyright(canvas, ctx) {
-    reportAction(6, "Twarde wklejanie źródła...", "WARN");
-    // Obliczamy fizyczne proporcje na podstawie wielkości płótna (odporne na DPR)
-    const ratio = canvas.width / window.innerWidth;
-    const fontSize = Math.max(14, Math.round(14 * ratio)); 
-    const pad = Math.max(6, Math.round(6 * ratio));
-    
+    reportAction(6, "Procedura twardego wklejania źródła uruchomiona.", "WARN");
+    const dpr = window.devicePixelRatio || 1;
     const text = (typeof isSatellite !== 'undefined' && isSatellite) ? "© OpenStreetMap, Google Maps" : "© Autorzy OpenStreetMap";
+    
+    // Zapewniamy czytelność - minimum 14px bez względu na zmniejszanie ekranu
+    const fontSize = Math.max(14, Math.round(14 * dpr)); 
     ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
     
+    const pad = Math.max(6, Math.round(6 * dpr));
     const txtW = ctx.measureText(text).width;
     const bgW = txtW + (pad * 2);
     const bgH = fontSize + (pad * 2.5);
     
-    // BEZPIECZNE WSPÓŁRZĘDNE - Dokładnie od krawędzi płótna
-    const safeMargin = Math.max(10, Math.round(10 * ratio));
-    const x = canvas.width - bgW - safeMargin;
-    const y = canvas.height - bgH - safeMargin;
+    const x = canvas.width - bgW - 10;
+    const y = canvas.height - bgH - 10;
 
-    // Rysowanie
+    // Najprostsza metoda na świecie: fillRect. Działa na KAŻDEJ przeglądarce.
     ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'; 
     ctx.fillRect(x, y, bgW, bgH);
-    ctx.strokeStyle = '#cbd5e1'; // Delikatna ramka dla pewności
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, bgW, bgH);
     
     ctx.fillStyle = '#0f172a';
     ctx.textBaseline = "middle";
     ctx.fillText(text, x + pad, y + (bgH / 2));
     
-    reportAction(6, `Źródło naklejone w punkcie X=${x.toFixed(0)}, Y=${y.toFixed(0)}`, "OK");
+    reportAction(6, `Źródło naklejone: ${bgW}x${bgH}px w punkcie [${x}, ${y}]`, "OK");
 }
 
 /* =========================================================
-   LOGIKA INTERAKCJI SZYBKICH ZRZUTÓW
+   LOGIKA INTERAKCJI (KLIKNIĘCIA I GESTY)
 ========================================================= */
 
+
+// Funkcja ukrywająca modal na start by nie wyświetlał się przy starcie strony
+document.addEventListener("DOMContentLoaded", () => {
+    const modal = document.getElementById('screenshotCropModal');
+    if(modal) modal.style.setProperty('display', 'none', 'important');
+});
 
 function startSnap(e) {
     _isLongPress = false;
@@ -6439,7 +6463,8 @@ function triggerStandardScreenshot() {
     document.body.style.cursor = 'wait';
     const mapEl = document.getElementById('map');
     const dpr = window.devicePixelRatio || 1; 
-    reportAction("SZYBKI_ZRZUT", "Pobieranie obrazu...", "OK");
+
+    reportAction("SZYBKI_ZRZUT", "Zaczynam robienie zrzutu...", "OK");
 
     html2canvas(mapEl, { 
         useCORS: true,
@@ -6448,8 +6473,16 @@ function triggerStandardScreenshot() {
     }).then(canvas => {
         const ctx = canvas.getContext('2d');
         
-        // ZAWSZE WYMUSZAMY WKLEJENIE, aby upewnić się, że nie zabraknie
+        // WYMUSZAMY WKLEJENIE OD RAZU ZA POMOCĄ FUNKCJI 6! 
+        // Zero ryzyka, po prostu twardo naklejamy ramkę i tekst.
         forcePasteCopyright(canvas, ctx);
+
+        // Opcjonalne sprawdzenie przez OCR by zapisać w logach sukces
+        const fontSize = Math.max(14, Math.round(14 * dpr)); 
+        const pad = Math.max(6, Math.round(6 * dpr));
+        const bgW = ctx.measureText("© OpenStreetMap, Google Maps").width + (pad*2);
+        const bgH = fontSize + (pad * 2.5);
+        scanCanvasForCopyright(canvas, ctx, canvas.width - bgW - 10, canvas.height - bgH - 10, bgW, bgH);
 
         const link = document.createElement('a');
         link.download = `szybki_zrzut_${new Date().toLocaleDateString()}.png`;
@@ -6457,7 +6490,7 @@ function triggerStandardScreenshot() {
         link.click();
         
         document.body.style.cursor = '';
-        reportAction("SZYBKI_ZRZUT", "Gotowe.", "OK");
+        reportAction("SZYBKI_ZRZUT", "Plik zrzutu został wygenerowany pomyślnie.", "OK");
     }).catch(err => {
         console.error("Błąd zrzutu:", err);
         document.body.style.cursor = '';
@@ -6468,12 +6501,12 @@ function triggerStandardScreenshot() {
    WORKSPACE KADROWANIA I GESTY
 ========================================================= */
 
-
-
 async function forceOpenCropModal() {
     document.body.style.cursor = 'wait';
     const modalId = 'screenshotCropModal';
-    correctModalPosition(modalId); // 1-4 zintegrowane!
+    
+    // Zastosowanie inteligentnego centrowania (Funkcje 1-4)
+    correctModalPosition(modalId);
 
     try {
         const mapEl = document.getElementById('map');
@@ -6494,6 +6527,7 @@ async function forceOpenCropModal() {
         const cw = container.clientWidth;
         const ch = container.clientHeight;
         
+        // Płótno dopasowane do okna (margines 10%)
         ws.zoom = Math.min(cw / imgBaseW, ch / imgBaseH) * 0.9;
         ws.x = (cw - (imgBaseW * ws.zoom)) / 2;
         ws.y = (ch - (imgBaseH * ws.zoom)) / 2;
@@ -6512,7 +6546,7 @@ async function forceOpenCropModal() {
             isCropperEventsBound = true;
         }
     } catch(err) {
-        console.error("Błąd edytora:", err);
+        console.error("Błąd ładowania kadrownicy:", err);
     } finally {
         document.body.style.cursor = '';
     }
@@ -6520,7 +6554,8 @@ async function forceOpenCropModal() {
 
 function closeCropModal() {
     const modal = document.getElementById('screenshotCropModal');
-    if (modal) modal.style.display = 'none';
+    // Ukrywamy fizycznie
+    if (modal) modal.style.setProperty('display', 'none', 'important');
 }
 
 function updateWorkspaceDOM() {
@@ -6544,10 +6579,9 @@ function zoomWorkspace(delta) {
 function applyZoom(delta, mouseX, mouseY) {
     const oldZoom = ws.zoom;
     let newZoom = oldZoom + delta;
-    if(delta > 1 || delta < -1) newZoom = oldZoom * delta; // Mnożnik dla Pinch
+    if(delta > 1 || delta < -1) newZoom = oldZoom * delta; // System mnożnika dla Pinch-To-Zoom
     
-    // ZABEZPIECZENIE: Zakres od 0.15 (bardzo oddalone) do maksymalnie 4.0 (powiększone)
-    newZoom = Math.max(0.15, Math.min(newZoom, 4.0)); 
+    newZoom = Math.max(0.05, Math.min(newZoom, 5.0)); 
     if (newZoom === oldZoom) return;
 
     const ratio = newZoom / oldZoom;
@@ -6705,44 +6739,24 @@ function bindWorkspaceEvents() {
     window.addEventListener('touchend', handlePointerUp);
 }
 
-// EKSPORT Z KADROWNICY - POBIERANIE (Z FUNKCJĄ 6)
+// EKSPORT Z KADROWNICY
 function executeCropDownload() {
-    reportAction("MODAL_POBIERZ", "Wycinanie kadru...", "OK");
-    const finalCanvas = buildCroppedCanvas();
-    const link = document.createElement('a');
-    link.download = `zrzut_wykadrowany_${new Date().toLocaleDateString()}.png`;
-    link.href = finalCanvas.toDataURL('image/png');
-    link.click();
-    closeCropModal();
-}
-
-// EKSPORT Z KADROWNICY - KOPIOWANIE
-function executeCropCopy() {
-    reportAction("MODAL_KOPIUJ", "Wycinanie kadru do schowka...", "OK");
-    const finalCanvas = buildCroppedCanvas();
-    finalCanvas.toBlob(blob => {
-        try {
-            navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-            showCustomAlert("Pomyślnie skopiowano wykadrowany obraz ze źródłem do schowka! 👍");
-        } catch(e) {
-            showCustomAlert("Twoja przeglądarka nie obsługuje bezpośredniego kopiowania obrazu.");
-        }
-    });
-}
-
-// WSPÓLNA FUNKCJA BUDUJĄCA PŁÓTNO Z ZAWSZE WKLEJONYM ŹRÓDŁEM
-function buildCroppedCanvas() {
+    reportAction("MODAL_ZRZUT", "Kompletowanie wycinka z kadrownicy...", "OK");
     const sourceImg = document.getElementById('cropSourceImage');
     const finalCanvas = document.createElement('canvas');
     finalCanvas.width = crop.w;
     finalCanvas.height = crop.h;
     const ctx = finalCanvas.getContext('2d');
     
-    // Przenosimy zdjęcie
     ctx.drawImage(sourceImg, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
     
-    // Gwarantowane wklejenie źródła używające uodpornionej Funkcji 6
+    // NAKŁADANIE ŹRÓDŁA BEZPOŚREDNIO NA WYCIĘTY KADR PRZEZ FUNKCJE 6
     forcePasteCopyright(finalCanvas, ctx);
     
-    return finalCanvas;
+    const link = document.createElement('a');
+    link.download = `zrzut_wykadrowany_${new Date().toLocaleDateString()}.png`;
+    link.href = finalCanvas.toDataURL('image/png');
+    link.click();
+    
+    closeCropModal();
 }
