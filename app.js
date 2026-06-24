@@ -3304,68 +3304,77 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
 
 // FUNKCJA 5 & 6: Skaner i Korektor Legendy (Wykrywa błędy natychmiast)
 // PODMIEŃ FUNKCJĘ F5:
+// PODMIEŃ CAŁĄ TĘ FUNKCJĘ W JS
 function f5_scanLegend() {
-    const list = document.getElementById('exportLegendList');
-    if(!list) return;
+    try {
+        const list = document.getElementById('exportLegendList');
+        if(!list) return;
 
-    const frequencies = {};
-    
-    // Krok 1: Zliczamy wystąpienia bazowych emotek
-    Object.values(exportLegendItems).forEach(item => {
-        if(!item.baseEmoji) item.baseEmoji = item.emoji.replace(/<[^>]*>/g, '').replace(/\d+/g, '').trim();
-        frequencies[item.baseEmoji] = (frequencies[item.baseEmoji] || 0) + 1;
-    });
+        const frequencies = {};
+        let needsPrompt = false;
+        let needsCleanup = false;
 
-    let needsPrompt = false;
-    let needsCleanup = false;
-
-    // Krok 2: Analizujemy stan każdego elementu na mapie i w legendzie
-    Object.values(exportLegendItems).forEach(item => {
-        const count = frequencies[item.baseEmoji];
-        
-        // Jeśli emotka występuje >1 raz, ale NIE MA numerku -> trzeba zapytać użytkownika
-        if (count > 1 && !item.isNumbered) {
-            needsPrompt = true;
-        }
-        
-        // Jeśli emotka ma numerek, ale występuje tylko 1 raz (bo usunięto resztę) -> trzeba wyczyścić
-        if (count === 1 && item.isNumbered) {
-            needsCleanup = true;
-        }
-    });
-
-    // Krok 3: Reakcja systemu
-    if (needsPrompt) {
-        checkDuplicateEmojis(true); // Natychmiast pokaż banner z propozycją numeracji
-    } else {
-        const banner = document.getElementById('emoji-duplicate-banner');
-        if(banner) banner.style.display = 'none';
-    }
-
-    // Krok 4: Automatyczne czyszczenie osieroconych numerków
-    if (needsCleanup) {
-        f10_report(6, "Wykryto osierocony numerek. Czyszczę.");
+        // 1. BEZPIECZNE ZLICZANIE (Odporne na błędy undefined)
         Object.values(exportLegendItems).forEach(item => {
-            if (frequencies[item.baseEmoji] === 1 && item.isNumbered) {
-                item.emoji = item.baseEmoji;
-                item.isNumbered = false;
-                // Przywracanie czystej ikony na mapie
-                item.marker.setIcon(L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${item.baseEmoji}</div>`, className: 'poi-icon' }));
-                // Przywracanie czystej ikony w panelu bocznym
-                const li = document.getElementById(Object.keys(exportLegendItems).find(key => exportLegendItems[key] === item));
-                if (li) {
-                    const iconSpan = li.querySelector('.leg-icon');
-                    if (iconSpan) iconSpan.innerHTML = item.baseEmoji;
-                }
+            if (!item) return;
+            
+            if (!item.baseEmoji) {
+                let raw = item.emoji || "📍";
+                item.baseEmoji = String(raw).replace(/<[^>]*>/g, '').replace(/\d+/g, '').trim();
+                if(!item.baseEmoji) item.baseEmoji = "📍"; // Zabezpieczenie przed pustym stringiem
             }
+            frequencies[item.baseEmoji] = (frequencies[item.baseEmoji] || 0) + 1;
         });
+
+        // 2. ANALIZA ZMIAN
+        Object.values(exportLegendItems).forEach(item => {
+            if (!item) return;
+            const count = frequencies[item.baseEmoji];
+            
+            // Wykryto duplikat bez numeru -> trzeba zapytać
+            if (count > 1 && !item.isNumbered) needsPrompt = true;
+            // Wykryto osierocony numer (usunięto duplikaty) -> trzeba wyczyścić
+            if (count === 1 && item.isNumbered) needsCleanup = true;
+        });
+
+        // 3. REAKCJA SYSTEMU (Pytanie o numerację)
+        const banner = document.getElementById('emoji-duplicate-banner');
+        if (needsPrompt) {
+            checkDuplicateEmojis(true);
+        } else if (banner) {
+            banner.style.display = 'none';
+        }
+
+        // 4. AUTOMATYCZNE CZYSZCZENIE OSIEROCONYCH NUMERKÓW
+        if (needsCleanup) {
+            Object.values(exportLegendItems).forEach(item => {
+                if (frequencies[item.baseEmoji] === 1 && item.isNumbered) {
+                    item.emoji = item.baseEmoji;
+                    item.isNumbered = false;
+                    if (item.marker) {
+                        item.marker.setIcon(L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${item.baseEmoji}</div>`, className: 'poi-icon' }));
+                    }
+                    const li = document.getElementById(Object.keys(exportLegendItems).find(key => exportLegendItems[key] === item));
+                    if (li) {
+                        const iconSpan = li.querySelector('.leg-icon');
+                        if (iconSpan) iconSpan.innerHTML = item.baseEmoji;
+                    }
+                }
+            });
+        }
+
+        // 5. ZARZĄDZANIE PRZYCISKIEM MODALU (Zawsze aktualne)
+        const btn = document.getElementById('btnNumberStyles');
+        if (btn) {
+            const hasAnyNumbered = Object.values(exportLegendItems).some(item => item.isNumbered);
+            btn.style.display = hasAnyNumbered ? 'inline-block' : 'none';
+        }
+
+    } catch (err) {
+        console.error("[Skaner Legendy] Błąd zignorowany, system działa dalej:", err);
     }
-    
-    // Krok 5: Zarządzanie widocznością przycisku "Styl Numerków"
-    const hasAnyNumbered = Object.values(exportLegendItems).some(item => item.isNumbered);
-    document.getElementById('btnNumberStyles').style.display = hasAnyNumbered ? 'inline-block' : 'none';
 }
-setInterval(f5_scanLegend, 1000);
+//setInterval(f5_scanLegend, 1000);
 
 
 function f6_correctLegend() {
@@ -3489,45 +3498,40 @@ function executeNumberingAndSorting(shouldSort) {
 /* =========================================================
    NOWY MODAL STYLU NUMERÓW
 ========================================================= */
-function openNumberStyleModal() {
+// PODMIEŃ CAŁĄ TĘ FUNKCJĘ W JS
+window.openNumberStyleModal = function() {
+    const modal = document.getElementById('numberStyleModal');
+    if (!modal) return;
+
+    // 1. NAJPIERW OTWIERAMY MODAL (Identycznie jak exportStyleModal)
+    modal.style.display = 'flex';
+    modal.style.left = '50%';
+    modal.style.top = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
+
+    // 2. DOPIERO POTEM ŁADUJEMY DANE (Zabezpieczone przed błędem)
     try {
-        const modal = document.getElementById('numberStyleModal');
-        
         const select = document.getElementById('numStyleEmojiSelect');
-        select.innerHTML = '<option value="global">Globalne (Wszystkie)</option>';
-        
-        const freqs = {};
-        Object.values(exportLegendItems).forEach(item => {
-            if(item.baseEmoji) freqs[item.baseEmoji] = (freqs[item.baseEmoji] || 0) + 1;
-        });
-        Object.keys(freqs).forEach(em => {
-            if(freqs[em] > 1) select.innerHTML += `<option value="${em}">Tylko: ${em}</option>`;
-        });
-
-        currentEditEmoji = 'global';
-        select.value = 'global';
+        if (select) {
+            select.innerHTML = '<option value="global">Globalne (Wszystkie)</option>';
+            const freqs = {};
+            Object.values(exportLegendItems).forEach(item => {
+                if(item && item.baseEmoji) freqs[item.baseEmoji] = (freqs[item.baseEmoji] || 0) + 1;
+            });
+            Object.keys(freqs).forEach(em => {
+                if(freqs[em] > 1) select.innerHTML += `<option value="${em}">Tylko: ${em}</option>`;
+            });
+            currentEditEmoji = 'global';
+            select.value = 'global';
+        }
         loadNumberStyleToUI();
-
-        // IDENTYCZNE OTWIERANIE JAK W MODALU WYGLĄDU (BLIŹNIAK)
-        modal.style.display = 'flex';
-        modal.style.left = '50%';
-        modal.style.top = '50%';
-        modal.style.transform = 'translate(-50%, -50%)';
-        
     } catch (e) {
-        console.error("Błąd podczas otwierania modalu stylów:", e);
-        showCustomAlert("Wystąpił błąd odczytu stylów. Zresetowano do domyślnych.");
+        console.error("Błąd ładowania danych do modalu:", e);
+        // W razie błędu resetujemy style, ale MODAL I TAK ZOSTANIE OTWARTY
         legendNumberStyles = { global: { color: '#0f172a', bg: 'rgba(241, 245, 249, 0.95)', dotSize: 24, numSize: 12, dist: 4, pos: 'right', fontStyle: 'bold' }, perEmoji: {} };
         loadNumberStyleToUI();
-        
-        // Awaryjne otwarcie w razie błędu
-        const modal = document.getElementById('numberStyleModal');
-        modal.style.display = 'flex';
-        modal.style.left = '50%';
-        modal.style.top = '50%';
-        modal.style.transform = 'translate(-50%, -50%)';
     }
-}
+};
 
 
 function loadNumberStyleToUI() {
