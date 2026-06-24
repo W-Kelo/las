@@ -3307,41 +3307,63 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
 function f5_scanLegend() {
     const list = document.getElementById('exportLegendList');
     if(!list) return;
-    
+
     const frequencies = {};
+    
+    // Krok 1: Zliczamy wystąpienia bazowych emotek
     Object.values(exportLegendItems).forEach(item => {
         if(!item.baseEmoji) item.baseEmoji = item.emoji.replace(/<[^>]*>/g, '').replace(/\d+/g, '').trim();
         frequencies[item.baseEmoji] = (frequencies[item.baseEmoji] || 0) + 1;
     });
 
-    const hasDuplicates = Object.values(frequencies).some(count => count > 1);
-    const isNumberingActive = document.getElementById('btnNumberStyles').style.display !== 'none';
-    
-    // Jeśli są duplikaty, a numeracja nie jest włączona -> POKAŻ KULTURALNE PYTANIE
-    if (hasDuplicates && !isNumberingActive) {
-        checkDuplicateEmojis(true); 
-    } 
-    // Jeśli numeracja JEST włączona, sprawdzamy czy nie ma luk (np. usunięto punkt)
-    else if (isNumberingActive) {
-        let needsRebuild = false;
-        Object.entries(exportLegendItems).forEach(([id, item]) => {
-            if (frequencies[item.baseEmoji] > 1 && !item.isNumbered) needsRebuild = true;
-            if (frequencies[item.baseEmoji] === 1 && item.isNumbered) needsRebuild = true;
-        });
+    let needsPrompt = false;
+    let needsCleanup = false;
 
-        if (needsRebuild) {
-            f10_report(6, "Znaleziono wyrwę w aktywnej numeracji. Łatam strukturę.");
-            Object.values(exportLegendItems).forEach(item => {
-                item.emoji = item.baseEmoji;
-                item.isNumbered = false;
-            });
-            executeNumberingAndSorting(false);
+    // Krok 2: Analizujemy stan każdego elementu na mapie i w legendzie
+    Object.values(exportLegendItems).forEach(item => {
+        const count = frequencies[item.baseEmoji];
+        
+        // Jeśli emotka występuje >1 raz, ale NIE MA numerku -> trzeba zapytać użytkownika
+        if (count > 1 && !item.isNumbered) {
+            needsPrompt = true;
         }
+        
+        // Jeśli emotka ma numerek, ale występuje tylko 1 raz (bo usunięto resztę) -> trzeba wyczyścić
+        if (count === 1 && item.isNumbered) {
+            needsCleanup = true;
+        }
+    });
+
+    // Krok 3: Reakcja systemu
+    if (needsPrompt) {
+        checkDuplicateEmojis(true); // Natychmiast pokaż banner z propozycją numeracji
     } else {
         const banner = document.getElementById('emoji-duplicate-banner');
         if(banner) banner.style.display = 'none';
-        document.getElementById('btnNumberStyles').style.display = 'none';
     }
+
+    // Krok 4: Automatyczne czyszczenie osieroconych numerków
+    if (needsCleanup) {
+        f10_report(6, "Wykryto osierocony numerek. Czyszczę.");
+        Object.values(exportLegendItems).forEach(item => {
+            if (frequencies[item.baseEmoji] === 1 && item.isNumbered) {
+                item.emoji = item.baseEmoji;
+                item.isNumbered = false;
+                // Przywracanie czystej ikony na mapie
+                item.marker.setIcon(L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${item.baseEmoji}</div>`, className: 'poi-icon' }));
+                // Przywracanie czystej ikony w panelu bocznym
+                const li = document.getElementById(Object.keys(exportLegendItems).find(key => exportLegendItems[key] === item));
+                if (li) {
+                    const iconSpan = li.querySelector('.leg-icon');
+                    if (iconSpan) iconSpan.innerHTML = item.baseEmoji;
+                }
+            }
+        });
+    }
+    
+    // Krok 5: Zarządzanie widocznością przycisku "Styl Numerków"
+    const hasAnyNumbered = Object.values(exportLegendItems).some(item => item.isNumbered);
+    document.getElementById('btnNumberStyles').style.display = hasAnyNumbered ? 'inline-block' : 'none';
 }
 setInterval(f5_scanLegend, 1000);
 
@@ -3469,7 +3491,7 @@ function executeNumberingAndSorting(shouldSort) {
 ========================================================= */
 function openNumberStyleModal() {
     try {
-        openCenteredModal('numberStyleModal'); // Wymusza wyśrodkowanie i pokazanie na ekranie
+        const modal = document.getElementById('numberStyleModal');
         
         const select = document.getElementById('numStyleEmojiSelect');
         select.innerHTML = '<option value="global">Globalne (Wszystkie)</option>';
@@ -3485,11 +3507,25 @@ function openNumberStyleModal() {
         currentEditEmoji = 'global';
         select.value = 'global';
         loadNumberStyleToUI();
+
+        // IDENTYCZNE OTWIERANIE JAK W MODALU WYGLĄDU (BLIŹNIAK)
+        modal.style.display = 'flex';
+        modal.style.left = '50%';
+        modal.style.top = '50%';
+        modal.style.transform = 'translate(-50%, -50%)';
+        
     } catch (e) {
         console.error("Błąd podczas otwierania modalu stylów:", e);
         showCustomAlert("Wystąpił błąd odczytu stylów. Zresetowano do domyślnych.");
         legendNumberStyles = { global: { color: '#0f172a', bg: 'rgba(241, 245, 249, 0.95)', dotSize: 24, numSize: 12, dist: 4, pos: 'right', fontStyle: 'bold' }, perEmoji: {} };
         loadNumberStyleToUI();
+        
+        // Awaryjne otwarcie w razie błędu
+        const modal = document.getElementById('numberStyleModal');
+        modal.style.display = 'flex';
+        modal.style.left = '50%';
+        modal.style.top = '50%';
+        modal.style.transform = 'translate(-50%, -50%)';
     }
 }
 
