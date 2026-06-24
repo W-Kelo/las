@@ -653,7 +653,12 @@
     transition: opacity 0.2s;
 }
 .leg-icon {
-    font-size: calc(var(--exp-font, 14px) + 6px) !important; /* Ikona zawsze trochę większa od tekstu */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 65px; /* Sztywna szerokość tworząca niewidzialną kolumnę */
+    flex-shrink: 0;
+    font-size: calc(var(--exp-font, 14px) + 6px) !important;
 }
 canvas#elevation {
     cursor: crosshair;
