@@ -184,7 +184,7 @@ document.body.className = "light";
         'myPointsModal', 'customPoiModal', 'exportDataModal', 
         'exportPickerModal', 'exportStyleModal', 'confirmRefreshModal', 
         'statsSelectionModal', 'exportMetaModal', 'departureTimeModal',
-        'timeSummaryModal', 'customDescModal', 'stopsModal'
+        'timeSummaryModal', 'customDescModal', 'stopsModal', 'numberStyleModal'
     ];
     
     modals.forEach(id => {
@@ -3293,8 +3293,8 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
     `;
 
     // KLUCZOWE: width: 65px i flex-shrink: 0 gwarantują, że tekst obok zawsze zacznie się w tym samym miejscu!
-    return `
-        <div style="width: 65px; flex-shrink: 0; display: flex; flex-direction: ${flexDir}; align-items: center; justify-content: center;">
+ return `
+        <div style="width: 100%; flex-shrink: 0; display: flex; flex-direction: ${flexDir}; align-items: center; justify-content: center;">
             ${!isOverlap && (conf.pos === 'left' || conf.pos === 'top') ? numHtml : ''}
             ${dotHtml}
             ${!isOverlap && (conf.pos === 'right' || conf.pos === 'bottom') ? numHtml : ''}
@@ -3469,8 +3469,7 @@ function executeNumberingAndSorting(shouldSort) {
 ========================================================= */
 function openNumberStyleModal() {
     try {
-        // Wymuszamy pokazanie modalu jako pierwsze, by błąd w danych go nie zablokował
-        document.getElementById('numberStyleModal').style.display = 'flex';
+        openCenteredModal('numberStyleModal'); // Wymusza wyśrodkowanie i pokazanie na ekranie
         
         const select = document.getElementById('numStyleEmojiSelect');
         select.innerHTML = '<option value="global">Globalne (Wszystkie)</option>';
