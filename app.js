@@ -3374,7 +3374,7 @@ function f5_scanLegend() {
         console.error("[Skaner Legendy] Błąd zignorowany, system działa dalej:", err);
     }
 }
-//setInterval(f5_scanLegend, 1000);
+setInterval(f5_scanLegend, 1000);
 
 
 function f6_correctLegend() {
