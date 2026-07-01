@@ -538,8 +538,7 @@
         <div class="custom-alert-btns" id="customAlertBtns"></div>
     </div>
 </div>
-  <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) - PŁYWAJĄCY -->
-      <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) - PŁYWAJĄCY -->
+ <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) - PŁYWAJĄCY -->
 <div id="styleModal" class="floating-modal" style="width: 340px;" data-html2canvas-ignore>
     <div class="modal-header">
         <span style="color: #f59e0b; font-weight: bold;">🎨 Styl i Animacja</span>
@@ -589,6 +588,17 @@
                 <option value="none">Ukryj kropki (tylko linia)</option>
                 <option value="start-end">Tylko kropka początkowa i końcowa</option>
             </select>
+        </div>
+
+        <!-- NOWA SEKCJA: WYBÓR WARSTW W PLIKU GIF -->
+        <div class="style-control-group">
+            <label style="font-weight: bold; color: var(--accent);">Warstwy widoczne w pliku GIF:</label>
+            <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 5px; font-size: 0.85rem;">
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="styleGifHiking" checked> Szlaki turystyczne</label>
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="styleGifOsm" checked> Punkty z OSM</label>
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="styleGifGas" checked> Dodatkowe punkty (Baza GS)</label>
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="styleGifUser" checked> Moje zapisane punkty</label>
+            </div>
         </div>
 
         <div style="display:flex; flex-direction: column; gap: 8px; margin-top: 5px;">
