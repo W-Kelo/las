@@ -3973,22 +3973,30 @@ function saveStyle(saveToLocal) {
     routePrefColor = document.getElementById('styleColor').value;
     routePrefWeight = parseInt(document.getElementById('styleWeight').value);
     routePrefSpeed = document.getElementById('styleSpeed').value;
-    routePrefAnimPoints = document.getElementById('styleAnimPoints').value; // NOWE
+    routePrefAnimPoints = document.getElementById('styleAnimPoints').value;
     
     routePrefPointsEnabled = document.getElementById('stylePointsToggle').checked;
     routePrefPointsColor = document.getElementById('stylePointsColor').value;
+
+    // POPRAWKA: Pobranie aktualnego stanu checkboxów z modalu do zmiennych sesyjnych
+    routePrefGifHiking = document.getElementById('styleGifHiking').checked;
+    routePrefGifOsm = document.getElementById('styleGifOsm').checked;
+    routePrefGifGas = document.getElementById('styleGifGas').checked;
+    routePrefGifUser = document.getElementById('styleGifUser').checked;
 
     if (saveToLocal) {
         localStorage.setItem('gpx_color', routePrefColor);
         localStorage.setItem('gpx_weight', routePrefWeight);
         localStorage.setItem('gpx_speed', routePrefSpeed);
-        localStorage.setItem('gpx_anim_points', routePrefAnimPoints); // NOWE
+        localStorage.setItem('gpx_anim_points', routePrefAnimPoints);
         localStorage.setItem('gpx_points_enabled', routePrefPointsEnabled);
         localStorage.setItem('gpx_points_color', routePrefPointsColor);
+        
+        // Zapis zaktualizowanych wartości do pamięci trwałej przeglądarki
         localStorage.setItem('gpx_gif_hiking', routePrefGifHiking);
-       localStorage.setItem('gpx_gif_osm', routePrefGifOsm);
-       localStorage.setItem('gpx_gif_gas', routePrefGifGas);
-       localStorage.setItem('gpx_gif_user', routePrefGifUser);
+        localStorage.setItem('gpx_gif_osm', routePrefGifOsm);
+        localStorage.setItem('gpx_gif_gas', routePrefGifGas);
+        localStorage.setItem('gpx_gif_user', routePrefGifUser);
     }
 
     polyline.setStyle({ color: routePrefColor, weight: routePrefWeight });
