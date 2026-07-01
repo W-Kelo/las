@@ -4630,14 +4630,29 @@ function openCustomPoiModal(poiData) {
 
         window._currentNearbyPois = poiData.nearbyPois; // Przechowanie na rzecz onClick
 
-        poiData.nearbyPois.forEach((p, index) => {
+       poiData.nearbyPois.forEach((p, index) => {
             const dist = Math.round(poiData.userLatLng.distanceTo(p.latlng));
             let firstPhotoHtml = `<div class="nearby-img">${p.icon}</div>`;
             
-            if(p.photos) {
-                const urls = p.photos.split(';').map(u => u.trim()).filter(u=>u.length>0);
-                if(urls.length > 0) firstPhotoHtml = `<img src="${urls[0]}" class="nearby-img">`;
+            // --- ZAKTUALIZOWANY FRAGMENT ---
+            if (p.photos) {
+                let firstUrl = null;
+                
+                // Jeśli to nowy format (tablica obiektów z GS)
+                if (Array.isArray(p.photos) && p.photos.length > 0) {
+                    firstUrl = p.photos[0].url;
+                } 
+                // Zabezpieczenie dla starszego formatu (string ze średnikami)
+                else if (typeof p.photos === 'string' && p.photos.trim().length > 0) {
+                    const urls = p.photos.split(';').map(u => u.trim()).filter(u => u.length > 0);
+                    if (urls.length > 0) firstUrl = urls[0];
+                }
+                
+                if (firstUrl) {
+                    firstPhotoHtml = `<img src="${firstUrl}" class="nearby-img">`;
+                }
             }
+            // -------------------------------
 
             extraHtml += `
                 <div class="nearby-item" onclick="openNearbyPoi(${index})">
