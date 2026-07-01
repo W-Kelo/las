@@ -4267,168 +4267,177 @@ function f4_restoreGifZoom() {
     });
 }
 
+/* ================= ZAAWANSOWANE NAGRYWANIE GIF W TLE (BEZ BLOKOWANIA UI) ================= */
 async function recordRouteGIF() {
-    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy.");
+    if (routeGeometry.length < 2) {
+        return showCustomAlert("Brak trasy do nagrania. Najpierw wyznacz trasę lub zaimportuj plik GPX.");
+    }
 
-    const overlay = document.getElementById('recordingOverlay');
-    const progressText = document.getElementById('gifProgressText');
-    const progressBar = document.getElementById('gifProgressBar');
-    overlay.style.display = 'flex';
-    map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
-    
-    // Czekamy na dopasowanie mapy
-    await new Promise(r => setTimeout(r, 1000));
+    // 1. Utworzenie dyskretnego, nieblokującego powiadomienia w rogu ekranu
+    let progressToast = document.getElementById('gifProgressToast');
+    if (!progressToast) {
+        progressToast = document.createElement('div');
+        progressToast.id = 'gifProgressToast';
+        // HTML2Canvas zignoruje ten element podczas zrzutów
+        progressToast.setAttribute('data-html2canvas-ignore', 'true');
+        progressToast.style.cssText = "position: fixed; bottom: 20px; left: 20px; background: rgba(15, 23, 42, 0.95); color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 99999; display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; border: 1px solid rgba(255,255,255,0.1); width: 280px; font-family: sans-serif;";
+        document.body.appendChild(progressToast);
+    }
+    progressToast.style.display = 'flex';
+    progressToast.innerHTML = `
+        <div style="font-weight: bold; display: flex; align-items: center; gap: 8px;">
+            <span style="color: #ec4899; animation: pulseDraw 1s infinite; font-size: 1.1rem;">●</span> Rejestrowanie animacji w tle...
+        </div>
+        <div id="gifToastText" style="color: #cbd5e1;">Inicjalizacja środowiska wirtualnego...</div>
+        <div style="width: 100%; height: 6px; background: #334155; border-radius: 3px; overflow: hidden; margin-top: 4px;">
+            <div id="gifToastBar" style="height: 100%; width: 0%; background: #ec4899; transition: width 0.1s;"></div>
+        </div>
+    `;
 
-    // 1. TWARDE UKRYCIE KONTROLEK LEAFLETA
-    await f3_checkGifZoom();
+    // 2. Budowa wirtualnego, ukrytego kontenera (Rozdzielczość HD 1024x576)
+    const hiddenContainer = document.createElement('div');
+    hiddenContainer.id = 'hiddenGifMapContainer';
+    hiddenContainer.style.cssText = "position: absolute; left: -9999px; top: 0; width: 1024px; height: 576px; overflow: hidden; z-index: -5000;";
+    document.body.appendChild(hiddenContainer);
 
-    // 2. TWARDE UKRYCIE KROPEK (Z wymuszonym odświeżeniem Canvasa)
-    polyline.setStyle({ opacity: 0 });
-    f1_scanAnimation(routePrefAnimPoints);
-    await new Promise(r => setTimeout(r, 200)); // Czekamy aż Leaflet zmaże kropki z płótna!
+    // Inicjalizacja wirtualnej mapy bez żadnych kontrolek
+    const hiddenMap = L.map(hiddenContainer, {
+        zoomControl: false,
+        attributionControl: false,
+        preferCanvas: true,
+        dragging: false,
+        doubleClickZoom: false,
+        scrollWheelZoom: false,
+        boxZoom: false,
+        keyboard: false
+    });
 
-    if (animLineLayer) map.removeLayer(animLineLayer);
-    if (animDotMarker) map.removeLayer(animDotMarker);
+    // Dopasowanie warstwy kafelków do motywu głównego i mapy satelitarnej
+    let tileUrl;
+    if (typeof isSatellite !== 'undefined' && isSatellite) {
+        tileUrl = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
+    } else {
+        tileUrl = dark
+            ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+            : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    }
 
-    animLineLayer = L.polyline([routeGeometry[0]], { color: routePrefColor, weight: routePrefWeight, opacity: 0.9, lineJoin: 'round' }).addTo(map);
-    animDotMarker = L.circleMarker(routeGeometry[0], { radius: routePrefWeight + 2, color: '#fff', weight: 2, fillColor: routePrefColor, fillOpacity: 1 }).addTo(map);
+    const hiddenTileLayer = L.tileLayer(tileUrl, { crossOrigin: true });
+    hiddenTileLayer.addTo(hiddenMap);
 
+    // Obliczenie granic i dopasowanie rzutu wirtualnego
+    const dummyPolyline = L.polyline(routeGeometry).addTo(hiddenMap);
+    hiddenMap.fitBounds(dummyPolyline.getBounds(), { padding: [50, 50] });
+    hiddenMap.removeLayer(dummyPolyline);
+
+    // Oczekiwanie na stabilne załadowanie kafli w pamięci podręcznej przeglądarki
+    document.getElementById('gifToastText').innerText = "Wczytywanie kafli mapy...";
+    await new Promise(resolve => {
+        hiddenTileLayer.once('load', () => setTimeout(resolve, 800));
+        setTimeout(resolve, 1500); // Awaryjny timeout
+    });
+
+    // Przygotowanie warstw wektorowych na wirtualnej mapie
+    const animLine = L.polyline([routeGeometry[0]], {
+        color: routePrefColor,
+        weight: routePrefWeight,
+        opacity: 0.9,
+        lineJoin: 'round'
+    }).addTo(hiddenMap);
+
+    const animDot = L.circleMarker(routeGeometry[0], {
+        radius: routePrefWeight + 2,
+        color: '#fff',
+        weight: 2,
+        fillColor: routePrefColor,
+        fillOpacity: 1
+    }).addTo(hiddenMap);
+
+    // Implementacja rygorystycznego filtra wyświetlania punktów łączeniowych
+    const dotsGroup = L.layerGroup().addTo(hiddenMap);
+    const dotColor = routePrefPointsEnabled ? routePrefPointsColor : '#22c55e';
+
+    routePoints.forEach((p, index) => {
+        const isStart = index === 0;
+        const isEnd = index === routePoints.length - 1;
+        let shouldRender = true;
+
+        if (routePrefAnimPoints === 'none') shouldRender = false;
+        else if (routePrefAnimPoints === 'start-end') shouldRender = (isStart || isEnd);
+
+        if (shouldRender) {
+            L.circleMarker(p.latlng, {
+                radius: 8,
+                color: '#fff',
+                weight: 3,
+                fillColor: dotColor,
+                fillOpacity: 1
+            }).addTo(dotsGroup);
+        }
+    });
+
+    // Inicjalizacja biblioteki GIF z bezpiecznym wstrzyknięciem Workera
     const workerBlob = new Blob([`importScripts('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js');`], { type: 'application/javascript' });
-    const gif = new GIF({ workers: 2, quality: 10, workerScript: URL.createObjectURL(workerBlob), width: map.getSize().x, height: map.getSize().y });
+    const gif = new GIF({
+        workers: 2,
+        quality: 10,
+        workerScript: URL.createObjectURL(workerBlob),
+        width: 1024,
+        height: 576
+    });
 
     const totalDist = calculateTotalDist();
     let framesCount = routePrefSpeed === 'slow' ? 45 : (routePrefSpeed === 'fast' ? 10 : 20);
     const distStep = totalDist / framesCount;
-    const mapContainer = document.getElementById('map');
 
+    // Pętla generująca klatki bez blokowania wątku głównego
     for (let i = 0; i <= framesCount; i++) {
         let targetDist = Math.min(i * distStep, totalDist);
         const posData = getPointAtDistance(routeGeometry, targetDist);
         const currentLineCoords = routeGeometry.slice(0, posData.segmentIndex);
         currentLineCoords.push(posData.latLng);
-        animLineLayer.setLatLngs(currentLineCoords);
-        animDotMarker.setLatLng(posData.latLng);
-        
-        await new Promise(r => setTimeout(r, 50));
 
-        progressText.innerText = `Robienie zrzutów: ${i} / ${framesCount}`;
-        progressBar.style.width = `${(i / framesCount) * 50}%`; 
-        
-        const canvas = await html2canvas(mapContainer, { useCORS: true, scale: 1 });
+        animLine.setLatLngs(currentLineCoords);
+        animDot.setLatLng(posData.latLng);
+
+        // Krótkie opóźnienie asynchroniczne na synchronizację wątku graficznego
+        await new Promise(r => setTimeout(r, 60));
+
+        const percent = Math.round((i / framesCount) * 50);
+        document.getElementById('gifToastText').innerText = `Renderowanie klatki ${i} z ${framesCount}`;
+        document.getElementById('gifToastBar').style.width = `${percent}%`;
+
+        // Zrzut ekranu z wirtualnego kontenera
+        const canvas = await html2canvas(hiddenContainer, {
+            useCORS: true,
+            scale: 1,
+            logging: false
+        });
+
+        // Wygładzone, statyczne nanoszenie praw autorskich na płótno (zapobiega migotaniu)
+        const ctx = canvas.getContext('2d');
+        if (typeof forcePasteCopyright === 'function') {
+            forcePasteCopyright(canvas, ctx);
+        }
+
         let delay = i === 0 ? 1000 : (i === framesCount ? 2000 : 100);
-        gif.addFrame(canvas, {delay: delay, copy: true});
+        gif.addFrame(canvas, { delay: delay, copy: true });
     }
 
-    progressText.innerText = `Składanie pliku GIF...`;
-    gif.on('progress', p => progressBar.style.width = `${50 + (p * 50)}%`);
+    document.getElementById('gifToastText').innerText = "Kompilowanie pliku GIF...";
+
+    gif.on('progress', p => {
+        const percent = 50 + Math.round(p * 50);
+        document.getElementById('gifToastBar').style.width = `${percent}%`;
+    });
+
     gif.on('finished', blob => {
-        overlay.style.display = 'none';
-        map.removeLayer(animLineLayer); map.removeLayer(animDotMarker);
-        polyline.setStyle({ opacity: 0.9 });
-        
-        // 3. PRZYWRACANIE STANU MAPY
-        f1_scanAnimation('all'); 
-        f4_restoreGifZoom();     
+        progressToast.style.display = 'none';
 
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `animacja_trasy_${new Date().toLocaleDateString()}.gif`;
-        a.click();
-    });
-    gif.render();
-}
-/* ================= EKSPORT DO GIF ================= */
-async function recordRouteGIF() {
-    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy do nagrania. Najpierw wyznacz trasę lub zaimportuj plik GPX.");
-    
-    const overlay = document.getElementById('recordingOverlay');
-    const progressText = document.getElementById('gifProgressText');
-    const progressBar = document.getElementById('gifProgressBar');
-    
-    overlay.style.display = 'flex';
-    map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: false });
-    
-    // Poczekaj na załadowanie kafli po dopasowaniu boundów
-    await new Promise(r => setTimeout(r, 1000));
+        // Sprzątanie pamięci podręcznej i usunięcie wirtualnych kontenerów
+        if (hiddenMap) hiddenMap.remove();
+        hiddenContainer.remove();
 
-    polyline.setStyle({ opacity: 0 });
-    
-    if (animLineLayer) map.removeLayer(animLineLayer);
-    if (animDotMarker) map.removeLayer(animDotMarker);
-
-    animLineLayer = L.polyline([routeGeometry[0]], { 
-        color: routePrefColor, weight: routePrefWeight, opacity: 0.9, lineJoin: 'round' 
-    }).addTo(map);
-
-    animDotMarker = L.circleMarker(routeGeometry[0], {
-        radius: routePrefWeight + 2, color: '#fff', weight: 2, fillColor: routePrefColor, fillOpacity: 1
-    }).addTo(map);
-
-    // Aby uniknąć problemów CORS z Web Workerem gif.js, używamy triku z Blob url
-    const workerBlob = new Blob([`
-        importScripts('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js');
-    `], { type: 'application/javascript' });
-
-    const gif = new GIF({
-        workers: 2,
-        quality: 10,
-        workerScript: URL.createObjectURL(workerBlob),
-        width: map.getSize().x,
-        height: map.getSize().y
-    });
-
-    // Ustawienia klatek w zależności od szybkości
-    const totalDist = calculateTotalDist();
-    let framesCount = 20; // Default
-    if (routePrefSpeed === 'slow') framesCount = 45;
-    else if (routePrefSpeed === 'fast') framesCount = 10;
-    
-    const distStep = totalDist / framesCount;
-    const mapContainer = document.getElementById('map');
-
-    for (let i = 0; i <= framesCount; i++) {
-        let targetDist = i * distStep;
-        if(targetDist > totalDist) targetDist = totalDist;
-
-        // Aktualizacja mapy
-        const posData = getPointAtDistance(routeGeometry, targetDist);
-        const currentLineCoords = routeGeometry.slice(0, posData.segmentIndex);
-        currentLineCoords.push(posData.latLng);
-        animLineLayer.setLatLngs(currentLineCoords);
-        animDotMarker.setLatLng(posData.latLng);
-
-        // Krótkie opóźnienie by DOM się wyrenderował przed screenem
-        await new Promise(r => setTimeout(r, 50));
-
-        progressText.innerText = `Robienie zrzutów: ${i} / ${framesCount}`;
-        progressBar.style.width = `${(i / framesCount) * 50}%`; // Pierwsze 50% to screeny
-
-        // Rób screen mapy
-        const canvas = await html2canvas(mapContainer, { useCORS: true, scale: 1 });
-        
-        // Zatrzymanie klatki na początku i końcu żeby gif był czytelny
-        let delay = 100;
-        if (i === 0) delay = 1000;
-        if (i === framesCount) delay = 2000;
-        
-        gif.addFrame(canvas, {delay: delay, copy: true});
-    }
-
-    progressText.innerText = `Składanie pliku GIF... (może to chwilę potrwać)`;
-
-    gif.on('progress', function(p) {
-        progressBar.style.width = `${50 + (p * 50)}%`; // Drugie 50% to renderowanie
-    });
-
-    gif.on('finished', function(blob) {
-        overlay.style.display = 'none';
-        
-        // Sprzątanie po animacji
-        map.removeLayer(animLineLayer);
-        map.removeLayer(animDotMarker);
-        polyline.setStyle({ opacity: 0.9 });
-        
-        // Pobieranie
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
