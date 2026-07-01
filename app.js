@@ -3362,12 +3362,13 @@ function f5_scanLegend() {
                 }
             });
         }
-
+        
         // 5. ZARZĄDZANIE PRZYCISKIEM MODALU (Zawsze aktualne)
         const btn = document.getElementById('btnNumberStyles');
         if (btn) {
-            const hasAnyNumbered = Object.values(exportLegendItems).some(item => item.isNumbered);
-            btn.style.display = hasAnyNumbered ? 'inline-block' : 'none';
+            // POPRAWKA: Pokazuj przycisk, jeśli w legendzie jest min. 1 element
+            const hasAnyLegendItem = Object.keys(exportLegendItems).length > 0;
+            btn.style.display = hasAnyLegendItem ? 'inline-block' : 'none';
         }
 
     } catch (err) {
@@ -3460,27 +3461,29 @@ function executeNumberingAndSorting(shouldSort) {
         domItems.forEach(li => list.appendChild(li));
     }
 
-    // Aplikowanie HTML na podstawie ustawień (Przelatujemy po fizycznym DOM, by numery szły 1, 2, 3 z góry na dół)
+   // Aplikowanie HTML na podstawie ustawień
     Array.from(list.children).forEach(li => {
         const id = li.id;
         const item = exportLegendItems[id];
         
-        if (frequencies[item.baseEmoji] > 1) {
+        let myNum = "";
+        let isDup = frequencies[item.baseEmoji] > 1;
+        
+        if (isDup) {
             counters[item.baseEmoji] = (counters[item.baseEmoji] || 0) + 1;
-            const myNum = counters[item.baseEmoji];
-            
-            // F9: Weryfikacja stylów
-            const conf = legendNumberStyles.perEmoji[item.baseEmoji] || legendNumberStyles.global;
-            
-            const htmlNode = generateStyledNumberHtml(item.baseEmoji, myNum, conf);
-            
-            item.emoji = htmlNode; // Nadpisujemy dla bezpieczeństwa eksportu
-            item.isNumbered = true;
-            item.marker.setIcon(L.divIcon({ html: htmlNode, className: 'poi-icon' }));
-
-            const iconSpan = li.querySelector('.leg-icon');
-            if (iconSpan) iconSpan.innerHTML = htmlNode;
+            myNum = counters[item.baseEmoji];
         }
+
+        // Zawsze nakładamy styl tła i kropki (nawet jeśli nie ma numeru = myNum jest puste)
+        const conf = legendNumberStyles.perEmoji[item.baseEmoji] || legendNumberStyles.global;
+        const htmlNode = generateStyledNumberHtml(item.baseEmoji, myNum, conf);
+        
+        item.emoji = htmlNode;
+        item.isNumbered = isDup; 
+        item.marker.setIcon(L.divIcon({ html: htmlNode, className: 'poi-icon' }));
+
+        const iconSpan = li.querySelector('.leg-icon');
+        if (iconSpan) iconSpan.innerHTML = htmlNode;
     });
 }
 
@@ -3643,33 +3646,30 @@ function updatePanelVisibility() {
     const panel = document.getElementById('mapInfoPanel');
     if(!panel) return;
 
-    // Sprawdzanie czy są jakiekolwiek teksty lub statystyki
     const hasText = document.getElementById('miTitle').style.display === 'block' || 
                     document.getElementById('miDate').style.display === 'block' || 
                     document.getElementById('miDesc').style.display === 'block' ||
                     document.getElementById('miStats').style.display === 'flex'; 
     const hasLegend = document.getElementById('exportLegendList').children.length > 0;
     
-    // Sprawdzanie, czy istnieje JAKIKOLWIEK panel na ekranie (główny matczyny, lub oderwane dzieci)
-    const anyDetached = document.querySelectorAll('.detached-panel').length > 0;
-    const hasAnyPanel = hasText || hasLegend || anyDetached;
+    // Liczymy oderwane panele i wszystkie sekcje
+    const detachedCount = document.querySelectorAll('.detached-panel').length;
+    const hasAnyPanel = hasText || hasLegend || (detachedCount > 0);
 
-    // Pobranie uchwytów do przycisków na pasku (musimy upewnić się, że mają nadane ID w HTML, lub je po nim znajdziemy)
     const btnDrag = document.getElementById('btnDragPanel');
     const btnResize = document.getElementById('btnResizePanel');
     const btnScale = document.getElementById('btnScalePanel');
     const btnScissors = document.getElementById('btnScissors');
-    const btnMerge = document.getElementById('btnMerge'); // Ten przycisk ma spację na końcu ID w Twoim HTML, patrz uwaga poniżej!
+    const btnMerge = document.getElementById('btnMerge');
 
-    // Główny panel "matka" pokazuje się tylko jeśli sam ma jakąś zawartość (nie wszystko zostało wyrwane)
     if (hasText || hasLegend) {
         panel.style.display = 'block';
     } else {
         panel.style.display = 'none';
     }
 
-    // 1. ZARZĄDZANIE PRZYCISKAMI PODSTAWOWYMI (Przesuwanie, Kadrowanie, Skalowanie)
-    // Pokazują się gdy istnieje jakikolwiek panel do modyfikacji
+    // 1. ZARZĄDZANIE PRZYCISKAMI PODSTAWOWYMI
+    // Jeśli nie ma absolutnie ŻADNEGO panelu -> Ukrywamy podstawowe narzędzia
     if (hasAnyPanel) {
         if(btnDrag) btnDrag.style.display = 'inline-block';
         if(btnResize) btnResize.style.display = 'inline-block';
@@ -3679,35 +3679,29 @@ function updatePanelVisibility() {
         if(btnResize) btnResize.style.display = 'none';
         if(btnScale) btnScale.style.display = 'none';
         
-        // Automatycznie wyłączamy tryby, jeśli wszystko zniknęło
         if(isPanelDraggable) togglePanelDrag();
         if(isPanelResizable) togglePanelResize();
         if(isPanelScaleMode) togglePanelScale();
     }
 
-    // 2. ZARZĄDZANIE NOŻYCZKAMI (Rozłączanie)
-    // Przycisk pokazujemy TYLKO, gdy panel "matka" zawiera w sobie co najmniej 2 widoczne sekcje
-    if (btnScissors) {
-        const children = Array.from(panel.children).filter(el => 
-            el && el.style && el.style.display !== 'none' && el.id && el.id !== '' && el.innerHTML.trim() !== '' && !el.classList.contains('premium-resize-overlay') && !el.classList.contains('split-divider')
-        );
-        
-        if (children.length >= 2) {
-            btnScissors.style.display = 'inline-block';
-        } else {
-            btnScissors.style.display = 'none';
-            if(isScissorsMode) activateScissorsMode(); // Wyłącz nożyczki, jeśli np. usunięto przedostatnią sekcję
-        }
-    }
+    // 2. ZARZĄDZANIE NOŻYCZKAMI I SCALANIEM
+    // Liczymy sekcje w "matce" (bez dzielników i siatek)
+    const childrenCount = Array.from(panel.children).filter(el => 
+        el && el.style && el.style.display !== 'none' && el.id && el.id !== '' && el.innerHTML.trim() !== '' && !el.classList.contains('premium-resize-overlay') && !el.classList.contains('split-divider')
+    ).length;
+    
+    // Suma wszystkich paneli (w matce + oderwanych)
+    const totalPanelsCount = childrenCount + detachedCount;
 
-    // 3. ZARZĄDZANIE SCALANIEM
-    // Przycisk pokazujemy TYLKO, gdy istnieje chociaż jeden wyrwany panel
-    if (btnMerge) {
-        if (anyDetached) {
-            btnMerge.style.display = 'inline-block';
-        } else {
-            btnMerge.style.display = 'none';
-        }
+    // Jeśli jest mniej niż 2 panele -> Ukrywamy Nożyczki i Złącz wszystko
+    if (totalPanelsCount >= 2) {
+        if(btnScissors) btnScissors.style.display = 'inline-block';
+        // Scalanie pokazujemy tylko, gdy faktycznie jest co scalać (coś jest oderwane)
+        if(btnMerge) btnMerge.style.display = detachedCount > 0 ? 'inline-block' : 'none';
+    } else {
+        if(btnScissors) btnScissors.style.display = 'none';
+        if(btnMerge) btnMerge.style.display = 'none';
+        if(isScissorsMode) activateScissorsMode(); // Bezpieczne wyłączenie
     }
 }
 
@@ -7324,237 +7318,4 @@ function observeModalResize() {
     });
     resizeObserver.observe(modal);
 }
-// ============================================================================
-// SYSTEM 8 FUNKCJI - ANALIZA PIKSELI I ZARZĄDZANIE MODALEM
-// ============================================================================
 
-// FUNKCJA 8: Raportuje działanie całego systemu
-function f8_raport(funkcja, opis, status) {
-    let styl = 'color: #f59e0b; font-weight: bold;'; // WARN
-    if (status === 'OK') styl = 'color: #22c55e; font-weight: bold;';
-    else if (status === 'ERR') styl = 'color: #ef4444; font-weight: bold;';
-    else if (status === 'INFO') styl = 'color: #3b82f6; font-weight: bold;';
-    
-    console.log(`%c[F${funkcja}] ${opis} [${status}]`, styl);
-}
-
-// FUNKCJA 1: Skaner emotek (Analiza pikseli legendy)
-function f1_skanerEmotek() {
-    setInterval(() => {
-        const legendList = document.getElementById('exportLegendList');
-        if (!legendList || legendList.children.length === 0) return;
-
-        f8_raport(1, "Skanowanie pikseli panelu legendy w poszukiwaniu duplikatów...", "INFO");
-        
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        let duplikatyWykryte = false;
-        const wystapienia = {};
-        const itemy = Array.from(legendList.querySelectorAll('li'));
-
-        itemy.forEach(li => {
-            const iconNode = li.querySelector('.leg-icon');
-            if (iconNode) {
-                // Wyodrębnienie znaku do analizy rastrowej
-                const znak = iconNode.innerText.replace(/\d+/g, '').trim();
-                if (znak) {
-                    wystapienia[znak] = (wystapienia[znak] || 0) + 1;
-                    
-                    // Fizyczne rysowanie na płótnie w pamięci w celu analizy pikseli
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.fillText(znak, 10, 10);
-                    const imgData = ctx.getImageData(0, 0, 20, 20).data;
-                    
-                    let zapalonePiksele = 0;
-                    for(let i=3; i<imgData.length; i+=4) {
-                        if(imgData[i] > 0) zapalonePiksele++;
-                    }
-
-                    if (wystapienia[znak] > 1) {
-                        f8_raport(1, `Wykryto kolizję pikseli (duplikat) dla znaku: ${znak} (Zagartość pikseli: ${zapalonePiksele})`, "WARN");
-                        duplikatyWykryte = true;
-                    }
-                }
-            }
-        });
-
-        if (duplikatyWykryte) {
-            f8_raport(1, "Przekazywanie sygnału o duplikatach do Funkcji 2.", "OK");
-            f2_uruchomNumeracje();
-        } else {
-            f8_raport(1, "Piksele w normie. Brak duplikatów w legendzie.", "OK");
-        }
-    }, 5000); // Cykl co 5 sekund
-}
-
-// FUNKCJA 2: Zapytanie o przenumerowanie
-let f2_zapytanieAktywne = false;
-function f2_uruchomNumeracje() {
-    if (f2_zapytanieAktywne) return;
-    f2_zapytanieAktywne = true;
-    
-    f8_raport(2, "Zgłoszenie odebrane. Wyświetlam zapytanie o ingerencję w numerację.", "INFO");
-    const decyzja = confirm("Skaner wizualny wykrył takie same emotki w legendzie bez odpowiedniej numeracji. Czy ponumerować je ponownie?");
-    
-    if (decyzja) {
-        f8_raport(2, "Użytkownik wyraził zgodę. Inicjowanie procesu numeracji.", "OK");
-        if (typeof applyEmojiNumbering === 'function') applyEmojiNumbering(true);
-    } else {
-        f8_raport(2, "Użytkownik odrzucił propozycję numeracji.", "WARN");
-    }
-    
-    setTimeout(() => f2_zapytanieAktywne = false, 10000); // Blokada ponownego pytania na 10 sekund
-}
-
-// FUNKCJA 3: Nasłuch na przycisk modalu
-function f3_nasluchPrzycisk() {
-    const btn = document.getElementById('btnNumberStyles');
-    if (btn) {
-        // Usuwanie starych listenerów by uniknąć wielokrotnego odpalania
-        const newBtn = btn.cloneNode(true);
-        btn.parentNode.replaceChild(newBtn, btn);
-
-        newBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            f8_raport(3, "Zarejestrowano fizyczne kliknięcie przycisku stylów numeracji.", "OK");
-            f8_raport(3, "Aktywacja modułu zrzutów ekranu (Funkcja 4).", "INFO");
-            f4_zrzutIOCR();
-        });
-        f8_raport(3, "Pomyślnie podpięto nasłuch uderzeniowy na przycisk.", "OK");
-    } else {
-        f8_raport(3, "Brak przycisku #btnNumberStyles w instancji DOM.", "ERR");
-    }
-}
-
-// FUNKCJA 4: Zrzut ekranu i wirtualny OCR
-async function f4_zrzutIOCR() {
-    f8_raport(4, "Rozpoczynam generowanie zrzutu matrycy do pamięci operacyjnej...", "INFO");
-    try {
-        const canvas = await html2canvas(document.body, { logging: false, scale: 1 });
-        f8_raport(4, "Zrzut ekranu gotowy. Uruchamiam skaner wizualny (OCR)...", "OK");
-
-        const modal = document.getElementById('numberStyleModal');
-        let widocznyNaZrzucie = false;
-
-        if (modal) {
-            const rect = modal.getBoundingClientRect();
-            // Analiza zrzutu w poszukiwaniu występowania okna
-            if (rect.width > 0 && rect.height > 0 && modal.style.display !== 'none') {
-                const ctx = canvas.getContext('2d');
-                const imgData = ctx.getImageData(rect.left, rect.top, rect.width, rect.height);
-                // OCR / Pixel check: Sprawdzenie czy w wycinku istnieją dane obrazu
-                if (imgData && imgData.data.length > 0) widocznyNaZrzucie = true;
-            }
-        }
-
-        f8_raport(4, `Zakończono analizę. Status odnalezienia modalu: ${widocznyNaZrzucie}`, widocznyNaZrzucie ? "OK" : "WARN");
-        f5_decyzjaZarzadcy(widocznyNaZrzucie);
-
-    } catch (error) {
-        f8_raport(4, `Krytyczny błąd podczas zrzutu/OCR: ${error.message}`, "ERR");
-        f5_decyzjaZarzadcy(false);
-    }
-}
-
-// FUNKCJA 5: Analiza logiki występowania
-function f5_decyzjaZarzadcy(czyWidoczny) {
-    f8_raport(5, `Raport zwrotny z modułu 4: Widoczność = ${czyWidoczny}`, "INFO");
-    if (!czyWidoczny) {
-        f8_raport(5, "Modal nie występuje wizualnie w przestrzeni widzenia. Delegowanie wymuszenia do Funkcji 6.", "WARN");
-        f6_obliczIWstaw();
-    } else {
-        f8_raport(5, "Modal jest już prawidłowo wyrenderowany w warstwie wizualnej.", "OK");
-    }
-}
-
-// FUNKCJA 6: Obliczenia geometryczne i wstawianie
-function f6_obliczIWstaw() {
-    f8_raport(6, "Pobieranie wymiarów Viewportu do obliczeń wstawienia...", "INFO");
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    const centerX = w / 2;
-    const centerY = h / 2;
-
-    const modal = document.getElementById('numberStyleModal');
-    if (modal) {
-        // Przygotowanie elementu
-        modal.style.setProperty('display', 'flex', 'important');
-        modal.style.position = 'fixed';
-        modal.style.visibility = 'hidden'; 
-
-        // Pobranie rzeczywistych wymiarów po wyświetleniu w DOM
-        const modW = modal.offsetWidth || 380;
-        const modH = modal.offsetHeight || 350;
-
-        // Obliczenia dokładnego lewego górnego rogu
-        const finalX = centerX - (modW / 2);
-        const finalY = Math.max(10, centerY - (modH / 2)); // Zabezpieczenie przed ucięciem górnej krawędzi
-
-        // Wstrzyknięcie współrzędnych i usunięcie transformacji, która często zawodzi w Leaflecie
-        modal.style.left = `${finalX}px`;
-        modal.style.top = `${finalY}px`;
-        modal.style.transform = 'none'; 
-        modal.style.margin = '0';
-        modal.style.zIndex = '99999'; // Siłowe uderzenie z-index
-        
-        // Finalna ekspozycja
-        modal.style.visibility = 'visible';
-
-        f8_raport(6, `Sukces obliczeń. Wstawiono okno na koordynatach: X=${finalX}px, Y=${finalY}px`, "OK");
-        
-        // Uruchomienie ładowania danych, jeśli istnieje odpowiednia funkcja
-        if (typeof loadNumberStyleToUI === 'function') loadNumberStyleToUI();
-        
-        // Zbudowanie opcji dropdownu dla modalu
-        const select = document.getElementById('numStyleEmojiSelect');
-        if (select && typeof exportLegendItems !== 'undefined') {
-            select.innerHTML = '<option value="global">Globalne (Wszystkie)</option>';
-            const freqs = {};
-            Object.values(exportLegendItems).forEach(item => {
-                if(item && item.baseEmoji) freqs[item.baseEmoji] = (freqs[item.baseEmoji] || 0) + 1;
-            });
-            Object.keys(freqs).forEach(em => {
-                if(freqs[em] > 1) select.innerHTML += `<option value="${em}">Tylko: ${em}</option>`;
-            });
-        }
-    } else {
-        f8_raport(6, "Brak instancji #numberStyleModal w dokumencie głównym (DOM).", "ERR");
-    }
-}
-
-// FUNKCJA 7: Stały radar obecności
-function f7_monitorWidocznosci() {
-    setInterval(() => {
-        const modal = document.getElementById('numberStyleModal');
-        if (modal) {
-            const style = window.getComputedStyle(modal);
-            const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
-            const rect = modal.getBoundingClientRect();
-            const isOnScreen = rect.width > 0 && rect.height > 0 && rect.top >= -50 && rect.left >= -50;
-
-            if (isVisible && isOnScreen) {
-                // Raportujemy cicho, by nie spamować, gdy modal jest otwarty
-                console.log(`%c[F7] Radar: Modal utrzymuje stabilną pozycję [X:${Math.round(rect.left)}, Y:${Math.round(rect.top)}]`, 'color: #94a3b8;');
-            }
-        }
-    }, 4000);
-}
-
-// ============================================================================
-// INICJATOR SYSTEMU 8 FUNKCJI
-// ============================================================================
-document.addEventListener('DOMContentLoaded', () => {
-    f8_raport(8, "INICJALIZACJA ARCHITEKTURY BADAWCZO-WIZUALNEJ (8 FUNKCJI)", "INFO");
-    f1_skanerEmotek();
-    f7_monitorWidocznosci();
-    
-    // Obserwator do momentu, aż przycisk pojawi się w DOM
-    const observer = new MutationObserver((mutations) => {
-        if (document.getElementById('btnNumberStyles')) {
-            f3_nasluchPrzycisk();
-            observer.disconnect(); // Odpinamy, gdy znajdzie przycisk
-        }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-});
