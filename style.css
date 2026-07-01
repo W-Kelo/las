@@ -1170,7 +1170,26 @@ select.style-select {
 .dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
 .dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
 /* ===================================
-   21. TAJEMNICZE POZOSTAŁOŚCI
+   21. STYLIZACJA ADRESÓW URL
+=================================== */
+/* --- ESTETYCZNA STYLIZACJA LINKÓW W OPISACH --- */
+.custom-app-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+    border-bottom: 1px dashed var(--accent);
+    transition: color 0.2s ease, border-bottom-color 0.2s ease;
+    word-break: break-all;
+    overflow-wrap: break-word;
+    display: inline;
+}
+
+.custom-app-link:hover {
+    color: #3b82f6; /* Delikatny błękit przy najechaniu myszką */
+    border-bottom: 1px solid #3b82f6;
+}
+/* ===================================
+   22. TAJEMNICZE POZOSTAŁOŚCI
 =================================== */        
 .modal-footer-actions {
     display: flex;
@@ -1181,7 +1200,7 @@ select.style-select {
 }
 .light .modal-footer-actions { border-top-color: rgba(0,0,0,0.1); }
 /* ===================================
-   22. MOBILE MEDIA QUERY
+   23. MOBILE MEDIA QUERY
 =================================== */
 /* --- Wersja mobilna --- */
 @media (max-width: 768px) {
