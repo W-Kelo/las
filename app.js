@@ -142,6 +142,10 @@ let currentEditEmoji = 'global';
 let userReorderedLegend = false;
 let _snapTimer = null;
 let _isLongPress = false;
+let routePrefGifHiking = localStorage.getItem('gpx_gif_hiking') !== 'false';
+let routePrefGifOsm = localStorage.getItem('gpx_gif_osm') !== 'false';
+let routePrefGifGas = localStorage.getItem('gpx_gif_gas') !== 'false';
+let routePrefGifUser = localStorage.getItem('gpx_gif_user') !== 'false';
 let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
@@ -3955,6 +3959,11 @@ function openStyleModal() {
     document.getElementById('stylePointsToggle').checked = routePrefPointsEnabled;
     document.getElementById('stylePointsColor').value = routePrefPointsColor;
     document.getElementById('stylePointsColorHex').innerText = routePrefPointsColor;
+    // Dołącz do istniejącej funkcji openStyleModal()
+document.getElementById('styleGifHiking').checked = routePrefGifHiking;
+document.getElementById('styleGifOsm').checked = routePrefGifOsm;
+document.getElementById('styleGifGas').checked = routePrefGifGas;
+document.getElementById('styleGifUser').checked = routePrefGifUser;
     togglePointsColorInput(routePrefPointsEnabled);
 
     openCenteredModal('styleModal');
@@ -3976,6 +3985,10 @@ function saveStyle(saveToLocal) {
         localStorage.setItem('gpx_anim_points', routePrefAnimPoints); // NOWE
         localStorage.setItem('gpx_points_enabled', routePrefPointsEnabled);
         localStorage.setItem('gpx_points_color', routePrefPointsColor);
+        localStorage.setItem('gpx_gif_hiking', routePrefGifHiking);
+       localStorage.setItem('gpx_gif_osm', routePrefGifOsm);
+       localStorage.setItem('gpx_gif_gas', routePrefGifGas);
+       localStorage.setItem('gpx_gif_user', routePrefGifUser);
     }
 
     polyline.setStyle({ color: routePrefColor, weight: routePrefWeight });
@@ -4267,40 +4280,42 @@ function f4_restoreGifZoom() {
     });
 }
 
-/* ================= ZAAWANSOWANE NAGRYWANIE GIF W TLE (BEZ BLOKOWANIA UI) ================= */
+/* ================= ZAAWANSOWANE NAGRYWANIE GIF W TLE (Z WARSTWAMI I ZAMYKANIEM TOASTU) ================= */
 async function recordRouteGIF() {
     if (routeGeometry.length < 2) {
         return showCustomAlert("Brak trasy do nagrania. Najpierw wyznacz trasę lub zaimportuj plik GPX.");
     }
 
-    // 1. Utworzenie dyskretnego, nieblokującego powiadomienia w rogu ekranu
+    // 1. Konstrukcja powiadomienia z przyciskiem zamknięcia (X)
     let progressToast = document.getElementById('gifProgressToast');
     if (!progressToast) {
         progressToast = document.createElement('div');
         progressToast.id = 'gifProgressToast';
-        // HTML2Canvas zignoruje ten element podczas zrzutów
         progressToast.setAttribute('data-html2canvas-ignore', 'true');
         progressToast.style.cssText = "position: fixed; bottom: 20px; left: 20px; background: rgba(15, 23, 42, 0.95); color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 99999; display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; border: 1px solid rgba(255,255,255,0.1); width: 280px; font-family: sans-serif;";
         document.body.appendChild(progressToast);
     }
     progressToast.style.display = 'flex';
     progressToast.innerHTML = `
-        <div style="font-weight: bold; display: flex; align-items: center; gap: 8px;">
-            <span style="color: #ec4899; animation: pulseDraw 1s infinite; font-size: 1.1rem;">●</span> Rejestrowanie animacji w tle...
+        <div style="position: absolute; top: 10px; right: 10px; cursor: pointer; color: #94a3b8; font-weight: bold; font-size: 1rem; transition: color 0.2s;" 
+             onclick="document.getElementById('gifProgressToast').style.display='none'"
+             onmouseover="this.style.color='#ef4444'" 
+             onmouseout="this.style.color='#94a3b8'">✖</div>
+        <div style="font-weight: bold; display: flex; align-items: center; gap: 8px; padding-right: 15px;">
+            <span style="color: #ec4899; animation: pulseDraw 1s infinite; font-size: 1.1rem;">●</span> Rejestrowanie w tle...
         </div>
-        <div id="gifToastText" style="color: #cbd5e1;">Inicjalizacja środowiska wirtualnego...</div>
+        <div id="gifToastText" style="color: #cbd5e1; font-size: 0.8rem; margin-top: 4px;">Inicjalizacja środowiska wirtualnego...</div>
         <div style="width: 100%; height: 6px; background: #334155; border-radius: 3px; overflow: hidden; margin-top: 4px;">
             <div id="gifToastBar" style="height: 100%; width: 0%; background: #ec4899; transition: width 0.1s;"></div>
         </div>
     `;
 
-    // 2. Budowa wirtualnego, ukrytego kontenera (Rozdzielczość HD 1024x576)
+    // 2. Budowa wirtualnego, ukrytego kontenera (HD 1024x576)
     const hiddenContainer = document.createElement('div');
     hiddenContainer.id = 'hiddenGifMapContainer';
     hiddenContainer.style.cssText = "position: absolute; left: -9999px; top: 0; width: 1024px; height: 576px; overflow: hidden; z-index: -5000;";
     document.body.appendChild(hiddenContainer);
 
-    // Inicjalizacja wirtualnej mapy bez żadnych kontrolek
     const hiddenMap = L.map(hiddenContainer, {
         zoomControl: false,
         attributionControl: false,
@@ -4330,14 +4345,70 @@ async function recordRouteGIF() {
     hiddenMap.fitBounds(dummyPolyline.getBounds(), { padding: [50, 50] });
     hiddenMap.removeLayer(dummyPolyline);
 
-    // Oczekiwanie na stabilne załadowanie kafli w pamięci podręcznej przeglądarki
-    document.getElementById('gifToastText').innerText = "Wczytywanie kafli mapy...";
+    // Oczekiwanie na załadowanie kafli w pamięci podręcznej przeglądarki
+    const textEl = document.getElementById('gifToastText');
+    const barEl = document.getElementById('gifToastBar');
+
+    if (textEl) textEl.innerText = "Wczytywanie kafli mapy...";
     await new Promise(resolve => {
         hiddenTileLayer.once('load', () => setTimeout(resolve, 800));
         setTimeout(resolve, 1500); // Awaryjny timeout
     });
 
-    // Przygotowanie warstw wektorowych na wirtualnej mapie
+    // =========================================================================
+    // Klonowanie wybranych warstw z mapy głównej na mapę w tle
+    // =========================================================================
+
+    // 1. Szlaki turystyczne (hikingLayer)
+    if (routePrefGifHiking && typeof hikingLayer !== 'undefined') {
+        hikingLayer.eachLayer(layer => {
+            if (layer instanceof L.Polyline) {
+                L.polyline(layer.getLatLngs(), {
+                    color: layer.options.color,
+                    weight: layer.options.weight,
+                    opacity: layer.options.opacity,
+                    dashArray: layer.options.dashArray
+                }).addTo(hiddenMap);
+            }
+        });
+    }
+
+    // Helper ułatwiający precyzyjne powielanie markerów z ich konfiguracją wizualną
+    const cloneMarkersFromLayer = (sourceLayer) => {
+        if (typeof sourceLayer !== 'undefined') {
+            sourceLayer.eachLayer(layer => {
+                if (layer instanceof L.Marker) {
+                    L.marker(layer.getLatLng(), {
+                        icon: L.divIcon({
+                            html: layer.options.icon.options.html,
+                            className: layer.options.icon.options.className
+                        })
+                    }).addTo(hiddenMap);
+                } else if (layer instanceof L.CircleMarker) {
+                    L.circleMarker(layer.getLatLng(), {
+                        radius: layer.options.radius,
+                        color: layer.options.color,
+                        weight: layer.options.weight,
+                        fillColor: layer.options.fillColor,
+                        fillOpacity: layer.options.fillOpacity
+                    }).addTo(hiddenMap);
+                }
+            });
+        }
+    };
+
+    // 2. Punkty z OpenStreetMap (poiLayer)
+    if (routePrefGifOsm) cloneMarkersFromLayer(poiLayer);
+
+    // 3. Dodatkowe punkty (customPoiLayer / Baza GS)
+    if (routePrefGifGas) cloneMarkersFromLayer(customPoiLayer);
+
+    // 4. Moje zapisane punkty (userSavedLayer)
+    if (routePrefGifUser) cloneMarkersFromLayer(userSavedLayer);
+
+    // =========================================================================
+    // Przygotowanie warstw wektorowych animowanej linii trasy
+    // =========================================================================
     const animLine = L.polyline([routeGeometry[0]], {
         color: routePrefColor,
         weight: routePrefWeight,
@@ -4353,7 +4424,7 @@ async function recordRouteGIF() {
         fillOpacity: 1
     }).addTo(hiddenMap);
 
-    // Implementacja rygorystycznego filtra wyświetlania punktów łączeniowych
+    // Implementacja filtra wyświetlania punktów łączeniowych na linii
     const dotsGroup = L.layerGroup().addTo(hiddenMap);
     const dotColor = routePrefPointsEnabled ? routePrefPointsColor : '#22c55e';
 
@@ -4376,7 +4447,7 @@ async function recordRouteGIF() {
         }
     });
 
-    // Inicjalizacja biblioteki GIF z bezpiecznym wstrzyknięciem Workera
+    // Inicjalizacja biblioteki GIF
     const workerBlob = new Blob([`importScripts('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js');`], { type: 'application/javascript' });
     const gif = new GIF({
         workers: 2,
@@ -4390,7 +4461,7 @@ async function recordRouteGIF() {
     let framesCount = routePrefSpeed === 'slow' ? 45 : (routePrefSpeed === 'fast' ? 10 : 20);
     const distStep = totalDist / framesCount;
 
-    // Pętla generująca klatki bez blokowania wątku głównego
+    // Generowanie klatek w tle
     for (let i = 0; i <= framesCount; i++) {
         let targetDist = Math.min(i * distStep, totalDist);
         const posData = getPointAtDistance(routeGeometry, targetDist);
@@ -4400,21 +4471,20 @@ async function recordRouteGIF() {
         animLine.setLatLngs(currentLineCoords);
         animDot.setLatLng(posData.latLng);
 
-        // Krótkie opóźnienie asynchroniczne na synchronizację wątku graficznego
         await new Promise(r => setTimeout(r, 60));
 
         const percent = Math.round((i / framesCount) * 50);
-        document.getElementById('gifToastText').innerText = `Renderowanie klatki ${i} z ${framesCount}`;
-        document.getElementById('gifToastBar').style.width = `${percent}%`;
+        if (document.getElementById('gifProgressToast').style.display !== 'none') {
+            if (textEl) textEl.innerText = `Renderowanie klatki ${i} z ${framesCount}`;
+            if (barEl) barEl.style.width = `${percent}%`;
+        }
 
-        // Zrzut ekranu z wirtualnego kontenera
         const canvas = await html2canvas(hiddenContainer, {
             useCORS: true,
             scale: 1,
             logging: false
         });
 
-        // Wygładzone, statyczne nanoszenie praw autorskich na płótno (zapobiega migotaniu)
         const ctx = canvas.getContext('2d');
         if (typeof forcePasteCopyright === 'function') {
             forcePasteCopyright(canvas, ctx);
@@ -4424,17 +4494,21 @@ async function recordRouteGIF() {
         gif.addFrame(canvas, { delay: delay, copy: true });
     }
 
-    document.getElementById('gifToastText').innerText = "Kompilowanie pliku GIF...";
+    if (document.getElementById('gifProgressToast').style.display !== 'none') {
+        if (textEl) textEl.innerText = "Kompilowanie pliku GIF...";
+    }
 
     gif.on('progress', p => {
         const percent = 50 + Math.round(p * 50);
-        document.getElementById('gifToastBar').style.width = `${percent}%`;
+        if (document.getElementById('gifProgressToast').style.display !== 'none') {
+            if (barEl) barEl.style.width = `${percent}%`;
+        }
     });
 
     gif.on('finished', blob => {
         progressToast.style.display = 'none';
 
-        // Sprzątanie pamięci podręcznej i usunięcie wirtualnych kontenerów
+        // Sprzątanie po kompilacji
         if (hiddenMap) hiddenMap.remove();
         hiddenContainer.remove();
 
