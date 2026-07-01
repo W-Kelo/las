@@ -3642,17 +3642,36 @@ async function printExportMap() {
     `);
 }
 /* --- INTELIGENTNE ZARZĄDZANIE PASKIEM NARZĘDZI --- */
+/* --- INTELIGENTNE ZARZĄDZANIE PASKIEM NARZĘDZI --- */
 function updatePanelVisibility() {
     const panel = document.getElementById('mapInfoPanel');
-    if(!panel) return;
+    if (!panel) return;
 
-    const hasText = document.getElementById('miTitle').style.display === 'block' || 
-                    document.getElementById('miDate').style.display === 'block' || 
-                    document.getElementById('miDesc').style.display === 'block' ||
-                    document.getElementById('miStats').style.display === 'flex'; 
-    const hasLegend = document.getElementById('exportLegendList').children.length > 0;
+    // Pobranie referencji do elementów
+    const miTitle = document.getElementById('miTitle');
+    const miDate = document.getElementById('miDate');
+    const miDesc = document.getElementById('miDesc');
+    const miStats = document.getElementById('miStats');
+    const miLegendContainer = document.getElementById('miLegendContainer');
+    const exportLegendList = document.getElementById('exportLegendList');
+
+    // Dokładna weryfikacja widoczności poszczególnych sekcji tekstowych
+    const hasTitle = miTitle && miTitle.style.display === 'block' && miTitle.innerHTML.trim() !== '';
+    const hasDate = miDate && miDate.style.display === 'block' && miDate.innerHTML.trim() !== '';
+    const hasDesc = miDesc && miDesc.style.display === 'block' && miDesc.innerHTML.trim() !== '';
+    const hasStats = miStats && miStats.style.display === 'flex' && miStats.innerHTML.trim() !== '';
     
-    // Liczymy oderwane panele i wszystkie sekcje
+    const hasText = hasTitle || hasDate || hasDesc || hasStats;
+
+    // Legenda jest uznawana za aktywną TYLKO gdy jej kontener jest widoczny 
+    // oraz zawiera elementy inne niż tymczasowy placeholder "Legenda pusta"
+    const hasLegend = miLegendContainer && 
+                      miLegendContainer.style.display === 'block' && 
+                      exportLegendList && 
+                      exportLegendList.children.length > 0 && 
+                      (!document.getElementById('temp_empty_leg') || exportLegendList.children.length > 1);
+
+    // Odczyt liczby paneli oderwanych
     const detachedCount = document.querySelectorAll('.detached-panel').length;
     const hasAnyPanel = hasText || hasLegend || (detachedCount > 0);
 
@@ -3662,46 +3681,48 @@ function updatePanelVisibility() {
     const btnScissors = document.getElementById('btnScissors');
     const btnMerge = document.getElementById('btnMerge');
 
+    // Zarządzanie widocznością głównego kontenera mapInfoPanel
     if (hasText || hasLegend) {
         panel.style.display = 'block';
     } else {
         panel.style.display = 'none';
     }
 
-    // 1. ZARZĄDZANIE PRZYCISKAMI PODSTAWOWYMI
-    // Jeśli nie ma absolutnie ŻADNEGO panelu -> Ukrywamy podstawowe narzędzia
+    // 1. ZARZĄDZANIE PRZYCISKAMI PODSTAWOWYMI (Drag, Resize, Scale)
     if (hasAnyPanel) {
-        if(btnDrag) btnDrag.style.display = 'inline-block';
-        if(btnResize) btnResize.style.display = 'inline-block';
-        if(btnScale) btnScale.style.display = 'inline-block';
+        if (btnDrag) btnDrag.style.display = 'inline-block';
+        if (btnResize) btnResize.style.display = 'inline-block';
+        if (btnScale) btnScale.style.display = 'inline-block';
     } else {
-        if(btnDrag) btnDrag.style.display = 'none';
-        if(btnResize) btnResize.style.display = 'none';
-        if(btnScale) btnScale.style.display = 'none';
+        if (btnDrag) btnDrag.style.display = 'none';
+        if (btnResize) btnResize.style.display = 'none';
+        if (btnScale) btnScale.style.display = 'none';
         
-        if(isPanelDraggable) togglePanelDrag();
-        if(isPanelResizable) togglePanelResize();
-        if(isPanelScaleMode) togglePanelScale();
+        // Wyłączenie trybów edycji, jeśli panele zniknęły
+        if (isPanelDraggable) togglePanelDrag();
+        if (isPanelResizable) togglePanelResize();
+        if (isPanelScaleMode) togglePanelScale();
     }
 
     // 2. ZARZĄDZANIE NOŻYCZKAMI I SCALANIEM
-    // Liczymy sekcje w "matce" (bez dzielników i siatek)
-    const childrenCount = Array.from(panel.children).filter(el => 
-        el && el.style && el.style.display !== 'none' && el.id && el.id !== '' && el.innerHTML.trim() !== '' && !el.classList.contains('premium-resize-overlay') && !el.classList.contains('split-divider')
-    ).length;
-    
-    // Suma wszystkich paneli (w matce + oderwanych)
-    const totalPanelsCount = childrenCount + detachedCount;
+    // Precyzyjne zliczanie sekcji na podstawie zweryfikowanych stanów zamiast surowego DOM
+    let activeChildrenCount = 0;
+    if (hasTitle) activeChildrenCount++;
+    if (hasDate) activeChildrenCount++;
+    if (hasDesc) activeChildrenCount++;
+    if (hasStats) activeChildrenCount++;
+    if (hasLegend) activeChildrenCount++;
 
-    // Jeśli jest mniej niż 2 panele -> Ukrywamy Nożyczki i Złącz wszystko
+    const totalPanelsCount = activeChildrenCount + detachedCount;
+
+    // Przycisk rozłączania (nożyczki) wymaga co najmniej 2 niezależnych sekcji
     if (totalPanelsCount >= 2) {
-        if(btnScissors) btnScissors.style.display = 'inline-block';
-        // Scalanie pokazujemy tylko, gdy faktycznie jest co scalać (coś jest oderwane)
-        if(btnMerge) btnMerge.style.display = detachedCount > 0 ? 'inline-block' : 'none';
+        if (btnScissors) btnScissors.style.display = 'inline-block';
+        if (btnMerge) btnMerge.style.display = detachedCount > 0 ? 'inline-block' : 'none';
     } else {
-        if(btnScissors) btnScissors.style.display = 'none';
-        if(btnMerge) btnMerge.style.display = 'none';
-        if(isScissorsMode) activateScissorsMode(); // Bezpieczne wyłączenie
+        if (btnScissors) btnScissors.style.display = 'none';
+        if (btnMerge) btnMerge.style.display = 'none';
+        if (isScissorsMode) activateScissorsMode(); 
     }
 }
 
