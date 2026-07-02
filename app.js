@@ -4653,6 +4653,26 @@ document.addEventListener('DOMContentLoaded', () => {
     
     drawEmptyElevationAnimation(); 
 });
+/* --- UNIWERSALNY PARSER LINKÓW (ZABEZPIECZONY PRZED OVERFLOW) --- */
+function linkify(text) {
+    if (!text) return "";
+    let parsed = text.toString();
+    
+    // 1. Parser dla konstrukcji dedykowanej GAS: [adres url]"klikany tekst"
+    // Przykłady: [https://onet.pl]"czytaj" lub [https://google.com]"kliknij tutaj"
+    parsed = parsed.replace(/\[(https?:\/\/[^\]]+)\]"([^"]+)"/g, function(match, url, linkText) {
+        return `<a href="${url}" target="_blank" class="custom-app-link">${linkText}</a>`;
+    });
+
+    // 2. Parser dla standardowych "nagich" adresów URL (np. wklejonych bezpośrednio)
+    // Wyrażenie regularne pomija adresy URL znajdujące się już w atrybucie href="..." tagu <a>
+    const urlRegex = /(?<!href=")(?<!">)(https?:\/\/[^\s<"\[\]]+)/g;
+    parsed = parsed.replace(urlRegex, function(url) {
+        return `<a href="${url}" target="_blank" class="custom-app-link">${url}</a>`;
+    });
+
+    return parsed;
+}
 
 function formatOSMDescription(tags, id) {
     let html = `<div style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 8px;">`;
@@ -4665,17 +4685,20 @@ function formatOSMDescription(tags, id) {
         const polskiKlucz = smartTranslate(k);
         const polskaWartosc = smartTranslate(tags[k]);
 
+        // Przepuszczenie wartości przez parser linków
+        const wartoscZLinkami = linkify(polskaWartosc);
+
         html += `
-            <li style="display: flex; border-bottom: 1px solid rgba(255,255,255,0.1); padding: 4px 0;">
-                <span style="color: var(--accent); font-weight: bold; width: 40%; font-size: 0.85rem;">${polskiKlucz}:</span>
-                <span style="width: 60%; font-size: 0.85rem; color: var(--text);">${polskaWartosc}</span>
+            <li style="display: flex; border-bottom: 1px solid rgba(255,255,255,0.1); padding: 4px 0; align-items: flex-start;">
+                <span style="color: var(--accent); font-weight: bold; width: 40%; font-size: 0.85rem; flex-shrink: 0; padding-right: 5px; box-sizing: border-box;">${polskiKlucz}:</span>
+                <span style="width: 60%; font-size: 0.85rem; color: var(--text); word-break: break-all; overflow-wrap: break-word; white-space: normal;">${wartoscZLinkami}</span>
             </li>`;
     }
     
     html += `</ul></div>`;
     html += `
         <div style="margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 10px; text-align: center;">
-            <a href="https://www.openstreetmap.org/node/${id}" target="_blank" style="color: #3b82f6; text-decoration: none; font-size: 0.8rem;">🔗 Szczegóły w OpenStreetMap</a>
+            <a href="https://www.openstreetmap.org/node/${id}" target="_blank" class="custom-app-link">🔗 Szczegóły w OpenStreetMap</a>
         </div>`;
     
     return html;
@@ -4684,9 +4707,11 @@ function formatOSMDescription(tags, id) {
 function openCustomPoiModal(poiData) {
     document.getElementById('cpoiTitle').innerText = `${poiData.icon || '📍'} ${poiData.name}`;
     document.getElementById('cpoiCategory').innerText = poiData.category || "Inne";
-    document.getElementById('cpoiDesc').innerHTML = poiData.description || "Brak opisu.";
+    
+    // Zastosowanie bezpiecznego parsera linków na opisie głównym miejsca
+    document.getElementById('cpoiDesc').innerHTML = linkify(poiData.description || "Brak opisu.");
 
-   // Renderowanie Galerii Głównej
+    // Renderowanie Galerii Głównej
     const galleryContainer = document.getElementById('cpoiGallery');
     galleryContainer.innerHTML = ''; 
     galleryContainer.style.display = 'none';
@@ -4736,11 +4761,10 @@ function openCustomPoiModal(poiData) {
 
         window._currentNearbyPois = poiData.nearbyPois; // Przechowanie na rzecz onClick
 
-       poiData.nearbyPois.forEach((p, index) => {
+        poiData.nearbyPois.forEach((p, index) => {
             const dist = Math.round(poiData.userLatLng.distanceTo(p.latlng));
             let firstPhotoHtml = `<div class="nearby-img">${p.icon}</div>`;
             
-            // --- ZAKTUALIZOWANY FRAGMENT ---
             if (p.photos) {
                 let firstUrl = null;
                 
@@ -4758,7 +4782,6 @@ function openCustomPoiModal(poiData) {
                     firstPhotoHtml = `<img src="${firstUrl}" class="nearby-img">`;
                 }
             }
-            // -------------------------------
 
             extraHtml += `
                 <div class="nearby-item" onclick="openNearbyPoi(${index})">
@@ -4773,10 +4796,8 @@ function openCustomPoiModal(poiData) {
         extraHtml += `</div></div>`;
     }
 
- // Wewnątrz openCustomPoiModal(poiData) zamień sekcje Moduł 2 i 3 na to:
-
+    // Moduł 2 i 3: Edycja zapisanego lub tworzenie nowego własnego punktu
     if (poiData.isSearchMarker || poiData.isUserSaved) {
-        // Ustalanie domyślnych wartości do formularza (dla nowych lub istniejących)
         const isEdit = !poiData.isSearchMarker && !poiData.isNewManual;
         const currentIcon = poiData.icon || "📍";
         const currentStorage = poiData.storage || 'session';
