@@ -150,6 +150,14 @@ let exportPointSettings = {
     gas: { ids: new Set() },
     user: { ids: new Set() }
 };
+let isMeasureMode = false;
+let measurePoints = []; 
+let measureLineLayer = null; 
+let measureMarkers = []; 
+let measureElevationData = [];
+let isMeasureClosed = false;
+let isMeasureAsPolygon = false;
+let measureHoverMarker = null;
 let tempPickerType = '';
 const userSavedLayer = L.layerGroup().addTo(map);
 const WALK_SPEED_M_PER_MIN = 70; // 4.2 km/h;
@@ -2500,26 +2508,23 @@ window.updateCustomCopyrightAppearance = function() {
     customCopyrightEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
 };
 
-/* --- MATEMATYCZNY ALGORYTM LUDZKICH ZAOKRĄGLEŃ DLA SKALI --- */
+/* =========================================================================
+   1. NAPRAWIONY I ZABEZPIECZONY MODUŁ SKALI
+   ========================================================================= */
+
 function getHumanFriendlyRounding(val) {
     if (val <= 0) return 10;
-    
     if (val >= 1000) {
-        // Zaokrąglenie do pełnych setek (np. 1240m -> 1200m, 1780m -> 1800m)
         return Math.round(val / 100) * 100;
     } else if (val >= 100) {
-        // Zaokrąglenie do pięćdziesiątek (np. 767m -> 800m, 723m -> 700m)
         return Math.round(val / 50) * 50;
     } else if (val >= 10) {
-        // Zaokrąglenie do pełnych dziesiątek lub piątek (np. 43m -> 40m)
         return Math.round(val / 10) * 10;
     } else {
-        // Poniżej 10 metrów zaokrąglamy do pełnej jednostki
         return Math.round(val);
     }
 }
 
-/* --- BEZPIECZNA AKTUALIZACJA WARTOŚCI SKALI (ZABEZPIECZONA PRZED FREEZEM) --- */
 function updateScaleValues() {
     if (!customScaleEl || !exportMap) return;
     
@@ -2528,13 +2533,12 @@ function updateScaleValues() {
     if (!mapExportEl) return;
     
     const mapWidthPx = mapExportEl.clientWidth;
-    if (mapWidthPx <= 0) return; // Zabezpieczenie przed dzieleniem przez zero przy niewidocznym oknie
+    if (mapWidthPx <= 0) return; 
 
     const mapWidthMeters = bounds.getNorthEast().distanceTo(bounds.getNorthWest());
-    if (mapWidthMeters <= 0 || isNaN(mapWidthMeters)) return; // Zabezpieczenie przed zerową szerokością mapy
+    if (mapWidthMeters <= 0 || isNaN(mapWidthMeters)) return; 
     
     const pxPerMeter = mapWidthPx / mapWidthMeters;
-    // Twardy bezpiecznik: Jeśli pxPerMeter jest błędny, przerywamy pętlę i chronimy proces przeglądarki
     if (!pxPerMeter || isNaN(pxPerMeter) || pxPerMeter <= 0 || !isFinite(pxPerMeter)) return;
 
     const type = document.getElementById('scaleTypeInput').value;
@@ -2543,9 +2547,7 @@ function updateScaleValues() {
 
     if (type === 'text') {
         customScaleEl.style.width = 'max-content';
-        
-        // Przyjmujemy standardową gęstość pikseli ekranowych (96 DPI -> ~37.8 piksela na 1 centymetr fizyczny)
-        const pxPerCm = 37.8;
+        const pxPerCm = 37.8; // ~96 DPI
         const metersPerCm = (1 / pxPerMeter) * pxPerCm;
 
         let finalValue = metersPerCm;
@@ -2560,7 +2562,7 @@ function updateScaleValues() {
         barEl.style.display = 'none';
     } else {
         let targetMeters = 10;
-        let safetyCounter = 0; // Bezpiecznik gwarantujący opuszczenie pętli w każdych warunkach
+        let safetyCounter = 0; 
         
         while (targetMeters * pxPerMeter < 100 && safetyCounter < 1000) { 
             targetMeters *= 2; 
@@ -2570,13 +2572,16 @@ function updateScaleValues() {
         const scaleWidthPx = Math.round(targetMeters * pxPerMeter);
         let displayStr = targetMeters >= 1000 ? `${(targetMeters/1000).toFixed(1)} km` : `${targetMeters} m`;
         
-        customScaleEl.style.width = (scaleWidthPx + 16) + 'px'; 
+        // FIZYCZNE POWIĄZANIE SZEROKOŚCI paska z obliczeniami matematycznymi
+        barEl.style.width = scaleWidthPx + 'px';
+        barEl.style.margin = '4px auto 0 auto';
+        
+        customScaleEl.style.width = 'max-content'; 
         textEl.innerText = displayStr;
         barEl.style.display = 'block';
     }
 }
 
-/* --- AKTUALIZACJA ZAAWANSOWANEGO WYGLĄDU SKALI --- */
 window.updateCustomScaleAppearance = function() {
     if (!customScaleEl) return;
     
@@ -2584,10 +2589,8 @@ window.updateCustomScaleAppearance = function() {
     const opacity = document.getElementById('scaleBgOpacity').value;
     const textColor = document.getElementById('scaleTextColor').value;
     const fontSize = document.getElementById('scaleFontSize').value;
-    const padding = document.getElementById('scalePadding').value;
     const fontStyle = document.getElementById('scaleFontStyle').value;
 
-    // Analiza kontrastu WCAG tła do tekstu
     const ratio = checkContrastRatio(hexBg, textColor, opacity);
     const warningDiv = document.getElementById('scaleContrastWarning');
     if (warningDiv) {
@@ -2596,14 +2599,11 @@ window.updateCustomScaleAppearance = function() {
 
     const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
     
-    // Zastosowanie nowych dynamicznych stylów na panelu skali
     customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
     customScaleEl.style.color = textColor;
     customScaleEl.style.fontSize = fontSize + 'px';
-    // Margines pionowy i poziomy (proporcja 1:2 zapobiega wypadaniu tekstu)
-    customScaleEl.style.padding = `${padding}px ${padding * 2}px`;
+    customScaleEl.style.padding = '6px 12px'; // Zablokowany, estetyczny margines wewnętrzny
     
-    // Ustawienia krojów pisma
     customScaleEl.style.fontStyle = fontStyle.includes('italic') ? 'italic' : 'normal';
     customScaleEl.style.fontWeight = fontStyle.includes('bold') ? 'bold' : 'normal';
     
@@ -2616,6 +2616,7 @@ window.updateCustomScaleAppearance = function() {
     
     updateScaleValues();
 };
+
 // NOWY ALGORYTM DRAG&DROP - Twarde krawędzie + Twarde wymiary
 function makeStrictEdgeDraggable(el, wrapper, allFourEdges = true) {
     let isDragging = false;
