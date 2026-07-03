@@ -2499,35 +2499,123 @@ window.updateCustomCopyrightAppearance = function() {
     customCopyrightEl.style.color = textColor;
     customCopyrightEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
 };
-// 5. MATEMATYKA SKALI (Własne przeliczanie metrów)
+
+/* --- MATEMATYCZNY ALGORYTM LUDZKICH ZAOKRĄGLEŃ DLA SKALI --- */
+function getHumanFriendlyRounding(val) {
+    if (val <= 0) return 10;
+    
+    if (val >= 1000) {
+        // Zaokrąglenie do pełnych setek (np. 1240m -> 1200m, 1780m -> 1800m)
+        return Math.round(val / 100) * 100;
+    } else if (val >= 100) {
+        // Zaokrąglenie do pięćdziesiątek (np. 767m -> 800m, 723m -> 700m)
+        return Math.round(val / 50) * 50;
+    } else if (val >= 10) {
+        // Zaokrąglenie do pełnych dziesiątek lub piątek (np. 43m -> 40m)
+        return Math.round(val / 10) * 10;
+    } else {
+        // Poniżej 10 metrów zaokrąglamy do pełnej jednostki
+        return Math.round(val);
+    }
+}
+
+/* --- BEZPIECZNA AKTUALIZACJA WARTOŚCI SKALI (ZABEZPIECZONA PRZED FREEZEM) --- */
 function updateScaleValues() {
     if (!customScaleEl || !exportMap) return;
     
     const bounds = exportMap.getBounds();
-    const mapWidthPx = document.getElementById('mapExport').clientWidth;
+    const mapExportEl = document.getElementById('mapExport');
+    if (!mapExportEl) return;
+    
+    const mapWidthPx = mapExportEl.clientWidth;
+    if (mapWidthPx <= 0) return; // Zabezpieczenie przed dzieleniem przez zero przy niewidocznym oknie
+
     const mapWidthMeters = bounds.getNorthEast().distanceTo(bounds.getNorthWest());
+    if (mapWidthMeters <= 0 || isNaN(mapWidthMeters)) return; // Zabezpieczenie przed zerową szerokością mapy
     
     const pxPerMeter = mapWidthPx / mapWidthMeters;
-    let targetMeters = 10;
-    while (targetMeters * pxPerMeter < 100) targetMeters *= 2; 
-    
-    const scaleWidthPx = Math.round(targetMeters * pxPerMeter);
+    // Twardy bezpiecznik: Jeśli pxPerMeter jest błędny, przerywamy pętlę i chronimy proces przeglądarki
+    if (!pxPerMeter || isNaN(pxPerMeter) || pxPerMeter <= 0 || !isFinite(pxPerMeter)) return;
+
+    const type = document.getElementById('scaleTypeInput').value;
     const textEl = document.getElementById('scaleText');
     const barEl = document.getElementById('scaleBar');
-    const type = document.getElementById('scaleTypeInput').value;
 
-    let displayStr = targetMeters >= 1000 ? `${(targetMeters/1000).toFixed(1)} km` : `${targetMeters} m`;
-    
     if (type === 'text') {
-        customScaleEl.style.width = 'max-content'; 
-        textEl.innerText = `1 cm ≈ ${Math.round(mapWidthMeters / mapWidthPx * 100) / 10} m`;
+        customScaleEl.style.width = 'max-content';
+        
+        // Przyjmujemy standardową gęstość pikseli ekranowych (96 DPI -> ~37.8 piksela na 1 centymetr fizyczny)
+        const pxPerCm = 37.8;
+        const metersPerCm = (1 / pxPerMeter) * pxPerCm;
+
+        let finalValue = metersPerCm;
+        const isRoundingEnabled = document.getElementById('scaleRoundingToggle') ? document.getElementById('scaleRoundingToggle').checked : false;
+
+        if (isRoundingEnabled) {
+            finalValue = getHumanFriendlyRounding(metersPerCm);
+        }
+
+        let displayStr = finalValue >= 1000 ? `${(finalValue/1000).toFixed(1)} km` : `${Math.round(finalValue)} m`;
+        textEl.innerText = `1 cm ≈ ${displayStr}`;
         barEl.style.display = 'none';
     } else {
+        let targetMeters = 10;
+        let safetyCounter = 0; // Bezpiecznik gwarantujący opuszczenie pętli w każdych warunkach
+        
+        while (targetMeters * pxPerMeter < 100 && safetyCounter < 1000) { 
+            targetMeters *= 2; 
+            safetyCounter++;
+        } 
+        
+        const scaleWidthPx = Math.round(targetMeters * pxPerMeter);
+        let displayStr = targetMeters >= 1000 ? `${(targetMeters/1000).toFixed(1)} km` : `${targetMeters} m`;
+        
         customScaleEl.style.width = (scaleWidthPx + 16) + 'px'; 
         textEl.innerText = displayStr;
         barEl.style.display = 'block';
     }
 }
+
+/* --- AKTUALIZACJA ZAAWANSOWANEGO WYGLĄDU SKALI --- */
+window.updateCustomScaleAppearance = function() {
+    if (!customScaleEl) return;
+    
+    const hexBg = document.getElementById('scaleBgColor').value;
+    const opacity = document.getElementById('scaleBgOpacity').value;
+    const textColor = document.getElementById('scaleTextColor').value;
+    const fontSize = document.getElementById('scaleFontSize').value;
+    const padding = document.getElementById('scalePadding').value;
+    const fontStyle = document.getElementById('scaleFontStyle').value;
+
+    // Analiza kontrastu WCAG tła do tekstu
+    const ratio = checkContrastRatio(hexBg, textColor, opacity);
+    const warningDiv = document.getElementById('scaleContrastWarning');
+    if (warningDiv) {
+        warningDiv.style.display = ratio < 3.0 ? 'block' : 'none';
+    }
+
+    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
+    
+    // Zastosowanie nowych dynamicznych stylów na panelu skali
+    customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
+    customScaleEl.style.color = textColor;
+    customScaleEl.style.fontSize = fontSize + 'px';
+    // Margines pionowy i poziomy (proporcja 1:2 zapobiega wypadaniu tekstu)
+    customScaleEl.style.padding = `${padding}px ${padding * 2}px`;
+    
+    // Ustawienia krojów pisma
+    customScaleEl.style.fontStyle = fontStyle.includes('italic') ? 'italic' : 'normal';
+    customScaleEl.style.fontWeight = fontStyle.includes('bold') ? 'bold' : 'normal';
+    
+    const barEl = document.getElementById('scaleBar');
+    if (barEl) {
+        barEl.style.backgroundColor = textColor;
+    }
+    
+    customScaleEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
+    
+    updateScaleValues();
+};
 // NOWY ALGORYTM DRAG&DROP - Twarde krawędzie + Twarde wymiary
 function makeStrictEdgeDraggable(el, wrapper, allFourEdges = true) {
     let isDragging = false;
@@ -2608,23 +2696,6 @@ function makeStrictEdgeDraggable(el, wrapper, allFourEdges = true) {
         document.onmousemove = null;
     }
 }
-// 6. OBSŁUGA MODALU USTAWIEŃ SKALI
-window.updateCustomScaleAppearance = function() {
-    if (!customScaleEl) return;
-    const hexBg = document.getElementById('scaleBgColor').value;
-    const opacity = document.getElementById('scaleBgOpacity').value / 100;
-    const textColor = document.getElementById('scaleTextColor').value;
-    
-    // Konwersja hex na rgb dla tła
-    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
-    customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity})`;
-    customScaleEl.style.color = textColor;
-    document.getElementById('scaleBar').style.backgroundColor = textColor;
-    customScaleEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity+0.2)})`;
-    
-    updateScaleValues(); // Przerysuj w nowym trybie
-};
-
 // 7. DRAG & DROP WZDŁUŻ KRAWĘDZI
 function makeEdgeDraggable(el, wrapper, snapToEdges = true, lockVertical = false) {
     let isDragging = false;
