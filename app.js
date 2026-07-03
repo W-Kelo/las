@@ -273,6 +273,31 @@ function showCustomAlert(msg) {
     document.getElementById('customAlertBtns').innerHTML = `<button style="background:var(--accent); width:100%;" onclick="document.getElementById('customAlertOverlay').style.display='none'">OK</button>`;
     document.getElementById('customAlertOverlay').style.display = 'flex';
 }
+function showNotificationAlert(msg, storageKey) {
+    // Jeśli użytkownik zaznaczył wcześniej wyłączenie spamu, nie pokazujemy komunikatu
+    if (localStorage.getItem(storageKey) === 'true') return;
+
+    document.getElementById('customAlertMsg').innerHTML = `
+        <div style="font-size:0.95rem; line-height:1.4;">${msg}</div>
+        <label style="display:flex; align-items:center; gap:8px; margin-top:15px; font-size:0.8rem; cursor:pointer; justify-content:center; user-select:none;">
+            <input type="checkbox" id="dontShowAlertAgain" style="width:16px; height:16px; accent-color:var(--accent);">
+            Nie pokazuj więcej tego komunikatu
+        </label>
+    `;
+    
+    document.getElementById('customAlertBtns').innerHTML = `
+        <button style="background:var(--accent); width:100%;" id="btnNotificationOk">OK</button>
+    `;
+    document.getElementById('customAlertOverlay').style.display = 'flex';
+
+    document.getElementById('btnNotificationOk').onclick = () => {
+        const isChecked = document.getElementById('dontShowAlertAgain').checked;
+        if (isChecked) {
+            localStorage.setItem(storageKey, 'true');
+        }
+        document.getElementById('customAlertOverlay').style.display = 'none';
+    };
+}
 
 function showCustomConfirm(msg, onConfirm, onCancel = null) {
     document.getElementById('customAlertMsg').innerHTML = msg;
@@ -308,20 +333,49 @@ function loadUserSavedPois() {
     map.getContainer().style.cursor = 'crosshair';
     showCustomAlert("Kliknij w dowolne miejsce na mapie, aby dodać swój punkt.");
 }
+/* =========================================================================
+ DYNAMICZNA WIDOCZNOŚĆ PRZYCISKU "WYCZYŚĆ TRASĘ"
+   ========================================================================= */
 
+function updateClearRouteButtonVisibility() {
+    const hasRoute = (typeof routeGeometry !== 'undefined' && routeGeometry.length >= 2) || 
+                      (typeof routePoints !== 'undefined' && routePoints.length > 0);
+    
+    const btnPc = document.getElementById('btnClearAllRoute');
+    const btnMob = document.getElementById('btnClearAllRouteMob');
+
+    if (btnPc) btnPc.style.display = hasRoute ? 'block' : 'none';
+    if (btnMob) btnMob.style.display = hasRoute ? 'flex' : 'none';
+}
+
+// Podpięcie ukrywania przy starcie i po załadowaniu DOM
+document.addEventListener('DOMContentLoaded', () => {
+    updateClearRouteButtonVisibility();
+});
+
+// Dodanie wywołania weryfikacji widoczności do głównego recalculateRoute
+const originalRecalculateRoute = recalculateRoute;
+recalculateRoute = async function() {
+    await originalRecalculateRoute();
+    updateClearRouteButtonVisibility();
+};
 
 
     function toggleDrawMode() {
     isDrawMode = !isDrawMode;
     const btnPc = document.getElementById('btnToggleDraw');
-    const btnMobile = document.querySelector('.nav-item[onclick*="toggleDrawMode"]'); // Szukamy przycisku z paska
+    const btnMobile = document.querySelector('.nav-item[onclick*="toggleDrawMode"]');
 
     if (isDrawMode) {
         if(btnPc) { btnPc.classList.add('btn-draw-mode'); btnPc.innerText = "🛑 Zakończ rysowanie"; }
         if(btnMobile) { btnMobile.style.background = 'rgba(236,72,153,0.2)'; btnMobile.style.borderRadius = '8px'; }
         
+        if (isMeasureMode) toggleMeasureMode();
+        
         map.getContainer().style.cursor = 'crosshair';
-        showCustomAlert("Tryb rysowania włączony. Klikaj na mapę, by stawiać punkty trasy.");
+        
+        // Zastosowanie ulepszonego powiadomienia z opcją zapisu wyłączenia
+        showNotificationAlert("Tryb rysowania włączony. Klikaj na mapę, by stawiać punkty trasy.", "gpx_hide_draw_alert");
     } else {
         if(btnPc) { btnPc.classList.remove('btn-draw-mode'); btnPc.innerText = "✏️ Włącz rysowanie trasy"; }
         if(btnMobile) { btnMobile.style.background = 'transparent'; }
@@ -329,7 +383,6 @@ function loadUserSavedPois() {
         map.getContainer().style.cursor = '';
     }
     
-    // Zwijamy pasek mobilny, żeby użytkownik mógł rysować
     if (window.innerWidth <= 768) toggleMobileNav(true);
 }
 
@@ -7542,15 +7595,12 @@ function toggleMeasureMode() {
         
         clearMeasure();
         map.getContainer().style.cursor = 'crosshair';
-        showCustomAlert("Szybki pomiar aktywowany. Klikaj na mapie. Kliknięcie w pierwszy punkt (zielony) domyka pętlę.");
         
-        // Bezpieczne wyłączenie trybu rysowania, jeśli był aktywny
-        if (typeof isDrawMode !== 'undefined' && isDrawMode && typeof toggleDrawMode === 'function') {
-            toggleDrawMode();
-        }
-        if (typeof isStopMode !== 'undefined' && isStopMode && typeof toggleStopMode === 'function') {
-            toggleStopMode(false);
-        }
+        // Zastosowanie ulepszonego powiadomienia z opcją zapisu wyłączenia
+        showNotificationAlert("Szybki pomiar aktywowany. Klikaj na mapie. Kliknięcie w pierwszy punkt (zielony) domyka pętlę.", "gpx_hide_measure_alert");
+        
+        if (isDrawMode) toggleDrawMode();
+        if (isStopMode) toggleStopMode(false);
         
         map.doubleClickZoom.disable();
         map.on('click', handleMeasureClick);
@@ -7643,7 +7693,6 @@ function updateMeasureSmallModal() {
     const width = 290;
     const height = 115;
 
-    // Ustalanie pozycji początkowej tylko przy pierwszym otwarciu (zapobiega skokom Drag)
     if (modal.style.display === 'none') {
         let initLeft, initTop;
         if (isMobile) {
@@ -7679,9 +7728,44 @@ function updateMeasureSmallModal() {
             Typ: <strong>${typeText}</strong> | Punkty: <strong>${measurePoints.length}</strong><br>
             Dystans: <strong style="color: var(--accent); font-size: 0.95rem;">${lengthText}</strong>
         </div>
-        <button onclick="analyzeMeasure()" style="width:100%; font-size:0.75rem; padding: 5px; background:var(--accent);" ${measurePoints.length < 2 ? 'disabled' : ''}>Analizuj pomiar</button>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:5px;">
+            <button onclick="analyzeMeasure()" style="width:100%; font-size:0.75rem; padding: 5px; background:var(--accent);" ${measurePoints.length < 2 ? 'disabled' : ''}>Analizuj pomiar</button>
+            <button onclick="startNewMeasure()" style="width:100%; font-size:0.75rem; padding: 5px; background:#64748b;">Nowy pomiar</button>
+        </div>
     `;
 }
+/* --- NASŁUCHIWANIE COFANIA KROKÓW PRZEZ CTRL+Z / CMD+Z --- */
+document.addEventListener('keydown', (e) => {
+    if (isMeasureMode && measurePoints.length > 0 && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        undoLastMeasurePoint();
+    }
+});
+
+function undoLastMeasurePoint() {
+    if (measurePoints.length === 0) return;
+    
+    if (isMeasureClosed) {
+        isMeasureClosed = false;
+        isMeasureAsPolygon = false;
+        map.off('click', handleMeasureClick);
+        map.on('click', handleMeasureClick);
+        map.getContainer().style.cursor = 'crosshair';
+    }
+
+    measurePoints.pop();
+    
+    const lastMarker = measureMarkers.pop();
+    if (lastMarker) map.removeLayer(lastMarker);
+
+    if (measurePoints.length === 1 && measureMarkers[0]) {
+        measureMarkers[0].setStyle({ radius: 9, fillColor: '#22c55e' });
+    }
+
+    updateMeasureLine();
+    updateMeasureSmallModal();
+}
+
 
 function hideMeasureModal() {
     const modal = document.getElementById('measureSmallModal');
@@ -8052,3 +8136,6 @@ window.handleMeasureClick = handleMeasureClick;
 window.closeMeasurementShape = closeMeasurementShape;
 window.updateMeasureLine = updateMeasureLine;
 window.updateMeasureSmal
+window.startNewMeasure = startNewMeasure;
+window.undoLastMeasurePoint = undoLastMeasurePoint;
+window.toggleDrawMode = toggleDrawMode;
