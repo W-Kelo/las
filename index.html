@@ -160,7 +160,7 @@
         
         <button class="nav-item" onclick="playRouteAnimation(); toggleMobileNav(false)"><i style="color:#ec4899;">▶️</i> <span>Animuj</span></button>
         <button class="nav-item" onclick="recordRouteGIF(); toggleMobileNav(false)"><i style="color:#8b5cf6;">🎞️</i> <span>Wideo GIF</span></button>
-        <button class="nav-item" onclick="clearAll(); toggleMobileNav(false)"><i style="color:#ef4444;">🗑️</i> <span>Wyczyść</span></button>
+        <button class="nav-item" id="btnClearAllRouteMob" onclick="clearAll(); toggleMobileNav(false)" style="display: none;"><i style="color:#ef4444;">🗑️</i> <span>Wyczyść</span></button>
         <button class="nav-item" onclick="openCenteredModal('aboutModal'); toggleMobileNav(false)"><i style="color:#ef4444;">ℹ️</i> <span>O programie</span></button>
     </div>
 </div>
@@ -218,13 +218,14 @@
      <button onclick="toggleTheme()">🌓 Motyw</button>
      <button onclick="openStyleModal()" style="background: #f59e0b;">🎨 Styl trasy</button>
      <button onclick="openCenteredModal('aboutModal')">ℹ️ O programie</button>
-    <button onclick="toggleMeasureMode()" id="btnMeasureTool" style="background: #0ea5e9;">📏 Szybki Pomiar</button>
+     <button onclick="toggleMeasureMode()" id="btnMeasureTool" style="background: #0ea5e9;">📏 Szybki Pomiar</button>
+     <button class="danger" id="btnClearAllRoute" onclick="clearAll()" style="display: none;">🗑️ Wyczyść mapę</button>
 </div>
 
     
     <div style="display:grid; grid-template-columns: 1fr; gap: 8px; margin-top: 8px;">
         <button id="btnToggleDraw" onclick="toggleDrawMode()" style="background: #3b82f6;">✏️ Włącz rysowanie trasy</button>
-        <button class="danger" onclick="clearAll()">🗑️ Wyczyść mapę</button>
+
     </div>
     <input type="file" id="fileInput" hidden accept=".gpx" onchange="importGPX(event)">
 
