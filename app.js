@@ -4992,6 +4992,7 @@ document.addEventListener('DOMContentLoaded', () => {
     makeDraggable(document.getElementById('exportMetaModal'));
     
     drawEmptyElevationAnimation(); 
+        isolateColorInputs();
 });
 /* --- UNIWERSALNY PARSER LINKÓW (ZABEZPIECZONY PRZED OVERFLOW) --- */
 function linkify(text) {
@@ -8369,3 +8370,21 @@ window.updateMeasureSmal
 window.startNewMeasure = startNewMeasure;
 window.undoLastMeasurePoint = undoLastMeasurePoint;
 window.toggleDrawMode = toggleDrawMode;
+/* --- WARIANTY 1: IZOLACJA NATYWNYCH POBIERACZEK KOLORÓW --- */
+function isolateColorInputs() {
+    const colorInputs = document.querySelectorAll('input[type="color"]');
+    const eventsToBlock = [
+        'click', 'mousedown', 'mouseup', 
+        'pointerdown', 'pointerup', 
+        'touchstart', 'touchend'
+    ];
+    
+    colorInputs.forEach(input => {
+        eventsToBlock.forEach(eventType => {
+            input.addEventListener(eventType, (e) => {
+                // Całkowite odcięcie propagacji do rodziców, mapy oraz okna globalnego
+                e.stopPropagation();
+            });
+        });
+    });
+}
