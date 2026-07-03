@@ -7529,6 +7529,41 @@ function observeModalResize() {
     resizeObserver.observe(modal);
 }
 
+
+
+function toggleMeasureMode() {
+    isMeasureMode = !isMeasureMode;
+    const btn = document.getElementById('btnMeasureTool');
+    const btnMob = document.getElementById('btnMeasureToolMob');
+
+    if (isMeasureMode) {
+        if(btn) { btn.style.background = '#ec4899'; btn.innerText = "🛑 Wyłącz Pomiar"; }
+        if(btnMob) btnMob.style.background = 'rgba(236,72,153,0.2)';
+        
+        clearMeasure();
+        map.getContainer().style.cursor = 'crosshair';
+        showCustomAlert("Szybki pomiar aktywowany. Klikaj na mapie. Kliknięcie w pierwszy punkt (zielony) domyka pętlę.");
+        
+        // Bezpieczne wyłączenie trybu rysowania, jeśli był aktywny
+        if (typeof isDrawMode !== 'undefined' && isDrawMode && typeof toggleDrawMode === 'function') {
+            toggleDrawMode();
+        }
+        if (typeof isStopMode !== 'undefined' && isStopMode && typeof toggleStopMode === 'function') {
+            toggleStopMode(false);
+        }
+        
+        map.doubleClickZoom.disable();
+        map.on('click', handleMeasureClick);
+    } else {
+        if(btn) { btn.style.background = '#0ea5e9'; btn.innerText = "📏 Szybki Pomiar"; }
+        if(btnMob) { btnMob.style.background = 'transparent'; }
+        
+        map.getContainer().style.cursor = '';
+        map.doubleClickZoom.enable();
+        map.off('click', handleMeasureClick);
+    }
+}
+
 async function handleMeasureClick(e) {
     if (isMeasureAsPolygon) return;
 
@@ -7684,6 +7719,26 @@ function clearMeasure() {
     
     if (measureHoverMarker) { map.removeLayer(measureHoverMarker); measureHoverMarker = null; }
     if (isMeasureMode) toggleMeasureMode();
+}
+
+function calculatePolygonArea(latlngs) {
+    let area = 0;
+    const numPoints = latlngs.length;
+    if (numPoints < 3) return 0;
+
+    const r = 6378137; 
+    const points = latlngs.map(ll => {
+        const x = ll.lng * Math.PI / 180 * r * Math.cos(latlngs[0].lat * Math.PI / 180);
+        const y = ll.lat * Math.PI / 180 * r;
+        return { x, y };
+    });
+
+    for (let i = 0; i < numPoints; i++) {
+        const j = (i + 1) % numPoints;
+        area += points[i].x * points[j].y;
+        area -= points[j].x * points[i].y;
+    }
+    return Math.abs(area / 2);
 }
 
 async function analyzeMeasure() {
@@ -7857,3 +7912,143 @@ async function analyzeMeasure() {
         }, 100);
     }
 }
+
+function drawMeasureElevation(maxE, minElev, cumulativeDistances) {
+    const canvas = document.getElementById('measureElevationChart');
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.offsetWidth;
+    const h = canvas.offsetHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+
+    const padL = 30;
+    const padR = 10;
+    const padT = 15;
+    const padB = 15;
+    const innerW = w - padL - padR;
+    const innerH = h - padT - padB;
+
+    let min = Math.max(0, Math.floor(minElev / 10) * 10 - 10);
+    let max = Math.ceil(maxE / 10) * 10 + 10;
+    let range = max - min;
+    if (range < 10) { min = Math.max(0, min-10); max += 10; range = max - min; }
+
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '8px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < 3; i++) {
+        const val = max - (range / 2) * i;
+        const y = padT + (i / 2) * innerH;
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(w - padR, y);
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.stroke();
+        ctx.fillText(`${Math.round(val)}m`, padL - 4, y);
+    }
+
+    const totalDist = measureElevationData[measureElevationData.length - 1].dist;
+    cumulativeDistances.forEach((d, idx) => {
+        const x = padL + (d / (totalDist || 1)) * innerW;
+        ctx.beginPath();
+        ctx.moveTo(x, padT);
+        ctx.lineTo(x, h - padB);
+        ctx.strokeStyle = 'rgba(14, 165, 233, 0.2)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        ctx.fillStyle = '#0ea5e9';
+        ctx.font = 'bold 8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(idx + 1, x, padT - 5);
+    });
+
+    const grad = ctx.createLinearGradient(0, padT, 0, h - padB);
+    grad.addColorStop(0, 'rgba(14, 165, 233, 0.35)');
+    grad.addColorStop(1, 'rgba(14, 165, 233, 0.0)');
+
+    ctx.beginPath();
+    ctx.moveTo(padL, h - padB);
+    measureElevationData.forEach((d, i) => {
+        const x = padL + (i / (measureElevationData.length - 1)) * innerW;
+        const y = padT + innerH - ((d.elevation - min) / range) * innerH;
+        ctx.lineTo(x, y);
+    });
+    ctx.lineTo(padL + innerW, h - padB);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    measureElevationData.forEach((d, i) => {
+        const x = padL + (i / (measureElevationData.length - 1)) * innerW;
+        const y = padT + innerH - ((d.elevation - min) / range) * innerH;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = '#0ea5e9';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const handleMove = (clientX) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = clientX - rect.left;
+        let ratio = (x - padL) / innerW;
+        ratio = Math.max(0, Math.min(1, ratio));
+
+        const idx = Math.round(ratio * (measureElevationData.length - 1));
+        const pt = measureElevationData[idx];
+
+        drawMeasureElevation(maxE, minElev, cumulativeDistances);
+
+        const drawX = padL + ratio * innerW;
+        ctx.beginPath();
+        ctx.moveTo(drawX, padT);
+        ctx.lineTo(drawX, h - padB);
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.setLineDash([2, 2]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const drawY = padT + innerH - ((pt.elevation - min) / range) * innerH;
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.strokeStyle = '#0ea5e9';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        if (!measureHoverMarker) {
+            measureHoverMarker = L.circleMarker(pt.latlng, {
+                radius: 6, color: '#fff', weight: 2, fillColor: '#0ea5e9', fillOpacity: 1, zIndexOffset: 4000
+            }).addTo(map);
+        } else {
+            measureHoverMarker.setLatLng(pt.latlng);
+        }
+    };
+
+    canvas.onmousemove = (e) => handleMove(e.clientX);
+    canvas.ontouchmove = (e) => handleMove(e.touches[0].clientX);
+    
+    const clearHover = () => {
+        drawMeasureElevation(maxE, minElev, cumulativeDistances);
+        if (measureHoverMarker) { map.removeLayer(measureHoverMarker); measureHoverMarker = null; }
+    };
+    canvas.onmouseleave = clearHover;
+    canvas.ontouchend = clearHover;
+}
+
+// EKSPORT FUNKCJI DO WINDOW (Zabezpieczenie przed ReferenceError)
+window.toggleMeasureMode = toggleMeasureMode;
+window.handleMeasureClick = handleMeasureClick;
+window.closeMeasurementShape = closeMeasurementShape;
+window.updateMeasureLine = updateMeasureLine;
+window.updateMeasureSmal
