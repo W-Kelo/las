@@ -3776,12 +3776,12 @@ async function printExportMap() {
     `);
 }
 /* --- INTELIGENTNE ZARZĄDZANIE PASKIEM NARZĘDZI --- */
-/* --- INTELIGENTNE ZARZĄDZANIE PASKIEM NARZĘDZI --- */
+/* --- ODNOWIONA I BEZBŁĘDNA WIDOCZNOŚĆ PANELU NARZĘDZI --- */
 function updatePanelVisibility() {
     const panel = document.getElementById('mapInfoPanel');
     if (!panel) return;
 
-    // Pobranie referencji do elementów
+    // Pobranie referencji do elementów składowych panelu
     const miTitle = document.getElementById('miTitle');
     const miDate = document.getElementById('miDate');
     const miDesc = document.getElementById('miDesc');
@@ -3797,15 +3797,14 @@ function updatePanelVisibility() {
     
     const hasText = hasTitle || hasDate || hasDesc || hasStats;
 
-    // Legenda jest uznawana za aktywną TYLKO gdy jej kontener jest widoczny 
-    // oraz zawiera elementy inne niż tymczasowy placeholder "Legenda pusta"
+    // Legenda aktywna wyłącznie wtedy, gdy kontener jest widoczny i zawiera realne pozycje
     const hasLegend = miLegendContainer && 
                       miLegendContainer.style.display === 'block' && 
                       exportLegendList && 
                       exportLegendList.children.length > 0 && 
                       (!document.getElementById('temp_empty_leg') || exportLegendList.children.length > 1);
 
-    // Odczyt liczby paneli oderwanych
+    // Pobranie liczby aktywnych paneli oderwanych na mapie
     const detachedCount = document.querySelectorAll('.detached-panel').length;
     const hasAnyPanel = hasText || hasLegend || (detachedCount > 0);
 
@@ -3823,6 +3822,7 @@ function updatePanelVisibility() {
     }
 
     // 1. ZARZĄDZANIE PRZYCISKAMI PODSTAWOWYMI (Drag, Resize, Scale)
+    // Przyciski pokazują się tylko wtedy, gdy na ekranie istnieje przynajmniej JEDEN panel!
     if (hasAnyPanel) {
         if (btnDrag) btnDrag.style.display = 'inline-block';
         if (btnResize) btnResize.style.display = 'inline-block';
@@ -3832,14 +3832,13 @@ function updatePanelVisibility() {
         if (btnResize) btnResize.style.display = 'none';
         if (btnScale) btnScale.style.display = 'none';
         
-        // Wyłączenie trybów edycji, jeśli panele zniknęły
+        // Wyłączenie aktywnych trybów edycji w celu zachowania spójności interfejsu
         if (isPanelDraggable) togglePanelDrag();
         if (isPanelResizable) togglePanelResize();
         if (isPanelScaleMode) togglePanelScale();
     }
 
     // 2. ZARZĄDZANIE NOŻYCZKAMI I SCALANIEM
-    // Precyzyjne zliczanie sekcji na podstawie zweryfikowanych stanów zamiast surowego DOM
     let activeChildrenCount = 0;
     if (hasTitle) activeChildrenCount++;
     if (hasDate) activeChildrenCount++;
@@ -3849,7 +3848,7 @@ function updatePanelVisibility() {
 
     const totalPanelsCount = activeChildrenCount + detachedCount;
 
-    // Przycisk rozłączania (nożyczki) wymaga co najmniej 2 niezależnych sekcji
+    // Przycisk rozłączania wymaga co najmniej dwóch sekcji
     if (totalPanelsCount >= 2) {
         if (btnScissors) btnScissors.style.display = 'inline-block';
         if (btnMerge) btnMerge.style.display = detachedCount > 0 ? 'inline-block' : 'none';
@@ -3859,6 +3858,48 @@ function updatePanelVisibility() {
         if (isScissorsMode) activateScissorsMode(); 
     }
 }
+
+/* --- ZOPTYMALIZOWANA AKTUALIZACJA WYGLĄDU SKALI --- */
+window.updateCustomScaleAppearance = function() {
+    if (!customScaleEl) return;
+    
+    const hexBg = document.getElementById('scaleBgColor').value;
+    const opacity = document.getElementById('scaleBgOpacity').value;
+    const textColor = document.getElementById('scaleTextColor').value;
+    const fontSize = document.getElementById('scaleFontSize').value;
+    const fontStyle = document.getElementById('scaleFontStyle').value;
+
+    const ratio = checkContrastRatio(hexBg, textColor, opacity);
+    const warningDiv = document.getElementById('scaleContrastWarning');
+    if (warningDiv) {
+        warningDiv.style.display = ratio < 3.0 ? 'block' : 'none';
+    }
+
+    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
+    
+    // Nanoszenie zmian estetycznych w sposób bezpieczny
+    customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
+    customScaleEl.style.color = textColor;
+    customScaleEl.style.fontSize = fontSize + 'px';
+    customScaleEl.style.padding = '6px 12px'; 
+    
+    customScaleEl.style.fontStyle = fontStyle.includes('italic') ? 'italic' : 'normal';
+    customScaleEl.style.fontWeight = fontStyle.includes('bold') ? 'bold' : 'normal';
+    
+    const barEl = document.getElementById('scaleBar');
+    if (barEl) {
+        barEl.style.backgroundColor = textColor;
+    }
+    
+    customScaleEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
+    
+    // Pojedyncze, wygładzone przeliczenie wartości geometrycznych
+    updateScaleValues();
+};
+
+// Rejestracja metody w obiekcie window
+window.updatePanelVisibility = updatePanelVisibility;
+window.updateCustomScaleAppearance = updateCustomScaleAppearance;
 
 /* --- STATYSTYKI --- */
 function openStatsModal() {
