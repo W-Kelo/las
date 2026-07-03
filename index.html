@@ -1020,7 +1020,58 @@
     <button class="lightbox-close" onclick="forceCloseLightbox(event)" style="z-index: 9999999 !important;">✖</button>
     <img id="lightboxImage" src="" alt="Pełny ekran" onclick="event.stopPropagation()">
 </div>
+<!-- MODAL: SZCZEGÓŁY POMIARU (MAŁY) -->
+<div id="measureSmallModal" class="floating-modal" style="width: 290px; display: none; z-index: 9999;">
+    <div class="modal-header" style="padding: 6px 10px;">
+        <span style="font-weight:bold; color:#0ea5e9; font-size: 0.85rem;">📐 Szczegóły pomiaru</span>
+        <div style="display:flex; align-items:center; gap: 5px;">
+            <span style="cursor:pointer; font-size: 0.95rem; margin-right: 2px;" onclick="hideMeasureModal()" title="Ukryj szczegóły">👁️</span>
+            <div class="opacity-control" title="Przezroczystość" data-html2canvas-ignore>
+                <input type="range" min="20" max="100" value="95" style="width:45px;" oninput="setOpacity(this)">
+            </div>
+            <button class="danger icon-only" style="padding: 1px 6px; min-width: auto; font-size: 0.75rem;" onclick="clearMeasure()" data-html2canvas-ignore>X</button>
+        </div>
+    </div>
+    <div class="modal-body" id="measureSmallModalBody" style="padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+        <!-- Wypełniane dynamicznie przez JS -->
+    </div>
+</div>
 
+<!-- MODAL: SZCZEGÓŁOWA ANALIZA POMIAROWA (DUŻY) -->
+<div id="measureAnalysisModal" class="floating-modal" style="width: 650px; max-width: 95vw; display: none; z-index: 9999;">
+    <div class="modal-header">
+        <span style="font-weight:bold; color:#0ea5e9;">📊 Szczegółowa Analiza Pomiarowa</span>
+        <div style="display:flex; align-items:center; gap: 10px;">
+            <div class="opacity-control" title="Przezroczystość" data-html2canvas-ignore>
+                👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
+            </div>
+            <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('measureAnalysisModal')">X</button>
+        </div>
+    </div>
+    <div class="modal-body" id="measureAnalysisModalBody" style="padding: 15px; display:flex; flex-direction:column; gap:15px; max-height:80vh; overflow-y:auto;">
+        <!-- Wypełniane dynamicznie przez JS -->
+    </div>
+</div>
+
+<!-- PŁYWAJĄCY PRZYCISK PRZYWRACANIA POMIARU (OCZKO) -->
+<button id="measureRestoreBtn" 
+    style="position: fixed; 
+    bottom: 95px; 
+    right: 20px; 
+    z-index: 9999; 
+    width: 42px; 
+    height: 45px; 
+    border-radius: 50%; 
+    background: var(--panel); 
+    color: var(--text); 
+    border: 2px solid var(--accent); 
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3); 
+    font-size: 1.4rem; 
+    cursor: pointer; 
+    display: none; 
+    align-items: center; 
+    justify-content: center;
+    " onclick="showMeasureModal()">👁️</button>
 <script src="app.js"></script>
 
 </body>
