@@ -8129,6 +8129,26 @@ function drawMeasureElevation(maxE, minElev, cumulativeDistances) {
     canvas.onmouseleave = clearHover;
     canvas.ontouchend = clearHover;
 }
+function startNewMeasure() {
+    measurePoints = [];
+    isMeasureClosed = false;
+    isMeasureAsPolygon = false;
+    
+    if (measureLineLayer) { map.removeLayer(measureLineLayer); measureLineLayer = null; }
+    measureMarkers.forEach(m => map.removeLayer(m));
+    measureMarkers = [];
+    
+    if (measureHoverMarker) { map.removeLayer(measureHoverMarker); measureHoverMarker = null; }
+    
+    const largeM = document.getElementById('measureAnalysisModal');
+    if (largeM) largeM.style.display = 'none';
+
+    map.off('click', handleMeasureClick);
+    map.on('click', handleMeasureClick);
+    map.getContainer().style.cursor = 'crosshair';
+
+    updateMeasureSmallModal();
+}
 
 // EKSPORT FUNKCJI DO WINDOW (Zabezpieczenie przed ReferenceError)
 window.toggleMeasureMode = toggleMeasureMode;
