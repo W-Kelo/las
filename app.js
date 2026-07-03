@@ -90,6 +90,7 @@ let scaleControl = null;
 let scaleVisible = false;
 let customScaleEl = null;
 let customCopyrightEl = null;
+let scaleUpdateTimeout = null;
 let isCustomScaleVisible = false;
 let animLineLayer = null;
 let animDotMarker = null;
@@ -2403,10 +2404,25 @@ function getLuminance(r, g, b) {
 
 
 function checkContrastRatio(hex1, hex2, opacity1) {
-    const r1 = parseInt(hex1.slice(1, 3), 16), g1 = parseInt(hex1.slice(3, 5), 16), b1 = parseInt(hex1.slice(5, 7), 16);
-    const r2 = parseInt(hex2.slice(1, 3), 16), g2 = parseInt(hex2.slice(3, 5), 16), b2 = parseInt(hex2.slice(5, 7), 16);
-    const lum1 = getLuminance(r1, g1, b1) * (opacity1 / 100) + getLuminance(255,255,255) * (1 - opacity1/100); 
+    // Bezpieczne sprawdzanie i formatowanie wejściowych wartości
+    const safeHex1 = (hex1 && hex1.startsWith('#') && hex1.length >= 7) ? hex1 : '#ffffff';
+    const safeHex2 = (hex2 && hex2.startsWith('#') && hex2.length >= 7) ? hex2 : '#000000';
+    const safeOpacity = isNaN(parseFloat(opacity1)) ? 100 : parseFloat(opacity1);
+
+    const r1 = parseInt(safeHex1.slice(1, 3), 16) || 0;
+    const g1 = parseInt(safeHex1.slice(3, 5), 16) || 0;
+    const b1 = parseInt(safeHex1.slice(5, 7), 16) || 0;
+
+    const r2 = parseInt(safeHex2.slice(1, 3), 16) || 0;
+    const g2 = parseInt(safeHex2.slice(3, 5), 16) || 0;
+    const b2 = parseInt(safeHex2.slice(5, 7), 16) || 0;
+
+    const lum1 = getLuminance(r1, g1, b1) * (safeOpacity / 100) + getLuminance(255, 255, 255) * (1 - safeOpacity / 100); 
     const lum2 = getLuminance(r2, g2, b2);
+
+    // Zabezpieczenie przed wartościami NaN (zwraca maksymalny kontrast, by zapobiec błędom logicznym)
+    if (isNaN(lum1) || isNaN(lum2)) return 21;
+
     const brightest = Math.max(lum1, lum2);
     const darkest = Math.min(lum1, lum2);
     return (brightest + 0.05) / (darkest + 0.05); 
@@ -3818,40 +3834,66 @@ function updatePanelVisibility() {
 window.updateCustomScaleAppearance = function() {
     if (!customScaleEl) return;
     
-    const hexBg = document.getElementById('scaleBgColor').value;
-    const opacity = document.getElementById('scaleBgOpacity').value;
-    const textColor = document.getElementById('scaleTextColor').value;
-    const fontSize = document.getElementById('scaleFontSize').value;
-    const fontStyle = document.getElementById('scaleFontStyle').value;
-
-    const ratio = checkContrastRatio(hexBg, textColor, opacity);
-    const warningDiv = document.getElementById('scaleContrastWarning');
-    if (warningDiv) {
-        warningDiv.style.display = ratio < 3.0 ? 'block' : 'none';
-    }
-
-    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
-    
-    // Nanoszenie stylów wejściowych
-    customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
-    customScaleEl.style.color = textColor;
-    customScaleEl.style.fontSize = fontSize + 'px';
-    customScaleEl.style.padding = '6px 12px'; // Bezpieczny, stały margines wewnętrzny
-    
-    customScaleEl.style.fontStyle = fontStyle.includes('italic') ? 'italic' : 'normal';
-    customScaleEl.style.fontWeight = fontStyle.includes('bold') ? 'bold' : 'normal';
-    
-    const barEl = document.getElementById('scaleBar');
-    if (barEl) {
-        barEl.style.backgroundColor = textColor;
+    // Kasujemy poprzednio zakolejkowaną klatkę, jeśli nadeszło nowe zdarzenie z pipety
+    if (scaleUpdateTimeout) {
+        cancelAnimationFrame(scaleUpdateTimeout);
     }
     
-    customScaleEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
-    
-    // Wywołanie bezpiecznego przeliczenia
-    updateScaleValues();
+    // Rejestrujemy wykonanie zmian w następnej wolnej klatce renderowania (maksymalnie 60/120 razy na sekundę)
+    scaleUpdateTimeout = requestAnimationFrame(() => {
+        const bgEl = document.getElementById('scaleBgColor');
+        const opEl = document.getElementById('scaleBgOpacity');
+        const txtEl = document.getElementById('scaleTextColor');
+        const fsEl = document.getElementById('scaleFontSize');
+        const styleEl = document.getElementById('scaleFontStyle');
+        
+        if (!bgEl || !opEl || !txtEl || !fsEl || !styleEl) return;
+
+        const hexBg = bgEl.value;
+        const opacity = opEl.value;
+        const textColor = txtEl.value;
+        const fontSize = fsEl.value;
+        const fontStyle = styleEl.value;
+
+        // Upewnienie się, że pobrane z DOM wartości kolorów mają prawidłową strukturę
+        const cleanHexBg = (hexBg && hexBg.startsWith('#')) ? hexBg : '#ffffff';
+        const cleanTextColor = (textColor && textColor.startsWith('#')) ? textColor : '#000000';
+
+        const ratio = checkContrastRatio(cleanHexBg, cleanTextColor, opacity);
+        const warningDiv = document.getElementById('scaleContrastWarning');
+        if (warningDiv) {
+            warningDiv.style.display = ratio < 3.0 ? 'block' : 'none';
+        }
+
+        const r = parseInt(cleanHexBg.slice(1, 3), 16) || 255;
+        const g = parseInt(cleanBg = cleanColors => {
+            const hex = cleanHexBg;
+            return {
+                r: parseInt(hex.slice(1, 3), 16) || 255,
+                g: parseInt(hex.slice(3, 5), 16) || 255,
+                b: parseInt(hex.slice(5, 7), 16) || 255
+            };
+        })();
+        
+        customScaleEl.style.background = `rgba(${cleanBg.r}, ${cleanBg.g}, ${cleanBg.b}, ${opacity/100})`;
+        customScaleEl.style.color = cleanTextColor;
+        customScaleEl.style.fontSize = fontSize + 'px';
+        customScaleEl.style.padding = '6px 12px';
+        
+        customScaleEl.style.fontStyle = fontStyle.includes('italic') ? 'italic' : 'normal';
+        customScaleEl.style.fontWeight = fontStyle.includes('bold') ? 'bold' : 'normal';
+        
+        const barEl = document.getElementById('scaleBar');
+        if (barEl) {
+            barEl.style.backgroundColor = cleanTextColor;
+        }
+        
+        customScaleEl.style.borderColor = `rgba(${cleanBg.r}, ${cleanBg.g}, ${cleanBg.b}, ${Math.min(1, opacity/100+0.2)})`;
+        
+        // Bezpieczne przeliczenie wartości fizycznych skali
+        updateScaleValues();
+    });
 };
-
 
 // Rejestracja metody w obiekcie window
 window.updatePanelVisibility = updatePanelVisibility;
