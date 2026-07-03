@@ -12,6 +12,7 @@ const OSM_BLACKLIST = {
         'utility_pole'
     ]
 };
+
 /* --- CZARNA LISTA OSM (KLUCZ: [LISTA WARTOŚCI]) --- */ 
 const OSM_HIDE_RULES = {
     "access": ["private", "no", "customers", "prywatny", "zamknięty"], // Ukryj prywatne/brak dostępu
