@@ -7535,7 +7535,7 @@ function toggleMeasureMode() {
         
         clearMeasure();
         map.getContainer().style.cursor = 'crosshair';
-        showCustomAlert("Szybki pomiar aktywowany. Klikaj na mapie, by stawiać punkty pomiarowe. Kliknięcie w pierwszy punkt zamknie figurę.");
+        showCustomAlert("Szybki pomiar aktywowany. Klikaj na mapie, by stawiać punkty pomiarowe. Kliknięcie w pobliżu pierwszego punktu zamknie pętlę.");
         
         if (isDrawMode) toggleDrawMode();
         if (isStopMode) toggleStopMode(false);
@@ -7544,7 +7544,7 @@ function toggleMeasureMode() {
         map.on('click', handleMeasureClick);
     } else {
         if(btn) { btn.style.background = '#0ea5e9'; btn.innerText = "📏 Szybki Pomiar"; }
-        if(btnMob) btnMob.style.background = 'transparent';
+        if(btnMob) { btnMob.style.background = 'transparent'; }
         
         map.getContainer().style.cursor = '';
         map.doubleClickZoom.enable();
@@ -7553,10 +7553,15 @@ function toggleMeasureMode() {
 }
 
 async function handleMeasureClick(e) {
-    if (isMeasureClosed) return;
+    if (isMeasureAsPolygon) return; // Jeśli przekształcono w wielokąt, blokujemy edycję
 
     const latlng = e.latlng;
     
+    // Jeśli łamana była zamknięta (wybraliśmy wcześniej NIE), kolejne kliknięcie otwiera ją na nowo
+    if (isMeasureClosed) {
+        isMeasureClosed = false;
+    }
+
     // Sprawdzanie zamknięcia kształtu (kliknięcie blisko punktu startowego)
     if (measurePoints.length >= 3) {
         const distToStart = latlng.distanceTo(measurePoints[0]);
@@ -7578,16 +7583,21 @@ async function handleMeasureClick(e) {
 }
 
 function closeMeasurementShape() {
-    isMeasureClosed = true;
-    map.off('click', handleMeasureClick);
-    map.getContainer().style.cursor = '';
-    
     showCustomConfirm("Czy chcesz przerobić narysowaną pętlę na figurę geometryczną?", () => {
+        // TAK: Zamieniamy na wielokąt (Polygon) i kończymy rysowanie pomiaru
         isMeasureAsPolygon = true;
+        isMeasureClosed = true;
+        
+        map.off('click', handleMeasureClick);
+        map.getContainer().style.cursor = '';
+        
         updateMeasureLine();
         updateMeasureSmallModal();
     }, () => {
+        // NIE: Zostaje jako łamana zamknięta (pętla) i pozwalamy rysować dalej
         isMeasureAsPolygon = false;
+        isMeasureClosed = true;
+        
         updateMeasureLine();
         updateMeasureSmallModal();
     });
@@ -7602,7 +7612,11 @@ function updateMeasureLine() {
             color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.25, weight: 4
         }).addTo(map);
     } else {
-        measureLineLayer = L.polyline(measurePoints, {
+        const renderPoints = [...measurePoints];
+        if (isMeasureClosed && renderPoints.length > 2) {
+            renderPoints.push(renderPoints[0]); // Chwilowe połączenie wizualne z początkiem
+        }
+        measureLineLayer = L.polyline(renderPoints, {
             color: '#0ea5e9', weight: 4, dashArray: isMeasureClosed ? '5, 5' : ''
         }).addTo(map);
     }
@@ -7613,9 +7627,13 @@ function updateMeasureSmallModal() {
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'measureSmallModal';
-        modal.setAttribute('data-html2canvas-ignore', 'true');
-        modal.style.cssText = "position: fixed; bottom: 85px; right: 20px; width: 280px; z-index: 9999; background: rgba(var(--modal-bg-color), 0.95); color: var(--text); border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); padding: 12px; display: flex; flex-direction: column; gap: 8px; font-family: sans-serif;";
+        modal.className = 'floating-modal';
+        modal.style.cssText = "position: fixed; bottom: 85px; right: 20px; width: 290px; z-index: 9999; display: flex; flex-direction: column;";
         document.body.appendChild(modal);
+        
+        // Podpięcie systemowych mechanizmów przesuwania, przezroczystości i zoomu gestami
+        makeDraggable(modal);
+        if (typeof makePinchZoomable === 'function') makePinchZoomable(modal);
     }
     modal.style.display = 'flex';
 
@@ -7623,7 +7641,7 @@ function updateMeasureSmallModal() {
     for (let i = 1; i < measurePoints.length; i++) {
         totalLength += measurePoints[i-1].distanceTo(measurePoints[i]);
     }
-    if (isMeasureClosed && !isMeasureAsPolygon && measurePoints.length > 2) {
+    if (isMeasureClosed && measurePoints.length > 2) {
         totalLength += measurePoints[measurePoints.length-1].distanceTo(measurePoints[0]);
     }
 
@@ -7631,16 +7649,23 @@ function updateMeasureSmallModal() {
     let lengthText = totalLength >= 1000 ? `${(totalLength/1000).toFixed(2)} km` : `${Math.round(totalLength)} m`;
 
     modal.innerHTML = `
-        <div style="font-weight: bold; font-size: 0.95rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; display:flex; justify-content:space-between; align-items:center;">
-            <span>📐 Szybki pomiar</span>
-            <span style="cursor:pointer; color:var(--danger); font-weight:bold;" onclick="clearMeasure()">✖</span>
+        <div class="modal-header">
+            <span style="font-weight:bold; color:#0ea5e9;">📐 Szczegóły pomiaru</span>
+            <div style="display:flex; align-items:center;">
+                <div class="opacity-control" title="Przezroczystość" data-html2canvas-ignore>
+                    👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
+                </div>
+                <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="clearMeasure()" data-html2canvas-ignore>X</button>
+            </div>
         </div>
-        <div style="font-size: 0.85rem; color: #cbd5e1; line-height:1.4;">
-            Typ: <strong>${typeText}</strong><br>
-            Wierzchołki: <strong>${measurePoints.length}</strong><br>
-            ${isMeasureAsPolygon ? 'Obwód' : 'Długość'}: <strong style="color: var(--accent); font-size: 1.05rem;">${lengthText}</strong>
+        <div class="modal-body" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="font-size: 0.85rem; color: var(--text); line-height:1.4;">
+                Typ: <strong>${typeText}</strong><br>
+                Wierzchołki: <strong>${measurePoints.length}</strong><br>
+                ${isMeasureAsPolygon ? 'Obwód' : 'Długość'}: <strong style="color: var(--accent); font-size: 1.05rem;">${lengthText}</strong>
+            </div>
+            <button onclick="analyzeMeasure()" style="width:100%; font-size:0.8rem; padding: 8px; background:var(--accent);" ${measurePoints.length < 2 ? 'disabled' : ''}>Analizuj pomiar</button>
         </div>
-        <button onclick="analyzeMeasure()" style="width:100%; font-size:0.8rem; padding: 6px; background:var(--accent);" ${measurePoints.length < 2 ? 'disabled' : ''}>Analizuj pomiar</button>
     `;
 }
 
@@ -7663,7 +7688,6 @@ function clearMeasure() {
     if (isMeasureMode) toggleMeasureMode();
 }
 
-/* --- PRECYZYJNE OBLICZANIE POLA POWIERZCHNI --- */
 function calculatePolygonArea(latlngs) {
     let area = 0;
     const numPoints = latlngs.length;
@@ -7684,7 +7708,6 @@ function calculatePolygonArea(latlngs) {
     return Math.abs(area / 2);
 }
 
-/* --- SYSTEM ANALIZY I GENEROWANIA MODALU GŁÓWNEGO POMIARU --- */
 async function analyzeMeasure() {
     let modal = document.getElementById('measureAnalysisModal');
     if (!modal) {
@@ -7699,7 +7722,6 @@ async function analyzeMeasure() {
 
     document.body.style.cursor = 'wait';
     
-    // Generowanie stabilnego profilu wysokości na wektorze pomiaru
     let sampleGeometry = [];
     let cumulativeDistances = [0];
     let totalD = 0;
@@ -7724,7 +7746,6 @@ async function analyzeMeasure() {
         cumulativeDistances.push(totalD);
     }
 
-    // Stabilna generacja rzeźby terenu pod pomiarem
     measureElevationData = sampleGeometry.map((coords, index) => {
         const factor = index / (sampleGeometry.length - 1 || 1);
         const baselineHeight = 70 + Math.sin(factor * Math.PI * 3) * 20 + Math.cos(factor * Math.PI * 7) * 8;
@@ -7744,17 +7765,20 @@ async function analyzeMeasure() {
     let htmlContent = `
         <div class="modal-header">
             <span style="font-weight:bold; color:#0ea5e9;">📊 Szczegółowa Analiza Pomiarowa</span>
-            <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('measureAnalysisModal')">X</button>
+            <div style="display:flex; align-items:center;">
+                <div class="opacity-control" title="Przezroczystość" data-html2canvas-ignore>
+                    👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
+                </div>
+                <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('measureAnalysisModal')">X</button>
+            </div>
         </div>
         <div class="modal-body" style="padding: 15px; display:flex; flex-direction:column; gap:15px; max-height:80vh; overflow-y:auto;">
     `;
 
     if (isMeasureAsPolygon) {
-        // --- PREZENTACJA FIGURY INTERAKTYWNEJ (SVG) ---
         const area = calculatePolygonArea(measurePoints);
         const areaStr = area >= 10000 ? `${(area / 10000).toFixed(2)} ha` : `${Math.round(area)} m²`;
         
-        // Matematyczne rzutowanie wektorów na układ współrzędnych SVG 300x200
         const lats = measurePoints.map(p => p.lat);
         const lngs = measurePoints.map(p => p.lng);
         const minLat = Math.min(...lats), maxLat = Math.max(...lats);
@@ -7766,7 +7790,7 @@ async function analyzeMeasure() {
 
         const svgPoints = measurePoints.map(p => {
             const x = pad + (p.lng - minLng) * scale;
-            const y = h - (pad + (p.lat - minLat) * scale); // Odwrócenie Y
+            const y = h - (pad + (p.lat - minLat) * scale); 
             return { x, y, latlng: p };
         });
 
@@ -7808,15 +7832,14 @@ async function analyzeMeasure() {
                     </div>
                 </div>
                 <div style="background:rgba(255,255,255,0.03); padding:12px; border-radius:8px; font-size:0.85rem; line-height:1.6;">
-                    📐 Obwód: <strong>${totalD >= 1000 ? (totalD/1000).toFixed(2)+' km' : Math.round(totalD)+' m'}</strong><br>
+                    Obwód: <strong>${totalD >= 1000 ? (totalD/1000).toFixed(2)+' km' : Math.round(totalD)+' m'}</strong><br>
                     🟩 Pole powierzchni: <strong style="color:var(--accent); font-size:1rem;">${areaStr}</strong><br>
-                    📌 Krawędzie wielokąta: <strong>${limits}</strong><br>
-                    📏 Średnia długość boku: <strong>${avgSegmentLen} m</strong>
+                    Krawędzie wielokąta: <strong>${limits}</strong><br>
+                    Średnia długość boku: <strong>${avgSegmentLen} m</strong>
                 </div>
             </div>
         `;
     } else {
-        // --- PREZENTACJA ŁAMANEJ OTWARTYCH/ZAMKNIĘTYCH ---
         let segmentsListHtml = '';
         for (let i = 0; i < limits; i++) {
             const d = measurePoints[i].distanceTo(measurePoints[(i+1)%numPoints]);
@@ -7835,8 +7858,8 @@ async function analyzeMeasure() {
                     📊 Średnia wysokość: <strong>${avgElev} m n.p.m.</strong>
                 </div>
                 <div style="background:rgba(255,255,255,0.03); padding:12px; border-radius:8px; font-size:0.85rem; line-height:1.6;">
-                    ⚡ Całkowity dystans: <strong>${totalD >= 1000 ? (totalD/1000).toFixed(2)+' km' : Math.round(totalD)+' m'}</strong><br>
-                    📏 Średni segment: <strong>${avgSegmentLen} m</strong>
+                    Całkowity dystans: <strong>${totalD >= 1000 ? (totalD/1000).toFixed(2)+' km' : Math.round(totalD)+' m'}</strong><br>
+                    Średni segment: <strong>${avgSegmentLen} m</strong>
                 </div>
             </div>
             <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:15px;">
@@ -7859,7 +7882,6 @@ async function analyzeMeasure() {
 
     document.body.style.cursor = '';
 
-    // Renderowanie wykresu profilu wysokości dla łamanej
     if (!isMeasureAsPolygon) {
         setTimeout(() => {
             drawMeasureElevation(maxElev, minElev, cumulativeDistances);
@@ -7893,7 +7915,6 @@ function drawMeasureElevation(maxE, minElev, cumulativeDistances) {
 
     ctx.clearRect(0, 0, w, h);
 
-    // 1. Linie siatki poziomej
     ctx.fillStyle = '#94a3b8';
     ctx.font = '8px sans-serif';
     ctx.textAlign = 'right';
@@ -7909,7 +7930,6 @@ function drawMeasureElevation(maxE, minElev, cumulativeDistances) {
         ctx.fillText(`${Math.round(val)}m`, padL - 4, y);
     }
 
-    // 2. Linie wierzchołków łamanej (Oznaczenia odcinków)
     const totalDist = measureElevationData[measureElevationData.length - 1].dist;
     cumulativeDistances.forEach((d, idx) => {
         const x = padL + (d / (totalDist || 1)) * innerW;
@@ -7928,7 +7948,6 @@ function drawMeasureElevation(maxE, minElev, cumulativeDistances) {
         ctx.fillText(idx + 1, x, padT - 5);
     });
 
-    // 3. Wypełnienie i profil przekroju
     const grad = ctx.createLinearGradient(0, padT, 0, h - padB);
     grad.addColorStop(0, 'rgba(14, 165, 233, 0.35)');
     grad.addColorStop(1, 'rgba(14, 165, 233, 0.0)');
@@ -7944,7 +7963,6 @@ function drawMeasureElevation(maxE, minElev, cumulativeDistances) {
     ctx.fillStyle = grad;
     ctx.fill();
 
-    // Rysowanie obrysu linii przekroju
     ctx.beginPath();
     measureElevationData.forEach((d, i) => {
         const x = padL + (i / (measureElevationData.length - 1)) * innerW;
@@ -7955,7 +7973,6 @@ function drawMeasureElevation(maxE, minElev, cumulativeDistances) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Interaktywne śledzenie pozycji przekroju pod myszką
     const handleMove = (clientX) => {
         const rect = canvas.getBoundingClientRect();
         const x = clientX - rect.left;
@@ -7965,9 +7982,8 @@ function drawMeasureElevation(maxE, minElev, cumulativeDistances) {
         const idx = Math.round(ratio * (measureElevationData.length - 1));
         const pt = measureElevationData[idx];
 
-        drawMeasureElevation(maxE, minElev, cumulativeDistances); // Przerysuj tło
+        drawMeasureElevation(maxE, minElev, cumulativeDistances);
 
-        // Rysuj pionową linię wskaźnika
         const drawX = padL + ratio * innerW;
         ctx.beginPath();
         ctx.moveTo(drawX, padT);
@@ -7977,7 +7993,6 @@ function drawMeasureElevation(maxE, minElev, cumulativeDistances) {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Rysuj punkt na wykresie
         const drawY = padT + innerH - ((pt.elevation - min) / range) * innerH;
         ctx.beginPath();
         ctx.arc(drawX, drawY, 4, 0, Math.PI * 2);
@@ -7987,7 +8002,6 @@ function drawMeasureElevation(maxE, minElev, cumulativeDistances) {
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Rysuj pomocniczą pinezkę na mapie głównej w locie
         if (!measureHoverMarker) {
             measureHoverMarker = L.circleMarker(pt.latlng, {
                 radius: 6, color: '#fff', weight: 2, fillColor: '#0ea5e9', fillOpacity: 1, zIndexOffset: 4000
