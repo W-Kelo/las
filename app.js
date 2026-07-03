@@ -7535,7 +7535,7 @@ function toggleMeasureMode() {
         
         clearMeasure();
         map.getContainer().style.cursor = 'crosshair';
-        showCustomAlert("Szybki pomiar aktywowany. Klikaj na mapie, by stawiać punkty pomiarowe. Kliknięcie w pobliżu pierwszego punktu zamknie pętlę.");
+        showCustomAlert("Szybki pomiar aktywowany. Klikaj na mapie. Kliknięcie w pierwszy punkt (niebieski) domyka pętlę.");
         
         if (isDrawMode) toggleDrawMode();
         if (isStopMode) toggleStopMode(false);
@@ -7553,19 +7553,18 @@ function toggleMeasureMode() {
 }
 
 async function handleMeasureClick(e) {
-    if (isMeasureAsPolygon) return; // Jeśli przekształcono w wielokąt, blokujemy edycję
+    if (isMeasureAsPolygon) return;
 
     const latlng = e.latlng;
     
-    // Jeśli łamana była zamknięta (wybraliśmy wcześniej NIE), kolejne kliknięcie otwiera ją na nowo
     if (isMeasureClosed) {
         isMeasureClosed = false;
     }
 
-    // Sprawdzanie zamknięcia kształtu (kliknięcie blisko punktu startowego)
+    // Bezpiecznik odległości (opcjonalny, głównym wyzwalaczem jest kliknięcie w marker #1)
     if (measurePoints.length >= 3) {
         const distToStart = latlng.distanceTo(measurePoints[0]);
-        if (distToStart < 25) { 
+        if (distToStart < 20) { 
             closeMeasurementShape();
             return;
         }
@@ -7574,9 +7573,20 @@ async function handleMeasureClick(e) {
     measurePoints.push(latlng);
     
     const m = L.circleMarker(latlng, {
-        radius: 6, color: '#fff', weight: 2, fillColor: '#0ea5e9', fillOpacity: 1, zIndexOffset: 3000
+        radius: 7, color: '#fff', weight: 2, fillColor: '#0ea5e9', fillOpacity: 1, zIndexOffset: 3000
     }).addTo(map);
     measureMarkers.push(m);
+
+    // KLUCZOWE: Podpięcie zdarzenia kliknięcia w pierwszy marker dla idealnego domykania pętli
+    if (measurePoints.length === 1) {
+        m.setStyle({ radius: 9, fillColor: '#22c55e' }); // Wyróżnienie punktu startu
+        m.on('click', (ev) => {
+            L.DomEvent.stopPropagation(ev);
+            if (measurePoints.length >= 3) {
+                closeMeasurementShape();
+            }
+        });
+    }
     
     updateMeasureLine();
     updateMeasureSmallModal();
@@ -7584,7 +7594,6 @@ async function handleMeasureClick(e) {
 
 function closeMeasurementShape() {
     showCustomConfirm("Czy chcesz przerobić narysowaną pętlę na figurę geometryczną?", () => {
-        // TAK: Zamieniamy na wielokąt (Polygon) i kończymy rysowanie pomiaru
         isMeasureAsPolygon = true;
         isMeasureClosed = true;
         
@@ -7594,7 +7603,6 @@ function closeMeasurementShape() {
         updateMeasureLine();
         updateMeasureSmallModal();
     }, () => {
-        // NIE: Zostaje jako łamana zamknięta (pętla) i pozwalamy rysować dalej
         isMeasureAsPolygon = false;
         isMeasureClosed = true;
         
@@ -7614,7 +7622,7 @@ function updateMeasureLine() {
     } else {
         const renderPoints = [...measurePoints];
         if (isMeasureClosed && renderPoints.length > 2) {
-            renderPoints.push(renderPoints[0]); // Chwilowe połączenie wizualne z początkiem
+            renderPoints.push(renderPoints[0]); 
         }
         measureLineLayer = L.polyline(renderPoints, {
             color: '#0ea5e9', weight: 4, dashArray: isMeasureClosed ? '5, 5' : ''
@@ -7624,18 +7632,37 @@ function updateMeasureLine() {
 
 function updateMeasureSmallModal() {
     let modal = document.getElementById('measureSmallModal');
+    const isMobile = window.innerWidth <= 768;
+    const width = 290;
+    const height = 115;
+
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'measureSmallModal';
         modal.className = 'floating-modal';
-        modal.style.cssText = "position: fixed; bottom: 85px; right: 20px; width: 290px; z-index: 9999; display: flex; flex-direction: column;";
+        
+        // BEZBŁĘDNE POZYCJONOWANIE PIKSELOWE (Bez transform i bottom/right)
+        let initLeft, initTop;
+        if (isMobile) {
+            initLeft = (window.innerWidth - width) / 2;
+            initTop = (window.innerHeight - height) / 2;
+        } else {
+            initLeft = window.innerWidth - width - 20;
+            initTop = window.innerHeight - height - 100; // Pozycja nad dolnym panelem
+        }
+
+        modal.style.cssText = `position: fixed; left: ${initLeft}px; top: ${initTop}px; width: ${width}px; height: auto; z-index: 9999; display: flex; flex-direction: column; transform: none; bottom: auto; right: auto;`;
         document.body.appendChild(modal);
         
-        // Podpięcie systemowych mechanizmów przesuwania, przezroczystości i zoomu gestami
         makeDraggable(modal);
         if (typeof makePinchZoomable === 'function') makePinchZoomable(modal);
     }
-    modal.style.display = 'flex';
+    
+    // Pokazuj tylko jeśli użytkownik celowo go nie schował oczkiem
+    const restoreBtn = document.getElementById('measureRestoreBtn');
+    if (!restoreBtn || restoreBtn.style.display !== 'flex') {
+        modal.style.display = 'flex';
+    }
 
     let totalLength = 0;
     for (let i = 1; i < measurePoints.length; i++) {
@@ -7649,24 +7676,48 @@ function updateMeasureSmallModal() {
     let lengthText = totalLength >= 1000 ? `${(totalLength/1000).toFixed(2)} km` : `${Math.round(totalLength)} m`;
 
     modal.innerHTML = `
-        <div class="modal-header">
-            <span style="font-weight:bold; color:#0ea5e9;">📐 Szczegóły pomiaru</span>
-            <div style="display:flex; align-items:center;">
+        <div class="modal-header" style="padding: 6px 10px;">
+            <span style="font-weight:bold; color:#0ea5e9; font-size: 0.85rem;">📐 Szczegóły pomiaru</span>
+            <div style="display:flex; align-items:center; gap: 5px;">
+                <span style="cursor:pointer; font-size: 0.95rem; margin-right: 2px;" onclick="hideMeasureModal()" title="Ukryj modal pomiaru">👁️</span>
                 <div class="opacity-control" title="Przezroczystość" data-html2canvas-ignore>
-                    👁️ <input type="range" min="20" max="100" value="95" oninput="setOpacity(this)">
+                    <input type="range" min="20" max="100" value="95" style="width:45px;" oninput="setOpacity(this)">
                 </div>
-                <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="clearMeasure()" data-html2canvas-ignore>X</button>
+                <button class="danger icon-only" style="padding: 1px 6px; min-width: auto; font-size: 0.75rem;" onclick="clearMeasure()" data-html2canvas-ignore>X</button>
             </div>
         </div>
-        <div class="modal-body" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="font-size: 0.85rem; color: var(--text); line-height:1.4;">
-                Typ: <strong>${typeText}</strong><br>
-                Wierzchołki: <strong>${measurePoints.length}</strong><br>
-                ${isMeasureAsPolygon ? 'Obwód' : 'Długość'}: <strong style="color: var(--accent); font-size: 1.05rem;">${lengthText}</strong>
+        <div class="modal-body" style="padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 0.8rem; color: var(--text); line-height: 1.3;">
+                Typ: <strong>${typeText}</strong> | Punkty: <strong>${measurePoints.length}</strong><br>
+                Dystans: <strong style="color: var(--accent); font-size: 0.95rem;">${lengthText}</strong>
             </div>
-            <button onclick="analyzeMeasure()" style="width:100%; font-size:0.8rem; padding: 8px; background:var(--accent);" ${measurePoints.length < 2 ? 'disabled' : ''}>Analizuj pomiar</button>
+            <button onclick="analyzeMeasure()" style="width:100%; font-size:0.75rem; padding: 5px; background:var(--accent);" ${measurePoints.length < 2 ? 'disabled' : ''}>Analizuj pomiar</button>
         </div>
     `;
+}
+
+function hideMeasureModal() {
+    const modal = document.getElementById('measureSmallModal');
+    if (modal) modal.style.display = 'none';
+
+    let restoreBtn = document.getElementById('measureRestoreBtn');
+    if (!restoreBtn) {
+        restoreBtn = document.createElement('button');
+        restoreBtn.id = 'measureRestoreBtn';
+        restoreBtn.innerHTML = '👁️';
+        restoreBtn.style.cssText = "position: fixed; bottom: 95px; right: 20px; z-index: 9999; width: 42px; height: 45px; border-radius: 50%; background: var(--panel); color: var(--text); border: 2px solid var(--accent); box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 1.4rem; cursor: pointer; display: flex; align-items: center; justify-content: center;";
+        restoreBtn.onclick = showMeasureModal;
+        document.body.appendChild(restoreBtn);
+    }
+    restoreBtn.style.display = 'flex';
+}
+
+function showMeasureModal() {
+    const modal = document.getElementById('measureSmallModal');
+    if (modal) modal.style.display = 'flex';
+    
+    const restoreBtn = document.getElementById('measureRestoreBtn');
+    if (restoreBtn) restoreBtn.style.display = 'none';
 }
 
 function clearMeasure() {
@@ -7683,6 +7734,9 @@ function clearMeasure() {
 
     const largeM = document.getElementById('measureAnalysisModal');
     if (largeM) largeM.style.display = 'none';
+    
+    const restoreBtn = document.getElementById('measureRestoreBtn');
+    if (restoreBtn) restoreBtn.style.display = 'none';
     
     if (measureHoverMarker) { map.removeLayer(measureHoverMarker); measureHoverMarker = null; }
     if (isMeasureMode) toggleMeasureMode();
@@ -7710,15 +7764,24 @@ function calculatePolygonArea(latlngs) {
 
 async function analyzeMeasure() {
     let modal = document.getElementById('measureAnalysisModal');
+    const width = 650;
+    const height = 400;
+
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'measureAnalysisModal';
         modal.className = 'floating-modal';
-        modal.style.cssText = "position: fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:650px; max-width:95vw; z-index:9999; background: rgba(var(--modal-bg-color), 0.98); color: var(--text); border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; font-family: sans-serif;";
+        
+        // ZABEZPIECZONE, PRZELICZONE CENTROWANIE PIKSELOWE (Bez skoków transformacji)
+        const initLeft = (window.innerWidth - width) / 2;
+        const initTop = (window.innerHeight - height) / 2;
+
+        modal.style.cssText = `position: fixed; left: ${initLeft}px; top: ${initTop}px; width: ${width}px; height: auto; z-index: 9999; display: flex; flex-direction: column; transform: none; bottom: auto; right: auto;`;
         document.body.appendChild(modal);
+        
+        makeDraggable(modal);
     }
     modal.style.display = 'flex';
-    makeDraggable(modal);
 
     document.body.style.cursor = 'wait';
     
