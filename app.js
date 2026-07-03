@@ -2552,7 +2552,8 @@ window.updateCustomCopyrightAppearance = function() {
    ========================================================================= */
 
 function getHumanFriendlyRounding(val) {
-    if (val <= 0) return 10;
+    if (val <= 0 || isNaN(val) || !isFinite(val)) return 10;
+    
     if (val >= 1000) {
         return Math.round(val / 100) * 100;
     } else if (val >= 100) {
@@ -2564,29 +2565,35 @@ function getHumanFriendlyRounding(val) {
     }
 }
 
+// 2. Bezwzględnie bezpieczne obliczanie wartości skali (Gwarancja braku pętli)
 function updateScaleValues() {
-    if (!customScaleEl || !exportMap) return;
+    if (!customScaleEl || !exportMap || !exportMap._loaded) return;
     
     const bounds = exportMap.getBounds();
+    if (!bounds) return;
+
     const mapExportEl = document.getElementById('mapExport');
     if (!mapExportEl) return;
     
     const mapWidthPx = mapExportEl.clientWidth;
-    if (mapWidthPx <= 0) return; 
+    if (mapWidthPx <= 0 || isNaN(mapWidthPx)) return; // Safeguard 1: Brak szerokości kontenera
 
     const mapWidthMeters = bounds.getNorthEast().distanceTo(bounds.getNorthWest());
-    if (mapWidthMeters <= 0 || isNaN(mapWidthMeters)) return; 
+    if (mapWidthMeters <= 0 || isNaN(mapWidthMeters) || !isFinite(mapWidthMeters)) return; // Safeguard 2: Blędne wymiary mapy
     
     const pxPerMeter = mapWidthPx / mapWidthMeters;
+    // Safeguard 3: Całkowite zablokowanie dalszych pętli przy zerowym współczynniku pikseli
     if (!pxPerMeter || isNaN(pxPerMeter) || pxPerMeter <= 0 || !isFinite(pxPerMeter)) return;
 
     const type = document.getElementById('scaleTypeInput').value;
     const textEl = document.getElementById('scaleText');
     const barEl = document.getElementById('scaleBar');
 
+    if (!textEl || !barEl) return;
+
     if (type === 'text') {
         customScaleEl.style.width = 'max-content';
-        const pxPerCm = 37.8; // ~96 DPI
+        const pxPerCm = 37.8; // Standardowe DPI ekranowe
         const metersPerCm = (1 / pxPerMeter) * pxPerCm;
 
         let finalValue = metersPerCm;
@@ -2603,7 +2610,8 @@ function updateScaleValues() {
         let targetMeters = 10;
         let safetyCounter = 0; 
         
-        while (targetMeters * pxPerMeter < 100 && safetyCounter < 1000) { 
+        // Twardy bezpiecznik: Pętla nie wykona się więcej niż 50 razy, co uniemożliwia zawieszenie CPU
+        while (targetMeters * pxPerMeter < 100 && safetyCounter < 50) { 
             targetMeters *= 2; 
             safetyCounter++;
         } 
@@ -2611,7 +2619,7 @@ function updateScaleValues() {
         const scaleWidthPx = Math.round(targetMeters * pxPerMeter);
         let displayStr = targetMeters >= 1000 ? `${(targetMeters/1000).toFixed(1)} km` : `${targetMeters} m`;
         
-        // FIZYCZNE POWIĄZANIE SZEROKOŚCI paska z obliczeniami matematycznymi
+        // Elastyczne powiązanie szerokości paska z obliczeniami
         barEl.style.width = scaleWidthPx + 'px';
         barEl.style.margin = '4px auto 0 auto';
         
@@ -3824,11 +3832,11 @@ window.updateCustomScaleAppearance = function() {
 
     const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
     
-    // Nanoszenie zmian estetycznych w sposób bezpieczny
+    // Nanoszenie stylów wejściowych
     customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
     customScaleEl.style.color = textColor;
     customScaleEl.style.fontSize = fontSize + 'px';
-    customScaleEl.style.padding = '6px 12px'; 
+    customScaleEl.style.padding = '6px 12px'; // Bezpieczny, stały margines wewnętrzny
     
     customScaleEl.style.fontStyle = fontStyle.includes('italic') ? 'italic' : 'normal';
     customScaleEl.style.fontWeight = fontStyle.includes('bold') ? 'bold' : 'normal';
@@ -3840,12 +3848,14 @@ window.updateCustomScaleAppearance = function() {
     
     customScaleEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
     
-    // Pojedyncze, wygładzone przeliczenie wartości geometrycznych
+    // Wywołanie bezpiecznego przeliczenia
     updateScaleValues();
 };
 
+
 // Rejestracja metody w obiekcie window
 window.updatePanelVisibility = updatePanelVisibility;
+window.updateScaleValues = updateScaleValues;
 window.updateCustomScaleAppearance = updateCustomScaleAppearance;
 
 /* --- STATYSTYKI --- */
