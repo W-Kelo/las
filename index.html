@@ -58,7 +58,7 @@
     </div>
 </div>
 
-<!-- MODAL: ZARZĄDZANIE WYGLĄDEM SKALI (ZABEZPIECZONY) -->
+<!-- MODAL: ZARZĄDZANIE WYGLĄDEM SKALI (ZABEZPIECZONY PRZED ZAWIESZENIEM) -->
 <div id="scaleSettingsModal" class="floating-modal" style="width: 350px; z-index: 4000; display: none;" data-html2canvas-ignore>
     <div class="modal-header">
         <span style="color: #3b82f6; font-weight:bold;">📏 Wygląd Skali</span>
@@ -77,15 +77,17 @@
 
         <label>Tło panelu i przezroczystość:</label>
         <div style="display:flex; gap:10px; align-items:center;">
-            <input type="color" id="scaleBgColor" value="#ffffff" style="height:35px; width:45px; border:none; background:none; cursor:pointer;" oninput="updateCustomScaleAppearance()">
+            <!-- Zmiana oninput na onchange w celu ochrony wątku przeglądarki -->
+            <input type="color" id="scaleBgColor" value="#ffffff" style="height:35px; width:45px; border:none; background:none; cursor:pointer;" onchange="updateCustomScaleAppearance()">
             <input type="range" id="scaleBgOpacity" class="thick-slider" min="0" max="100" value="85" oninput="updateCustomScaleAppearance()">
         </div>
 
         <label>Stylizacja tekstu i paska:</label>
         <div style="display:flex; gap:10px; margin-bottom: 5px;">
             <div style="flex:1;">
-                <label style="font-size:0.75rem; margin:0;">Kolor:</label>
-                <input type="color" id="scaleTextColor" value="#000000" style="height:35px; width:100%; border:none; background:none; cursor:pointer;" oninput="updateCustomScaleAppearance()">
+                <label style="font-size:0.75rem; margin:0;">Kolor tekstu:</label>
+                <!-- Zmiana oninput na onchange w celu ochrony wątku przeglądarki -->
+                <input type="color" id="scaleTextColor" value="#000000" style="height:35px; width:100%; border:none; background:none; cursor:pointer;" onchange="updateCustomScaleAppearance()">
             </div>
             <div style="flex:2;">
                 <label style="font-size:0.75rem; margin:0;">Styl czcionki:</label>
@@ -110,7 +112,6 @@
         </div>
     </div>
 </div>
-
 <!-- MODAL: ZARZĄDZANIE WYGLĄDEM COPYRIGHT (ŹRÓDŁO) -->
 <div id="copySettingsModal" class="floating-modal" style="width: 350px; z-index: 4000; display: none;" data-html2canvas-ignore>
     <div class="modal-header">
