@@ -2526,25 +2526,6 @@ window.updateCopyrightText = function() {
 };
 
 
-// 5. OBSŁUGA WYGLĄDU (Kalkulator Kontrastu)
-window.updateCustomScaleAppearance = function() {
-    if (!customScaleEl) return;
-    const hexBg = document.getElementById('scaleBgColor').value;
-    const opacity = document.getElementById('scaleBgOpacity').value;
-    const textColor = document.getElementById('scaleTextColor').value;
-    
-    const ratio = checkContrastRatio(hexBg, textColor, opacity);
-    const warningDiv = document.getElementById('scaleContrastWarning');
-    warningDiv.style.display = ratio < 3.0 ? 'block' : 'none';
-
-    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
-    customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
-    customScaleEl.style.color = textColor;
-    document.getElementById('scaleBar').style.backgroundColor = textColor;
-    customScaleEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
-    
-    updateScaleValues();
-};
 window.updateCustomCopyrightAppearance = function() {
     if (!customCopyrightEl) return;
     const hexBg = document.getElementById('copyBgColor').value;
@@ -2640,40 +2621,6 @@ function updateScaleValues() {
     }
 }
 
-window.updateCustomScaleAppearance = function() {
-    if (!customScaleEl) return;
-    
-    const hexBg = document.getElementById('scaleBgColor').value;
-    const opacity = document.getElementById('scaleBgOpacity').value;
-    const textColor = document.getElementById('scaleTextColor').value;
-    const fontSize = document.getElementById('scaleFontSize').value;
-    const fontStyle = document.getElementById('scaleFontStyle').value;
-
-    const ratio = checkContrastRatio(hexBg, textColor, opacity);
-    const warningDiv = document.getElementById('scaleContrastWarning');
-    if (warningDiv) {
-        warningDiv.style.display = ratio < 3.0 ? 'block' : 'none';
-    }
-
-    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
-    
-    customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
-    customScaleEl.style.color = textColor;
-    customScaleEl.style.fontSize = fontSize + 'px';
-    customScaleEl.style.padding = '6px 12px'; // Zablokowany, estetyczny margines wewnętrzny
-    
-    customScaleEl.style.fontStyle = fontStyle.includes('italic') ? 'italic' : 'normal';
-    customScaleEl.style.fontWeight = fontStyle.includes('bold') ? 'bold' : 'normal';
-    
-    const barEl = document.getElementById('scaleBar');
-    if (barEl) {
-        barEl.style.backgroundColor = textColor;
-    }
-    
-    customScaleEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
-    
-    updateScaleValues();
-};
 
 // NOWY ALGORYTM DRAG&DROP - Twarde krawędzie + Twarde wymiary
 function makeStrictEdgeDraggable(el, wrapper, allFourEdges = true) {
