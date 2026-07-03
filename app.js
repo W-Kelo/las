@@ -83,6 +83,7 @@ let searchMarker = null;
 let globalOsmPois = [];  
 let globalTrails = [];
 let routeStepsGeom = [];
+let scaleFrameId = null;
 let stepHighlightLayer = null; 
 let exportMap = null;
 let exportPolyline = null;
@@ -2403,30 +2404,7 @@ function getLuminance(r, g, b) {
 }
 
 
-function checkContrastRatio(hex1, hex2, opacity1) {
-    // Bezpieczne sprawdzanie i formatowanie wejściowych wartości
-    const safeHex1 = (hex1 && hex1.startsWith('#') && hex1.length >= 7) ? hex1 : '#ffffff';
-    const safeHex2 = (hex2 && hex2.startsWith('#') && hex2.length >= 7) ? hex2 : '#000000';
-    const safeOpacity = isNaN(parseFloat(opacity1)) ? 100 : parseFloat(opacity1);
 
-    const r1 = parseInt(safeHex1.slice(1, 3), 16) || 0;
-    const g1 = parseInt(safeHex1.slice(3, 5), 16) || 0;
-    const b1 = parseInt(safeHex1.slice(5, 7), 16) || 0;
-
-    const r2 = parseInt(safeHex2.slice(1, 3), 16) || 0;
-    const g2 = parseInt(safeHex2.slice(3, 5), 16) || 0;
-    const b2 = parseInt(safeHex2.slice(5, 7), 16) || 0;
-
-    const lum1 = getLuminance(r1, g1, b1) * (safeOpacity / 100) + getLuminance(255, 255, 255) * (1 - safeOpacity / 100); 
-    const lum2 = getLuminance(r2, g2, b2);
-
-    // Zabezpieczenie przed wartościami NaN (zwraca maksymalny kontrast, by zapobiec błędom logicznym)
-    if (isNaN(lum1) || isNaN(lum2)) return 21;
-
-    const brightest = Math.max(lum1, lum2);
-    const darkest = Math.min(lum1, lum2);
-    return (brightest + 0.05) / (darkest + 0.05); 
-}
 
 function executeRefreshRoute() {
     document.getElementById('confirmRefreshModal').style.display = 'none';
@@ -2581,70 +2559,329 @@ function getHumanFriendlyRounding(val) {
     }
 }
 
-// 2. Bezwzględnie bezpieczne obliczanie wartości skali (Gwarancja braku pętli)
-function updateScaleValues() {
-    if (!customScaleEl || !exportMap || !exportMap._loaded) return;
-    
-    const bounds = exportMap.getBounds();
-    if (!bounds) return;
+/* =========================================================
+   SYSTEM PREWENCJI ZWIZÓW: STRAŻNIK SKALI (WATCHDOG)
+========================================================= */
+const StraznikSkali = {
+    callHistory: [],
+    recursionDepth: 0,
+    maxDepth: 4,               // Maksymalna głębokość rekurzji
+    timeThresholdMs: 250,      // Okno czasowe obserwacji
+    maxCallsInWindow: 6,       // Maksymalna dozwolona ilość wywołań w oknie
+    executionTimes: [],
+    isTripped: false,
 
-    const mapExportEl = document.getElementById('mapExport');
-    if (!mapExportEl) return;
-    
-    const mapWidthPx = mapExportEl.clientWidth;
-    if (mapWidthPx <= 0 || isNaN(mapWidthPx)) return; // Safeguard 1: Brak szerokości kontenera
+    reset() {
+        this.callHistory = [];
+        this.recursionDepth = 0;
+        this.executionTimes = [];
+        this.isTripped = false;
+    },
 
-    const mapWidthMeters = bounds.getNorthEast().distanceTo(bounds.getNorthWest());
-    if (mapWidthMeters <= 0 || isNaN(mapWidthMeters) || !isFinite(mapWidthMeters)) return; // Safeguard 2: Blędne wymiary mapy
-    
-    const pxPerMeter = mapWidthPx / mapWidthMeters;
-    // Safeguard 3: Całkowite zablokowanie dalszych pętli przy zerowym współczynniku pikseli
-    if (!pxPerMeter || isNaN(pxPerMeter) || pxPerMeter <= 0 || !isFinite(pxPerMeter)) return;
+    // Rejestracja wejścia do krytycznej sekcji kodu skali
+    enter(actionName) {
+        if (this.isTripped) return false;
 
-    const type = document.getElementById('scaleTypeInput').value;
-    const textEl = document.getElementById('scaleText');
-    const barEl = document.getElementById('scaleBar');
-
-    if (!textEl || !barEl) return;
-
-    if (type === 'text') {
-        customScaleEl.style.width = 'max-content';
-        const pxPerCm = 37.8; // Standardowe DPI ekranowe
-        const metersPerCm = (1 / pxPerMeter) * pxPerCm;
-
-        let finalValue = metersPerCm;
-        const isRoundingEnabled = document.getElementById('scaleRoundingToggle') ? document.getElementById('scaleRoundingToggle').checked : false;
-
-        if (isRoundingEnabled) {
-            finalValue = getHumanFriendlyRounding(metersPerCm);
+        const now = performance.now();
+        
+        // Wykrywanie rekurzji
+        this.recursionDepth++;
+        if (this.recursionDepth > this.maxDepth) {
+            this.trip(
+                "Wykryto pętlę wywołań (Nieskończona rekurzja)", 
+                `Głębokość stosu przekroczyła limit bezpieczeństwa (${this.maxDepth}). Program mógłby ulec zawieszeniu.`
+            );
+            return false;
         }
 
-        let displayStr = finalValue >= 1000 ? `${(finalValue/1000).toFixed(1)} km` : `${Math.round(finalValue)} m`;
-        textEl.innerText = `1 cm ≈ ${displayStr}`;
-        barEl.style.display = 'none';
-    } else {
-        let targetMeters = 10;
-        let safetyCounter = 0; 
+        // Filtrowanie historii wywołań do zdefiniowanego okna czasowego
+        this.callHistory.push(now);
+        this.callHistory = this.callHistory.filter(t => now - t < this.timeThresholdMs);
+
+        // Wykrywanie przeciążenia zdarzeniami (Event Flooding)
+        if (this.callHistory.length > this.maxCallsInWindow) {
+            this.trip(
+                "Przeciążenie zdarzeniami (Event Flooding)", 
+                `System odebrał ${this.callHistory.length} żądań przeliczenia skali w czasie ${this.timeThresholdMs}ms. Akcja wywołana przez: ${actionName}.`
+            );
+            return false;
+        }
+
+        return true;
+    },
+
+    // Rejestracja pomyślnego wyjścia z sekcji kodu
+    leave(startTime) {
+        this.recursionDepth = Math.max(0, this.recursionDepth - 1);
+        if (this.isTripped) return;
+
+        const duration = performance.now() - startTime;
+        this.executionTimes.push(duration);
+        if (this.executionTimes.length > 10) this.executionTimes.shift();
+
+        // Wykrywanie Layout Thrashing (gdy operacja na DOM blokuje wątek na zbyt długo)
+        if (duration > 65) { 
+            this.trip(
+                "Spowolnienie renderowania (Layout Thrashing)", 
+                `Czas operacji na drzewie DOM przekroczył bezpieczną granicę i wyniósł ${duration.toFixed(1)}ms. Drzewo układu strony jest przeciążone.`
+            );
+        }
+    },
+
+    // Aktywacja blokady bezpieczeństwa
+    trip(reason, details) {
+        this.isTripped = true;
+        console.error(`[Strażnik Skali] Blokada aktywna: ${reason} - ${details}`);
         
-        // Twardy bezpiecznik: Pętla nie wykona się więcej niż 50 razy, co uniemożliwia zawieszenie CPU
-        while (targetMeters * pxPerMeter < 100 && safetyCounter < 50) { 
-            targetMeters *= 2; 
-            safetyCounter++;
-        } 
+        // Bezpieczne ukrycie skali, aby odciążyć procesor
+        if (isCustomScaleVisible) {
+            isCustomScaleVisible = false;
+            const btn = document.querySelector('button[onclick="toggleScale()"]');
+            if (btn) {
+                btn.innerText = "Pokaż skalę";
+                btn.style.boxShadow = "none";
+            }
+            if (customScaleEl) { 
+                customScaleEl.remove(); 
+                customScaleEl = null; 
+            }
+            if (exportMap) {
+                exportMap.off('moveend zoomend', updateScaleValues);
+            }
+        }
+
+        // Wyświetlenie raportu ratunkowego
+        this.showEmergencyModal(reason, details);
+    },
+
+    // Eleganckie, niestandardowe okno Pogotowia Ratunkowego Kodu
+    showEmergencyModal(reason, details) {
+        let modal = document.getElementById('codeEmergencyModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'codeEmergencyModal';
+            modal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.85); z-index:99999; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(5px);";
+            
+            modal.innerHTML = `
+                <div style="background:#1e293b; color:#f1f5f9; padding:25px; border-radius:12px; width:460px; max-width:92vw; box-shadow:0 15px 50px rgba(0,0,0,0.6); border:2px solid #ef4444; font-family:'Segoe UI', sans-serif; box-sizing:border-box;">
+                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:15px; border-bottom:1px solid rgba(239,68,68,0.2); padding-bottom:12px;">
+                        <span style="font-size:2rem; animation: pulseWarning 1s infinite;">🚨</span>
+                        <div>
+                            <h3 style="margin:0; color:#ef4444; font-size:1.15rem; font-weight:bold; letter-spacing:0.5px;">Pogotowie Ratunkowe Kodu</h3>
+                            <small style="color:#94a3b8; font-size:0.75rem; text-transform:uppercase;">Watchdog Aktywnej Ochrony Skali</small>
+                        </div>
+                    </div>
+                    <div style="background:rgba(239,68,68,0.08); border-left:4px solid #ef4444; padding:12px; border-radius:4px; margin-bottom:15px;">
+                        <strong style="display:block; color:#fca5a5; font-size:0.85rem; margin-bottom:4px; text-transform:uppercase;">Sytuacja Krytyczna:</strong>
+                        <span id="emergencyReason" style="font-size:0.9rem; line-height:1.4; font-weight:500;">-</span>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.25); padding:12px; border-radius:6px; font-family:monospace; font-size:0.8rem; line-height:1.45; color:#cbd5e1; margin-bottom:20px; border:1px solid rgba(255,255,255,0.05); max-height:150px; overflow-y:auto;">
+                        <strong style="color:#94a3b8; display:block; margin-bottom:6px; font-size:0.75rem; text-transform:uppercase;">Szczegóły Diagnostyczne:</strong>
+                        <div id="emergencyDetails" style="white-space:pre-wrap;">-</div>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="StraznikSkali.recover()" style="flex:1; background:#ef4444; color:white; border:none; padding:11px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.85rem; transition:background 0.2s;" onmouseover="this.style.background='#dc2626'" onmouseout="this.style.background='#ef4444'">Resetuj i Odblokuj</button>
+                        <button onclick="document.getElementById('codeEmergencyModal').style.display='none'" style="flex:1; background:#475569; color:white; border:none; padding:11px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.85rem; transition:background 0.2s;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='#475569'">Zamknij</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
         
-        const scaleWidthPx = Math.round(targetMeters * pxPerMeter);
-        let displayStr = targetMeters >= 1000 ? `${(targetMeters/1000).toFixed(1)} km` : `${targetMeters} m`;
-        
-        // Elastyczne powiązanie szerokości paska z obliczeniami
-        barEl.style.width = scaleWidthPx + 'px';
-        barEl.style.margin = '4px auto 0 auto';
-        
-        customScaleEl.style.width = 'max-content'; 
-        textEl.innerText = displayStr;
-        barEl.style.display = 'block';
+        document.getElementById('emergencyReason').innerText = reason;
+        document.getElementById('emergencyDetails').innerText = `${details}\n\nLokalizacja: System Skalowania\nŚredni czas reakcji DOM: ${this.getAverageExecutionTime().toFixed(1)}ms`;
+        modal.style.display = 'flex';
+    },
+
+    getAverageExecutionTime() {
+        if (this.executionTimes.length === 0) return 0;
+        return this.executionTimes.reduce((a, b) => a + b, 0) / this.executionTimes.length;
+    },
+
+    recover() {
+        this.reset();
+        const modal = document.getElementById('codeEmergencyModal');
+        if (modal) modal.style.display = 'none';
+        showCustomAlert("Wątek graficzny został odblokowany. Możesz ponownie włączyć skalę.");
     }
+};
+window.StraznikSkali = StraznikSkali;
+
+
+/* =========================================================
+   ZABEZPIECZONY I ZOPTYMALIZOWANY KOD WYZNACZANIA SKALI
+========================================================= */
+
+// Pancerne parsowanie kontrastu bez podatności na błędy logiczne i NaN
+function checkContrastRatio(hex1, hex2, opacity1) {
+    const formatHex = (val) => (val && val.startsWith('#') && val.length >= 7) ? val : '#ffffff';
+    const cleanHex1 = formatHex(hex1);
+    const cleanHex2 = formatHex(hex2);
+    const op = isNaN(parseFloat(opacity1)) ? 100 : parseFloat(opacity1);
+
+    const r1 = parseInt(cleanHex1.slice(1, 3), 16) || 0;
+    const g1 = parseInt(cleanHex1.slice(3, 5), 16) || 0;
+    const b1 = parseInt(cleanHex1.slice(5, 7), 16) || 0;
+
+    const r2 = parseInt(cleanHex2.slice(1, 3), 16) || 0;
+    const g2 = parseInt(cleanHex2.slice(3, 5), 16) || 0;
+    const b2 = parseInt(cleanHex2.slice(5, 7), 16) || 0;
+
+    const lum1 = getLuminance(r1, g1, b1) * (op / 100) + getLuminance(255, 255, 255) * (1 - op / 100); 
+    const lum2 = getLuminance(r2, g2, b2);
+
+    if (isNaN(lum1) || isNaN(lum2)) return 21; // Zabezpieczenie przed NaN (zwraca bezpieczną wartość kontrastu)
+
+    const brightest = Math.max(lum1, lum2);
+    const darkest = Math.min(lum1, lum2);
+    return (brightest + 0.05) / (darkest + 0.05); 
 }
 
+// Odseparowanie zapisu do DOM od odczytu za pomocą kolejkowania klatek
+window.updateCustomScaleAppearance = function() {
+    if (!customScaleEl || StraznikSkali.isTripped) return;
+
+    const bgEl = document.getElementById('scaleBgColor');
+    const opEl = document.getElementById('scaleBgOpacity');
+    const txtEl = document.getElementById('scaleTextColor');
+    const fsEl = document.getElementById('scaleFontSize');
+    const styleEl = document.getElementById('scaleFontStyle');
+
+    if (!bgEl || !opEl || !txtEl || !fsEl || !styleEl) return;
+
+    const hexBg = bgEl.value;
+    const opacity = opEl.value;
+    const textColor = txtEl.value;
+    const fontSize = fsEl.value;
+    const fontStyle = styleEl.value;
+
+    const r = parseInt(hexBg.slice(1, 3), 16) || 255;
+    const g = parseInt(hexBg.slice(3, 5), 16) || 255;
+    const b = parseInt(hexBg.slice(5, 7), 16) || 255;
+
+    // 1. Szybki zapis stylów (nie powoduje natychmiastowego reflow, dopóki niczego nie czytamy)
+    customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
+    customScaleEl.style.color = textColor;
+    customScaleEl.style.fontSize = fontSize + 'px';
+    customScaleEl.style.padding = '6px 12px';
+    customScaleEl.style.fontStyle = fontStyle.includes('italic') ? 'italic' : 'normal';
+    customScaleEl.style.fontWeight = fontStyle.includes('bold') ? 'bold' : 'normal';
+
+    const barEl = document.getElementById('scaleBar');
+    if (barEl) barEl.style.backgroundColor = textColor;
+    
+    customScaleEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
+
+    const ratio = checkContrastRatio(hexBg, textColor, opacity);
+    const warningDiv = document.getElementById('scaleContrastWarning');
+    if (warningDiv) {
+        warningDiv.style.display = ratio < 3.0 ? 'block' : 'none';
+    }
+
+    // 2. Bezpieczne odłożenie odczytu geometrii DOM na następny cykl renderowania przeglądarki
+    if (scaleFrameId) cancelAnimationFrame(scaleFrameId);
+    scaleFrameId = requestAnimationFrame(() => {
+        updateScaleValues();
+    });
+};
+
+// Pancerna funkcja kalkulacji skali z zabezpieczeniami i monitoringiem
+function updateScaleValues() {
+    if (!customScaleEl || !exportMap || !exportMap._loaded || StraznikSkali.isTripped) return;
+
+    const startTime = performance.now();
+    
+    // Wejście pod opiekę Strażnika Skali
+    if (!StraznikSkali.enter("Kalkulacja Skali")) {
+        return; 
+    }
+
+    try {
+        const bounds = exportMap.getBounds();
+        if (!bounds) {
+            StraznikSkali.leave(startTime);
+            return;
+        }
+
+        const mapExportEl = document.getElementById('mapExport');
+        if (!mapExportEl) {
+            StraznikSkali.leave(startTime);
+            return;
+        }
+        
+        // Pobranie szerokości kontenera
+        const mapWidthPx = mapExportEl.clientWidth;
+        if (mapWidthPx <= 0 || isNaN(mapWidthPx)) {
+            StraznikSkali.leave(startTime);
+            return;
+        }
+
+        // Kalkulacja odległości w metrach
+        const mapWidthMeters = bounds.getNorthEast().distanceTo(bounds.getNorthWest());
+        if (mapWidthMeters <= 0 || isNaN(mapWidthMeters) || !isFinite(mapWidthMeters)) {
+            StraznikSkali.leave(startTime);
+            return;
+        }
+        
+        const pxPerMeter = mapWidthPx / mapWidthMeters;
+        if (!pxPerMeter || isNaN(pxPerMeter) || pxPerMeter <= 0 || !isFinite(pxPerMeter)) {
+            StraznikSkali.leave(startTime);
+            return;
+        }
+
+        const typeEl = document.getElementById('scaleTypeInput');
+        const textEl = document.getElementById('scaleText');
+        const barEl = document.getElementById('scaleBar');
+
+        if (!typeEl || !textEl || !barEl) {
+            StraznikSkali.leave(startTime);
+            return;
+        }
+
+        const type = typeEl.value;
+
+        if (type === 'text') {
+            customScaleEl.style.width = 'max-content';
+            const pxPerCm = 37.8; 
+            const metersPerCm = (1 / pxPerMeter) * pxPerCm;
+
+            let finalValue = metersPerCm;
+            const isRoundingEnabled = document.getElementById('scaleRoundingToggle') ? document.getElementById('scaleRoundingToggle').checked : false;
+
+            if (isRoundingEnabled) {
+                finalValue = getHumanFriendlyRounding(metersPerCm);
+            }
+
+            let displayStr = finalValue >= 1000 ? `${(finalValue/1000).toFixed(1)} km` : `${Math.round(finalValue)} m`;
+            textEl.innerText = `1 cm ≈ ${displayStr}`;
+            barEl.style.display = 'none';
+        } else {
+            let targetMeters = 10;
+            let safetyCounter = 0; 
+            
+            // Pętla z twardym limitem 50 iteracji chroniącym procesor
+            while (targetMeters * pxPerMeter < 100 && safetyCounter < 50) { 
+                targetMeters *= 2; 
+                safetyCounter++;
+            } 
+            
+            const scaleWidthPx = Math.round(targetMeters * pxPerMeter);
+            let displayStr = targetMeters >= 1000 ? `${(targetMeters/1000).toFixed(1)} km` : `${targetMeters} m`;
+            
+            barEl.style.width = scaleWidthPx + 'px';
+            barEl.style.margin = '4px auto 0 auto';
+            
+            customScaleEl.style.width = 'max-content'; 
+            textEl.innerText = displayStr;
+            barEl.style.display = 'block';
+        }
+    } catch (e) {
+        StraznikSkali.trip("Wyjątek krytyczny w logice skali", e.stack || e.message);
+    } finally {
+        // Opuszczenie sekcji krytycznej ze zwróceniem czasu wykonania
+        StraznikSkali.leave(startTime);
+    }
+}
 
 // NOWY ALGORYTM DRAG&DROP - Twarde krawędzie + Twarde wymiary
 function makeStrictEdgeDraggable(el, wrapper, allFourEdges = true) {
@@ -3830,75 +4067,7 @@ function updatePanelVisibility() {
     }
 }
 
-/* --- ZOPTYMALIZOWANA AKTUALIZACJA WYGLĄDU SKALI --- */
-window.updateCustomScaleAppearance = function() {
-    if (!customScaleEl) return;
-    
-    // Kasujemy poprzednio zakolejkowaną klatkę, jeśli nadeszło nowe zdarzenie z pipety
-    if (scaleUpdateTimeout) {
-        cancelAnimationFrame(scaleUpdateTimeout);
-    }
-    
-    // Rejestrujemy wykonanie zmian w następnej wolnej klatce renderowania (maksymalnie 60/120 razy na sekundę)
-    scaleUpdateTimeout = requestAnimationFrame(() => {
-        const bgEl = document.getElementById('scaleBgColor');
-        const opEl = document.getElementById('scaleBgOpacity');
-        const txtEl = document.getElementById('scaleTextColor');
-        const fsEl = document.getElementById('scaleFontSize');
-        const styleEl = document.getElementById('scaleFontStyle');
-        
-        if (!bgEl || !opEl || !txtEl || !fsEl || !styleEl) return;
 
-        const hexBg = bgEl.value;
-        const opacity = opEl.value;
-        const textColor = txtEl.value;
-        const fontSize = fsEl.value;
-        const fontStyle = styleEl.value;
-
-        // Upewnienie się, że pobrane z DOM wartości kolorów mają prawidłową strukturę
-        const cleanHexBg = (hexBg && hexBg.startsWith('#')) ? hexBg : '#ffffff';
-        const cleanTextColor = (textColor && textColor.startsWith('#')) ? textColor : '#000000';
-
-        const ratio = checkContrastRatio(cleanHexBg, cleanTextColor, opacity);
-        const warningDiv = document.getElementById('scaleContrastWarning');
-        if (warningDiv) {
-            warningDiv.style.display = ratio < 3.0 ? 'block' : 'none';
-        }
-
-        const r = parseInt(cleanHexBg.slice(1, 3), 16) || 255;
-        const g = parseInt(cleanBg = cleanColors => {
-            const hex = cleanHexBg;
-            return {
-                r: parseInt(hex.slice(1, 3), 16) || 255,
-                g: parseInt(hex.slice(3, 5), 16) || 255,
-                b: parseInt(hex.slice(5, 7), 16) || 255
-            };
-        })();
-        
-        customScaleEl.style.background = `rgba(${cleanBg.r}, ${cleanBg.g}, ${cleanBg.b}, ${opacity/100})`;
-        customScaleEl.style.color = cleanTextColor;
-        customScaleEl.style.fontSize = fontSize + 'px';
-        customScaleEl.style.padding = '6px 12px';
-        
-        customScaleEl.style.fontStyle = fontStyle.includes('italic') ? 'italic' : 'normal';
-        customScaleEl.style.fontWeight = fontStyle.includes('bold') ? 'bold' : 'normal';
-        
-        const barEl = document.getElementById('scaleBar');
-        if (barEl) {
-            barEl.style.backgroundColor = cleanTextColor;
-        }
-        
-        customScaleEl.style.borderColor = `rgba(${cleanBg.r}, ${cleanBg.g}, ${cleanBg.b}, ${Math.min(1, opacity/100+0.2)})`;
-        
-        // Bezpieczne przeliczenie wartości fizycznych skali
-        updateScaleValues();
-    });
-};
-
-// Rejestracja metody w obiekcie window
-window.updatePanelVisibility = updatePanelVisibility;
-window.updateScaleValues = updateScaleValues;
-window.updateCustomScaleAppearance = updateCustomScaleAppearance;
 
 /* --- STATYSTYKI --- */
 function openStatsModal() {
