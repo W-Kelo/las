@@ -56,34 +56,74 @@
         <button id="btnSatToggleMob" onclick="toggleSatelliteMap(); closeModal('mobileLayersModal')" style="width:100%; margin-top:15px; background:#475569;">🛰️ Mapa satelitarna</button>
     </div>
 </div>
-    <!-- MODAL: ZARZĄDZANIE WYGLĄDEM SKALI -->
-<!-- MODAL: ZARZĄDZANIE WYGLĄDEM SKALI -->
-<div id="scaleSettingsModal" class="floating-modal" style="width: 350px; z-index: 4000; display: none;" data-html2canvas-ignore>
+
+<!-- MODAL: ZAAWANSOWANE ZARZĄDZANIE WYGLĄDEM SKALI -->
+<div id="scaleSettingsModal" class="floating-modal" style="width: 360px; z-index: 4000; display: none;" data-html2canvas-ignore>
     <div class="modal-header">
-        <span style="color: #3b82f6; font-weight:bold;">📏 Wygląd Skali</span>
+        <span style="color: #3b82f6; font-weight:bold;">📏 Zaawansowany Wygląd Skali</span>
         <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('scaleSettingsModal')">X</button>
     </div>
-    <div class="modal-body search-save-form">
-        <div id="scaleContrastWarning" style="display:none; background:rgba(245,158,11,0.2); color:#f59e0b; padding:8px; border-left:3px solid #f59e0b; font-size:0.8rem; margin-bottom:10px;">
-            ⚠️ Użyte kolory mogą być nieczytelne (za słaby kontrast), ale pozwalam na tę zmianę.
+    <div class="modal-body search-save-form" style="display: flex; flex-direction: column; gap: 12px; padding: 15px;">
+        <div id="scaleContrastWarning" style="display:none; background:rgba(245,158,11,0.2); color:#f59e0b; padding:8px; border-left:3px solid #f59e0b; font-size:0.8rem; margin-bottom:10px; border-radius: 4px;">
+            ⚠️ Za słaby kontrast tła do tekstu. Skala może być słabo widoczna!
         </div>
         
-        <label>Typ skali:</label>
-        <select id="scaleTypeInput" onchange="updateCustomScaleAppearance()">
-            <option value="bar">Podziałkowa (Pasek)</option>
-            <option value="text">Liczbowa / Mianowana</option>
-        </select>
-
-        <label>Kolor tła i przezroczystość:</label>
-        <div style="display:flex; gap:10px;">
-            <!-- Zmiana na oninput -->
-            <input type="color" id="scaleBgColor" value="#ffffff" style="height:35px; width:40px;" oninput="updateCustomScaleAppearance()">
-            <input type="range" id="scaleBgOpacity" min="0" max="100" value="80" style="flex-grow:1;" oninput="updateCustomScaleAppearance()">
+        <div>
+            <label style="margin: 0 0 5px 0; display: block;">Typ skali:</label>
+            <select id="scaleTypeInput" class="style-select" onchange="updateCustomScaleAppearance()">
+                <option value="bar">Podziałkowa (Pasek)</option>
+                <option value="text" selected>Liczbowa / Mianowana (1 cm ≈ ...)</option>
+            </select>
         </div>
 
-        <label>Kolor czcionki i paska:</label>
-        <!-- Zmiana na oninput -->
-        <input type="color" id="scaleTextColor" value="#000000" style="height:35px; width:100%;" oninput="updateCustomScaleAppearance()">
+        <div style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 8px;">
+            <label style="margin: 0 0 5px 0; display: block; color: var(--accent);">Tło panelu:</label>
+            <div style="display:flex; gap:10px; align-items: center;">
+                <input type="color" id="scaleBgColor" value="#ffffff" style="height:35px; width:45px; border:none; background:none; cursor:pointer;" oninput="updateCustomScaleAppearance()">
+                <div style="flex-grow:1;">
+                    <label style="font-size:0.75rem; margin:0;">Przezroczystość:</label>
+                    <input type="range" id="scaleBgOpacity" class="thick-slider" min="0" max="100" value="85" oninput="updateCustomScaleAppearance()">
+                </div>
+            </div>
+        </div>
+
+        <div style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 8px;">
+            <label style="margin: 0 0 5px 0; display: block; color: #3b82f6;">Stylizacja i Czcionka:</label>
+            <div style="display:flex; gap:10px; margin-bottom: 8px;">
+                <div style="flex: 1;">
+                    <label style="font-size:0.75rem; margin:0;">Kolor tekstu:</label>
+                    <input type="color" id="scaleTextColor" value="#000000" style="height:35px; width:100%; border:none; background:none; cursor:pointer;" oninput="updateCustomScaleAppearance()">
+                </div>
+                <div style="flex: 2;">
+                    <label style="font-size:0.75rem; margin:0;">Styl czcionki:</label>
+                    <select id="scaleFontStyle" class="style-select" onchange="updateCustomScaleAppearance()">
+                        <option value="bold" selected>Pogrubiony</option>
+                        <option value="normal">Normalny</option>
+                        <option value="italic">Kursywa</option>
+                        <option value="italic bold">Pogrubiona kursywa</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 8px;">
+                <label style="font-size:0.75rem; margin:0;">Rozmiar czcionki:</label>
+                <input type="range" id="scaleFontSize" class="thick-slider" min="8" max="24" value="12" oninput="updateCustomScaleAppearance()">
+            </div>
+
+            <div>
+                <label style="font-size:0.75rem; margin:0;">Wewnętrzny margines panelu:</label>
+                <input type="range" id="scalePadding" class="thick-slider" min="2" max="15" value="6" oninput="updateCustomScaleAppearance()">
+            </div>
+        </div>
+
+        <div style="padding: 5px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85rem;">
+                <input type="checkbox" id="scaleRoundingToggle" checked onchange="updateCustomScaleAppearance()" style="width:16px; height:16px; accent-color: var(--accent);">
+                Zastosuj ludzkie zaokrąglenia (np. 1:800 zamiast 1:767)
+            </label>
+        </div>
+        
+        <button onclick="closeModal('scaleSettingsModal')" style="width:100%; background: #22c55e; margin-top:5px; padding:10px; font-weight:bold;">Zastosuj i zamknij</button>
     </div>
 </div>
 
