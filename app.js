@@ -17,7 +17,6 @@ const satelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}
 let dark = false; 
 let isSatellite = false;
 let brouterOutageNotified = false; 
-let routePoints = []; 
 let routeGeometry = []; 
 let pois = [];
 let poiMode = false;
@@ -59,7 +58,6 @@ let exportMapDark = dark;
 let exportTileLayer = null;
 let isPanelDraggable = false;
 let isPanelResizable = false;
-let draggedPointIndex = null;
 let userSavedPois = []; 
 let tempVisibleMarker = null; 
 let manualPointMode = false; 
@@ -549,10 +547,7 @@ function openCenteredModal(id) {
     }, 10); // Czekamy chwilę aż przeglądarka ustali wymiary z Flexboxem
 }
 
-function openPointsModal() {
-    openCenteredModal('pointsModal');
-    renderPointsList();
-}
+
 function openDescModal() {
     generateRouteDescription(); // Wymusza przeliczenie na najświeższych danych!
     openCenteredModal('descModal');
@@ -1147,163 +1142,8 @@ function calculateTotalDist() {
 }
 
 
-    // Odwracanie całej trasy (START staje się METĄ i odwrotnie)
-function reverseRoute() {
-    if (isRouting || routePoints.length < 2) return;
-    
-    // Odwracamy tablicę punktów
-    routePoints.reverse();
-    
-    // Przeliczamy i rysujemy od nowa
-    recalculateRoute();
-    renderPointsList();
-}
 
-// Skok punktu na samą górę lub dół
-function movePointToExtremity(idx, toTop) {
-    if (isRouting) return;
-    
-    // Wyciągamy punkt z tablicy
-    const pt = routePoints.splice(idx, 1)[0];
-    
-    // Wstawiamy na początek (top) lub na koniec (bottom)
-    if (toTop) {
-        routePoints.unshift(pt);
-    } else {
-        routePoints.push(pt);
-    }
-    
-    recalculateRoute(); 
-    renderPointsList();
-}
 
-function removePointById(id) {
-    if (isRouting) return;
-    const idx = routePoints.findIndex(p => p.id === id);
-    if (idx > -1) {
-        map.removeLayer(routePoints[idx].marker);
-        routePoints.splice(idx, 1);
-        recalculateRoute();
-        renderPointsList();
-    }
-}
-function movePoint(idx, direction) {
-    if (isRouting) return;
-    if (direction === 'up' && idx > 0) { [routePoints[idx], routePoints[idx-1]] = [routePoints[idx-1], routePoints[idx]]; }
-    else if (direction === 'down' && idx < routePoints.length - 1) { [routePoints[idx], routePoints[idx+1]] = [routePoints[idx+1], routePoints[idx]]; }
-    recalculateRoute(); renderPointsList();
-}
-function renderPointsList() {
-    const list = document.getElementById('pointsList');
-    list.innerHTML = routePoints.length === 0 ? "<p style='text-align:center; opacity:0.7;'>Brak punktów na trasie.</p>" : "";
-    
-    routePoints.forEach((p, i) => {
-        const item = document.createElement('div');
-        item.className = 'point-item';
-        
-        item.draggable = true;
-        item.dataset.index = i;
-        item.addEventListener('dragstart', handleDragStart);
-        item.addEventListener('dragover', handleDragOver);
-        item.addEventListener('dragleave', handleDragLeave);
-        item.addEventListener('drop', handleDrop);
-        item.addEventListener('dragend', handleDragEnd);
-
-        item.onmouseenter = () => highlightPointOnMap(i);
-        item.onmouseleave = () => unhighlightPointOnMap(i);
-
-        const distText = i === 0 ? "START" : `+${(p.distFromPrev).toFixed(0)} m`;
-        let timeTxt = "";
-        if (i > 0) {
-            const timeMins = p.distFromPrev / 75;
-            timeTxt = timeMins < 1 ? "(< 1 min)" : `(~${Math.round(timeMins)} min)`;
-        }
-
-        item.innerHTML = `
-            <div class="point-info">
-                <strong>Punkt ${i + 1}</strong> <small>(${p.elevation ? p.elevation.toFixed(0) : '?'} m n.p.m.)</small><br>
-                <span style="color: var(--accent); font-weight: bold;">${distText}</span> <small style="opacity:0.7;">${timeTxt}</small>
-            </div>
-            <div class="point-actions">
-                <!-- NOWE PRZYCISKI: Skok na ekstremum -->
-                <button class="secondary" title="Na sam początek" onclick="movePointToExtremity(${i}, true)" ${i===0?'disabled':''}>⇈</button>
-                <button class="secondary" title="W górę" onclick="movePoint(${i}, 'up')" ${i===0?'disabled':''}>↑</button>
-                <button class="secondary" title="W dół" onclick="movePoint(${i}, 'down')" ${i===routePoints.length-1?'disabled':''}>↓</button>
-                <button class="secondary" title="Na sam koniec" onclick="movePointToExtremity(${i}, false)" ${i===routePoints.length-1?'disabled':''}>⇊</button>
-                <button class="danger" title="Usuń punkt" onclick="removePointById(${p.id})">🗑️</button>
-            </div>`;
-        list.appendChild(item);
-    });
-}
-    function handleDragStart(e) {
-    draggedPointIndex = parseInt(this.dataset.index);
-    e.dataTransfer.effectAllowed = 'move';
-    // Obejście dla Firefoxa
-    e.dataTransfer.setData('text/plain', this.dataset.index); 
-    this.style.opacity = '0.4';
-}
-
-function handleDragOver(e) {
-    e.preventDefault(); // Niezbędne by zezwolić na "Drop"
-    e.dataTransfer.dropEffect = 'move';
-    this.classList.add('drag-over');
-    return false;
-}
-
-function handleDragLeave(e) {
-    this.classList.remove('drag-over');
-}
-
-function handleDrop(e) {
-    e.stopPropagation();
-    this.classList.remove('drag-over');
-
-    const targetIndex = parseInt(this.dataset.index);
-
-    if (draggedPointIndex !== null && draggedPointIndex !== targetIndex) {
-        // Zmiana kolejności w tablicy
-        const movedItem = routePoints.splice(draggedPointIndex, 1)[0];
-        routePoints.splice(targetIndex, 0, movedItem);
-
-        // Przeliczenie trasy po zamianie
-        recalculateRoute();
-    }
-    return false;
-}
-
-function handleDragEnd(e) {
-    this.style.opacity = '1';
-    document.querySelectorAll('.point-item').forEach(item => item.classList.remove('drag-over'));
-}
-
-/* ================= PODŚWIETLANIE PUNKTU NA MAPIE ================= */
-function highlightPointOnMap(idx) {
-    const pt = routePoints[idx];
-    if (!pt) return;
-    
-    // Zmieniamy rozmiar i kolor na pomarańczowy, aby mocno rzucał się w oczy
-    pt.marker.setStyle({
-        radius: 14,
-        fillColor: '#f59e0b',
-        color: '#fff',
-        weight: 4
-    });
-    pt.marker.bringToFront();
-}
-
-function unhighlightPointOnMap(idx) {
-    const pt = routePoints[idx];
-    if (!pt) return;
-    
-    // Przywracamy domyślny styl (zależny od preferencji użytkownika z panelu stylu)
-    const dotColor = typeof getPointColorWithStyle === 'function' ? getPointColorWithStyle(idx) : (routePrefPointsEnabled ? routePrefPointsColor : '#22c55e');
-    pt.marker.setStyle({
-        radius: 8,
-        fillColor: dotColor,
-        color: '#fff',
-        weight: 3
-    });
-}
 
 function toggleLayer(layer, cb) { if (cb.checked) map.addLayer(layer); else map.removeLayer(layer); }
 function toggleTheme() {
