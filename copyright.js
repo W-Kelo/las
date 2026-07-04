@@ -2,6 +2,7 @@
    copyright.js - MODUŁ OBSŁUGI COPYRIGHT (ŹRÓDŁA)
 ========================================================= */
 
+
 let customCopyrightEl = null;
 
 // Cache dla ostatnich poprawnych stylów w celu prewencji blokad kontrastowych
