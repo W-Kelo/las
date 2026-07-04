@@ -1,5 +1,5 @@
 /* =========================================================
-   colors.js - AUTORSKI MODUŁ OBSŁUGI KOLORÓW I GRADIENTÓW
+   colors.js - AUTORSKI MODUŁ OBSŁUGI KOLORÓW I GRADIENTÓW (V2)
 ========================================================= */
 
 // Zmienne stanowe modułu kolorów
@@ -26,7 +26,7 @@ const PREDEFINED_COLORS = [
 const LS_RECENT_COLORS_KEY = 'gpx_recent_colors';
 const LS_RECENT_GRADIENTS_KEY = 'gpx_recent_gradients';
 
-// Warstwa przeznaczona do rysowania gradientu na mapie
+// Warstwy przeznaczone do rysowania trasy i punktów na mapie
 let gradientPathLayer = null;
 
 /* --- KONWERSJE FORMATÓW KOLORÓW --- */
@@ -99,7 +99,6 @@ function hslToHex(h, s, l) {
     return rgbToHex(r, g, b);
 }
 
-// Funkcja mieszania dwóch barw z określonym współczynnikiem (0.0 do 1.0)
 function interpolateColor(color1, color2, factor) {
     const rgb1 = hexToRgb(color1);
     const rgb2 = hexToRgb(color2);
@@ -109,7 +108,6 @@ function interpolateColor(color1, color2, factor) {
     return rgbToHex(r, g, b);
 }
 
-// Wyznaczenie koloru gradientu dla określonego punktu procentowego (0.0 do 1.0)
 function getGradientColorAt(gradientConfig, factor) {
     const colors = gradientConfig.colors;
     if (colors.length === 0) return '#22c55e';
@@ -189,13 +187,14 @@ function updateCustomColorPickerUI() {
         if (btnSelectColor) btnSelectColor.classList.add('active');
         if (btnSelectGradient) btnSelectGradient.classList.remove('active');
         updateFinalPreview(tempSelectedColor);
+        updateHslPickerUI(); 
     } else {
         if (singleColorSection) singleColorSection.style.display = 'none';
         if (gradientPickerSection) gradientPickerSection.style.display = 'block';
         if (btnSelectColor) btnSelectColor.classList.remove('active');
         if (btnSelectGradient) btnSelectGradient.classList.add('active');
         updateFinalPreview(tempSelectedGradient);
-        renderRecentGradients();
+        renderRecentGradients(); 
     }
 
     const predefinedGrid = document.getElementById('pickerPredefinedColors');
@@ -210,25 +209,6 @@ function updateCustomColorPickerUI() {
     renderRecentColors();
 }
 
-function selectPickerColor(color, element) {
-    tempSelectedColor = color;
-    
-    const hexInput = document.getElementById('pickerHexInput');
-    if (hexInput) {
-        hexInput.value = color.toUpperCase();
-    }
-    
-    document.querySelectorAll('.predefined-color-btn').forEach(btn => btn.classList.remove('selected'));
-    if (element) {
-        element.classList.add('selected');
-    }
-    
-    // AKTUALIZACJA MIESZALNIKA HSL PO KLIKNIĘCIU GOTOWEGO KOLORU (Naprawa błędu 2)
-    const hsl = hexToHsl(color);
-    currentHsl = { h: hsl.h, s: hsl.s, l: hsl.l };
-    updateHslPickerUI();
-}
-
 function updateFinalPreview(value) {
     const finalPreview = document.getElementById('finalColorPreview');
     const finalHex = document.getElementById('finalColorHex');
@@ -238,18 +218,21 @@ function updateFinalPreview(value) {
 
     if (currentPickerMode === 'color') {
         finalPreview.style.background = value;
+        finalHex.style.background = 'none';
         finalHex.innerText = value.toUpperCase();
         hexInput.value = value.toUpperCase();
-    } else {
+    } else { 
         finalPreview.style.background = value;
         finalHex.innerText = "GRADIENT";
-        hexInput.value = "";
+        hexInput.value = ""; 
     }
 }
 
 function closeCustomColorPicker(confirm) {
     const modal = document.getElementById('customColorPickerModal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+        modal.style.display = 'none';
+    }
 
     if (confirm && activeColorPickerTarget) {
         const targetInput = document.getElementById(activeColorPickerTarget);
@@ -266,7 +249,6 @@ function closeCustomColorPicker(confirm) {
 
         targetInput.value = finalValue;
 
-        // Wywołanie natychmiastowego odświeżenia parametrów
         const event = new Event('input', { bubbles: true });
         targetInput.dispatchEvent(event);
 
@@ -286,7 +268,6 @@ function updateParentModalPreview(value) {
     }
 
     if (hexSpan) {
-        // Skrócenie zapisu gradientu w opisie (Naprawa błędu 1)
         if (value.startsWith('linear-gradient')) {
             hexSpan.innerText = "GRADIENT";
         } else {
@@ -299,7 +280,7 @@ function updateParentModalPreview(value) {
     }
 }
 
-/* --- MIESZALNIK HSL --- */
+/* --- MIESZALNIK HSL (Pancerne pozycjonowanie procentowe - Błąd 2) --- */
 let isDraggingSaturationLightness = false;
 
 function updateHslPickerUI() {
@@ -321,11 +302,9 @@ function updateHslPickerUI() {
     const baseHex = rgbToHex(baseColorRgb.r, baseColorRgb.g, baseColorRgb.b);
     slPicker.style.background = `linear-gradient(to top, black, transparent), linear-gradient(to right, #fff, ${baseHex})`;
 
-    const x = (currentHsl.s / 100) * slPicker.clientWidth;
-    const y = (1 - (currentHsl.l / 100)) * slPicker.clientHeight;
-    
-    slPointer.style.left = `${Math.max(0, Math.min(x - slPointer.offsetWidth / 2, slPicker.clientWidth - slPointer.offsetWidth))}px`;
-    slPointer.style.top = `${Math.max(0, Math.min(y - slPointer.offsetHeight / 2, slPicker.clientHeight - slPointer.offsetHeight))}px`;
+    // Zmiana na twarde, niezależne pozycjonowanie procentowe (Rozwiązanie błędu 2)
+    slPointer.style.left = `${currentHsl.s}%`;
+    slPointer.style.top = `${100 - currentHsl.l}%`;
     
     tempSelectedColor = hslToHex(currentHsl.h, currentHsl.s, currentHsl.l);
     updateFinalPreview(tempSelectedColor);
@@ -397,6 +376,25 @@ function stopSaturationLightnessDrag() {
     document.removeEventListener('mouseup', stopSaturationLightnessDrag);
     document.removeEventListener('touchmove', updateSaturationLightness);
     document.removeEventListener('touchend', stopSaturationLightnessDrag);
+}
+
+function selectPickerColor(color, element) {
+    tempSelectedColor = color;
+    
+    const hexInput = document.getElementById('pickerHexInput');
+    if (hexInput) {
+        hexInput.value = color.toUpperCase();
+    }
+    
+    document.querySelectorAll('#pickerPredefinedColors .predefined-color-btn, #pickerRecentColors .predefined-color-btn').forEach(btn => btn.classList.remove('selected'));
+    if (element) {
+        element.classList.add('selected');
+    }
+    
+    // AKTUALIZACJA MIESZALNIKA HSL PO KLIKNIĘCIU GOTOWEGO KOLORU (Rozwiązanie błędu 2)
+    const hsl = hexToHsl(color);
+    currentHsl = { h: hsl.h, s: hsl.s, l: hsl.l };
+    updateHslPickerUI();
 }
 
 /* --- HISTORIA (LOCAL STORAGE) --- */
@@ -615,7 +613,6 @@ function closeGradientConfigModal() {
 function renderRouteLineWithStyle() {
     if (!map) return;
     
-    // Tworzenie osobnej grupy warstw dla fragmentów linii gradientu (jeśli nie istnieje)
     if (!gradientPathLayer) {
         gradientPathLayer = L.layerGroup().addTo(map);
     }
@@ -630,7 +627,6 @@ function renderRouteLineWithStyle() {
     }
 
     if (colorVal.startsWith('linear-gradient')) {
-        // Ukrywamy główną jednobarwną linię Leafleta, by nie psuła efektu
         polyline.setStyle({ opacity: 0 });
 
         const config = parseCssGradient(colorVal);
@@ -639,7 +635,6 @@ function renderRouteLineWithStyle() {
             return;
         }
 
-        // Kalkulacja dystansów łącznych w celu precyzyjnego wyliczenia ułożenia barw
         const latlngs = routeGeometry.map(p => L.latLng(p[0], p[1]));
         let totalDist = 0;
         const segmentDists = [];
@@ -649,7 +644,6 @@ function renderRouteLineWithStyle() {
             totalDist += d;
         }
 
-        // Rysowanie trasy segment po segmencie o wyliczonych kolorach przejściowych
         let currentDist = 0;
         for (let i = 0; i < latlngs.length - 1; i++) {
             const startFactor = totalDist === 0 ? 0 : currentDist / totalDist;
@@ -668,12 +662,41 @@ function renderRouteLineWithStyle() {
             }).addTo(gradientPathLayer);
         }
     } else {
-        // Standardowa linia trasy przy jednolitym kolorze
         polyline.setStyle({ color: colorVal, weight: weightVal, opacity: 0.9 });
         polyline.setLatLngs(routeGeometry);
     }
 }
 window.renderRouteLineWithStyle = renderRouteLineWithStyle;
+
+/* =========================================================
+   STYLIZOWANIE PUNKTÓW DLA OBSŁUGI GRADIENTU (Rozwiązanie błędu 3 i 4)
+========================================================= */
+function getPointColorWithStyle(index) {
+    const colorVal = routePrefPointsColor || '#22c55e';
+    if (!routePrefPointsEnabled) return '#22c55e';
+
+    if (colorVal.startsWith('linear-gradient')) {
+        const config = parseCssGradient(colorVal);
+        if (!config) return '#22c55e';
+
+        if (routePoints.length <= 1) return config.colors[0].hex;
+        
+        // Płynny gradient kropek dopasowany proporcjonalnie do ich pozycji na trasie
+        const factor = index / (routePoints.length - 1);
+        return getGradientColorAt(config, factor);
+    }
+    return colorVal;
+}
+
+function renderPointsWithStyle() {
+    if (!routePoints || routePoints.length === 0) return;
+    routePoints.forEach((p, idx) => {
+        const color = getPointColorWithStyle(idx);
+        p.marker.setStyle({ fillColor: color });
+    });
+}
+window.renderPointsWithStyle = renderPointsWithStyle;
+window.getPointColorWithStyle = getPointColorWithStyle;
 
 // Synchronizacja w locie przy wprowadzaniu zmian z pickerów
 document.addEventListener('DOMContentLoaded', () => {
@@ -689,8 +712,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (stylePointsColorInput) {
         stylePointsColorInput.addEventListener('input', (e) => {
             routePrefPointsColor = e.target.value;
-            // Natychmiastowa aktualizacja kropek na mapie głównej
-            routePoints.forEach(p => p.marker.setStyle({ fillColor: routePrefPointsColor }));
+            renderPointsWithStyle(); // Płynna aktualizacja kropek (Błędy 3 i 4)
         });
     }
 });
