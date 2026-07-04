@@ -582,16 +582,17 @@
     </div>
     <div class="modal-body">
         
-        <div class="style-control-group">
+       <div class="style-control-group">
             <label>Kolor linii:</label>
             <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 5px; background: rgba(0,0,0,0.1); padding: 8px; border-radius: 6px;">
                 <!-- Lewa strona: Śliczny przycisk otwierający nasz modal -->
-                <button type="button" onclick="openCustomColorPicker('styleColor')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin: 0;">Wybierz kolor</button>
+                <button type="button" onclick="openCustomColorPicker('styleColor', 'line')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin: 0;">Wybierz kolor</button>
                 
-                <!-- Prawa strona: Podpis HEX oraz prostokąt z aktualnym kolorem -->
+                <!-- Prawa strona: Podpis HEX/Gradient oraz prostokąt z aktualnym kolorem/gradientem -->
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span id="styleColorHex" style="font-family: monospace; font-size: 0.9em; opacity: 0.8;">#22C55E</span>
                     <div id="styleColorPreview" class="color-preview-rect" style="background-color: #22c55e;"></div>
+                    <span id="styleLineMode" style="font-size: 0.75em; opacity: 0.6; margin-left: 8px; white-space: nowrap;">(jednolity)</span>
                 </div>
                 
                 <!-- Ukryty mostek danych - zachowuje oryginalne ID, dzięki czemu nie psujemy logiki zapisu trasy! -->
@@ -1068,37 +1069,111 @@
     </div>
 </div>
 <!-- DEDYKOWANY MODAL WYBORU KOLORU (NAJWYŻSZA WARSTWA) -->
-<div id="customColorPickerModal" class="floating-modal" style="width: 320px; z-index: 99999; display: none;" data-html2canvas-ignore>
+<!-- DEDYKOWANY MODAL WYBORU KOLORU/GRADIENTU (NAJWYŻSZA WARSTWA) -->
+<div id="customColorPickerModal" class="floating-modal" style="width: 380px; z-index: 99999; display: none;" data-html2canvas-ignore>
     <div class="modal-header">
-        <span style="font-weight: bold; color: var(--accent);">🎨 Wybór koloru</span>
+        <span style="font-weight: bold; color: var(--accent);">🎨 Wybór koloru/gradientu</span>
         <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeCustomColorPicker(false)">X</button>
     </div>
-    <div class="modal-body" style="display:flex; flex-direction:column; gap:12px; padding: 15px;">
+    <div class="modal-body" style="display:flex; flex-direction:column; gap:15px; padding: 15px;">
         
-        <div style="font-weight: bold; font-size: 0.85rem; color: #94a3b8; margin-bottom: 2px;">Szybki wybór:</div>
-        <div class="predefined-colors-grid" id="pickerPredefinedColors">
-            <!-- Paleta wygenerowana dynamicznie przez JS -->
-        </div>
-        
-       <!-- Przycisk pipety (pobierania z ekranu) widoczny tylko gdy przeglądarka go wspiera -->
-        <div id="pickerPipetteContainer" style="display:none; margin: 4px 0;">
-            <!-- KLUCZOWE: Dodany parametr 'event' do wywołania funkcji -->
-            <button type="button" onclick="triggerPickerPipette(event)" style="width:100%; background: #3b82f6; font-size:0.85rem; padding: 8px; margin: 0;">🧪 Pobierz z ekranu (Pipeta)</button>
+        <!-- Podgląd finalnego koloru/gradientu -->
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+            <div id="finalColorPreview" class="color-preview-rect" style="width: 100px; height: 50px; border: none; margin: 0; box-shadow: none;"></div>
+            <span id="finalColorHex" style="font-family: monospace; font-size: 1.1em; font-weight: bold; opacity: 0.9;">#22C55E</span>
         </div>
 
-        <!-- Ręczny zapis HEX -->
-        <div>
-            <label style="display:block; font-size:0.8rem; font-weight:bold; color: #94a3b8; margin-bottom:4px;">Własny kolor (HEX):</label>
-            <div style="display:flex; gap:8px; align-items:center;">
-                <input type="text" id="pickerHexInput" placeholder="#22C55E" style="flex-grow:1; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.2); color:inherit; font-family:monospace; text-align:center;">
-                <div id="pickerHexPreview" style="width:40px; height:34px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); flex-shrink:0;"></div>
+        <!-- Sekcja Kolorów Jednolitych -->
+        <div id="singleColorPickerSection">
+            <div style="font-weight: bold; font-size: 0.85rem; color: #94a3b8; margin-bottom: 8px;">Szybki wybór:</div>
+            <div class="predefined-colors-grid" id="pickerPredefinedColors">
+                <!-- Paleta wygenerowana dynamicznie przez JS -->
+            </div>
+            
+            <div style="font-weight: bold; font-size: 0.85rem; color: #94a3b8; margin-top: 15px; margin-bottom: 8px;">Moje ostatnie kolory:</div>
+            <div class="predefined-colors-grid" id="pickerRecentColors">
+                <!-- Ostatnie 5 kolorów z localStorage -->
+            </div>
+
+            <!-- MIESZALNIK HSL (Hue, Saturation, Lightness) -->
+            <div style="margin-top: 20px;">
+                <label style="display:block; font-size:0.8rem; font-weight:bold; color: #94a3b8; margin-bottom:4px;">Mieszalnik koloru HSL:</label>
+                <div class="hsl-picker">
+                    <div class="hue-slider-wrap">
+                        <input type="range" id="hueSlider" min="0" max="359" value="120" oninput="updateHslColor()">
+                    </div>
+                    <div class="saturation-lightness-picker" id="saturationLightnessPicker" onmousedown="startSaturationLightnessDrag(event)" ontouchstart="startSaturationLightnessDrag(event)">
+                        <div class="picker-pointer" id="slPointer"></div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 10px; font-size: 0.85rem;">
+                    <div style="flex:1;">H: <input type="number" id="hslHueInput" min="0" max="359" value="120" oninput="updateHslFromInput()"></div>
+                    <div style="flex:1;">S: <input type="number" id="hslSaturationInput" min="0" max="100" value="100" oninput="updateHslFromInput()"></div>
+                    <div style="flex:1;">L: <input type="number" id="hslLightnessInput" min="0" max="100" value="50" oninput="updateHslFromInput()"></div>
+                </div>
+            </div>
+            
+            <!-- Ręczny zapis HEX -->
+            <div style="margin-top: 15px;">
+                <label style="display:block; font-size:0.8rem; font-weight:bold; color: #94a3b8; margin-bottom:4px;">Własny kolor (HEX):</label>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" id="pickerHexInput" placeholder="#22C55E" style="flex-grow:1; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.2); color:inherit; font-family:monospace; text-align:center;">
+                </div>
             </div>
         </div>
 
-        <!-- Przyciski akcji -->
+        <!-- Sekcja wyboru gradientu -->
+        <div id="gradientPickerSection" style="display:none;">
+            <div id="selectedGradientPreview" style="height: 50px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;"></div>
+            <button type="button" onclick="openGradientConfigModal()" style="width:100%; background: #a855f7; font-size:0.9rem; padding: 10px;">🌈 Edytuj gradient</button>
+            <div style="font-weight: bold; font-size: 0.85rem; color: #94a3b8; margin-top: 15px; margin-bottom: 8px;">Moje ostatnie gradienty:</div>
+            <div class="recent-gradients-grid" id="pickerRecentGradients">
+                <!-- Ostatnie 5 gradientów z localStorage -->
+            </div>
+        </div>
+
+        <!-- Przełącznik Kolor / Gradient -->
         <div style="display:flex; gap:10px; margin-top:10px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top:12px;">
+            <button type="button" onclick="selectPickerMode('color')" id="btnSelectColorMode" class="secondary" style="flex:1; padding:8px;">Kolor jednolity</button>
+            <button type="button" onclick="selectPickerMode('gradient')" id="btnSelectGradientMode" class="secondary" style="flex:1; padding:8px;">Gradient</button>
+        </div>
+
+        <!-- Przyciski akcji -->
+        <div style="display:flex; gap:10px; margin-top:10px;">
             <button type="button" onclick="closeCustomColorPicker(true)" style="flex:1; background:#22c55e; font-weight:bold; padding: 10px;">OK</button>
-            <button type="button" onclick="closeCustomColorPicker(false)" class="secondary" style="flex:1; font-weight:bold; padding: 10px;">Anuluj</button>
+            <button type="button" onclick="closeCustomColorPicker(false)" class="danger" style="flex:1; font-weight:bold; padding: 10px;">Anuluj</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL KONFIGURACJI GRADIENTU (NAJWYŻSZA WARSTWA NAD MODALEM WYBORU KOLORU) -->
+<div id="gradientConfigModal" class="floating-modal" style="width: 450px; z-index: 100000; display: none;" data-html2canvas-ignore>
+    <div class="modal-header">
+        <span style="font-weight: bold; color: #a855f7;">🌈 Konfiguracja gradientu</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeGradientConfigModal()">X</button>
+    </div>
+    <div class="modal-body" style="display:flex; flex-direction:column; gap:15px; padding: 15px;">
+        
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+            <label style="font-size: 0.95rem; font-weight: bold; color: #94a3b8;">Liczba kolorów w gradiencie:</label>
+            <select id="gradientColorCount" onchange="updateGradientConfigUI()" style="padding: 6px; border-radius: 6px; background: rgba(0,0,0,0.2); color: inherit; border: 1px solid rgba(255,255,255,0.2);">
+                <option value="2">2 kolory</option>
+                <option value="3">3 kolory</option>
+                <option value="4">4 kolory</option>
+            </select>
+        </div>
+
+        <!-- Podgląd gradientu na żywo -->
+        <div id="liveGradientPreview" style="height: 60px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 10px;"></div>
+
+        <!-- Kontenery dla poszczególnych punktów koloru -->
+        <div id="gradientColorPointsContainer" style="display:flex; flex-direction:column; gap:10px;">
+            <!-- Punkty koloru i suwaki będą generowane dynamicznie przez JS -->
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:10px;">
+            <button type="button" onclick="saveGradientConfig()" style="flex:1; background:#a855f7; font-weight:bold; padding: 10px;">Zastosuj gradient</button>
+            <button type="button" onclick="closeGradientConfigModal()" class="danger" style="flex:1; font-weight:bold; padding: 10px;">Anuluj</button>
         </div>
     </div>
 </div>
