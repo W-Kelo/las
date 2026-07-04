@@ -4662,7 +4662,31 @@ function f4_restoreGifZoom() {
         ctrl.style.setProperty('display', '', 'important');
     });
 }
+/* --- INTEGRACJA COLORIS: ROZWIĄZANIE PROBLEMU BLOKOWANIA OKIEN --- */
+function initColorisPicker() {
+    // 1. Pobieramy wszystkie natywne wejścia koloru
+    const nativeInputs = document.querySelectorAll('input[type="color"]');
+    
+    nativeInputs.forEach(input => {
+        // Konwertujemy typ z "color" na bezpieczny "text", który obsłuży Coloris
+        input.type = 'text';
+        input.setAttribute('data-coloris', '');
+        
+        // Zachowujemy oryginalny styl szerokości/wysokości, aby nie psuć układu modali
+        input.style.cursor = 'pointer';
+    });
 
+    // 2. Inicjalizujemy globalne ustawienia Coloris
+    Coloris({
+        el: '[data-coloris]',
+        theme: 'polaroid',    // Estetyczny motyw (dostępne: default, large, polaroid, pill)
+        themeMode: 'dark',    // Ciemny motyw dopasowany do modali aplikacji
+        alpha: false,         // Wyłączamy przezroczystość (niepotrzebna w standardowych polach)
+        forceToBody: true,    // Gwarantuje poprawne pozycjonowanie na warstwach (z-index) modali
+        closeButton: true,    // Dodatkowy przycisk zamknięcia w panelu
+        closeLabel: 'Zamknij'
+    });
+}
 /* ================= ZAAWANSOWANE NAGRYWANIE GIF W TLE (Z WARSTWAMI I ZAMYKANIEM TOASTU) ================= */
 async function recordRouteGIF() {
     if (routeGeometry.length < 2) {
