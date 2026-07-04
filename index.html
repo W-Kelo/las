@@ -582,15 +582,18 @@
     </div>
     <div class="modal-body">
         
-        <!-- SEKCJA KOLORU LINII -->
+      <!-- SEKCJA KOLORU LINII -->
         <div class="style-control-group">
             <label>Kolor linii:</label>
             <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 5px; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 6px;">
-                <button type="button" onclick="openCustomColorPicker('styleColor', 'line')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin:0;">Wybierz kolor</button>
+                <button type="button" onclick="openCustomColorPicker('styleColor', 'line')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin: 0;">Wybierz kolor</button>
+                
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span id="styleColorHex" style="font-family: monospace; font-size: 0.9em; opacity: 0.8;">#22C55E</span>
                     <div id="styleColorPreview" class="color-preview-rect" style="background-color: #22c55e;"></div>
+                    <span id="styleLineMode" style="font-size: 0.75em; opacity: 0.6; margin-left: 8px; white-space: nowrap;">(jednolity)</span>
                 </div>
+                
                 <input type="hidden" id="styleColor" value="#22c55e">
             </div>
         </div>
@@ -600,7 +603,7 @@
             <input type="range" id="styleWeight" class="thick-slider" min="2" max="15" value="6" oninput="document.getElementById('styleWeightVal').innerText=this.value">
         </div>
         
-        <!-- SEKCJA KOLORU KROPKÓW (Wdrożenie nowej technologii - Błąd 4) -->
+        <!-- SEKCJA KOLORU KROPKÓW (Zintegrowana z nowym modalem i obsługą gradientów - Błąd 4) -->
         <div class="style-control-group" style="padding-top: 5px;">
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom: 5px;">
                 <input type="checkbox" id="stylePointsToggle" onchange="togglePointsColorInput(this.checked)">
