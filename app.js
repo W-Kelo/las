@@ -4711,21 +4711,7 @@ function initColorisPicker() {
         closeLabel: 'Zamknij'
     });
 }
-function selectPickerColor(color, element) {
-    tempSelectedColor = color;
-    
-    const hexInput = document.getElementById('pickerHexInput');
-    if (hexInput) {
-        hexInput.value = color.toUpperCase();
-    }
-    
-    document.querySelectorAll('.predefined-color-btn').forEach(btn => btn.classList.remove('selected'));
-    if (element) {
-        element.classList.add('selected');
-    }
-    
-    updatePickerPreview(color);
-}
+
 function updatePickerPreview(color) {
     const preview = document.getElementById('pickerHexPreview');
     if (preview) {
@@ -8495,20 +8481,3 @@ function isolateColorInputs() {
 }
 
 
-
-function saveRecentColors() {
-    try {
-        localStorage.setItem(LS_RECENT_COLORS_KEY, JSON.stringify(recentColors));
-    } catch (e) {
-        console.error("Błąd zapisu ostatnich kolorów do LocalStorage:", e);
-    }
-}
-
-
-function saveRecentGradients() {
-    try {
-        localStorage.setItem(LS_RECENT_GRADIENTS_KEY, JSON.stringify(recentGradients));
-    } catch (e) {
-        console.error("Błąd zapisu ostatnich gradientów do LocalStorage:", e);
-    }
-}
