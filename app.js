@@ -225,7 +225,7 @@ document.body.className = "light";
     };
     setupColorUpdate('styleColor', 'styleColorHex');
     setupColorUpdate('stylePointsColor', 'stylePointsColorHex');
-    initColorisPicker();
+
     
     const pdfModalEl = document.getElementById('pdfModal');
     if (pdfModalEl) {
@@ -233,7 +233,7 @@ document.body.className = "light";
     }
     loadRecentColors(); // Wczytaj ostatnie kolory przy starcie
     loadRecentGradients(); // Wczytaj ostatnie gradienty przy starcie
-}); 
+});
 const hikingLayer = L.layerGroup().addTo(map);
 const poiLayer = L.layerGroup().addTo(map);
 const customPoiLayer = L.layerGroup().addTo(map); 
