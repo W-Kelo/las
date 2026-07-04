@@ -168,8 +168,7 @@ const WALK_SPEED_M_PER_MIN = 70; // 4.2 km/h;
 const STOP_EMOJIS = ["☕", "🍔", "⛺", "🔥", "📸", "🛌", "🔋", "🚾", "🥪", "🪑"];
 const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
-let activeColorPickerTarget = null; // Przechowuje ID aktywnego pola (np. 'styleColor')
-let tempSelectedColor = '#22c55e'; // Tymczasowy kolor wybrany w modalu
+
 
 // Gotowa paleta barw (estetyczne, nasycone kolory do szybkiego kliknięcia)
 const PREDEFINED_COLORS = [
