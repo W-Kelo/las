@@ -1336,8 +1336,9 @@ select.style-select {
     height: 16px;
     border: 2px solid #fff;
     border-radius: 50%;
-    box-shadow: 0 0 5px rgba(0,0,0,0.5);
-    pointer-events: none; /* Nie blokuje kliknięć na tle */
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    transform: translate(-50%, -50%); /* Centruje wskaźnik niezależnie od wymiarów DOM */
 }
 
 /* Pola numeryczne dla HSL */
