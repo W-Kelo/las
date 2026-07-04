@@ -44,7 +44,12 @@ function createCustomCopyright() {
         openCenteredModal('copySettingsModal');
     });
 }
-
+/* --- REJESTRACJA INICJALIZACJI DLA KREATORA MODALU --- */
+window.initAlwaysOnCopyright = function() {
+    if (!customCopyrightEl) {
+        createCustomCopyright();
+    }
+};
 let copyrightUpdateFrameId = null;
 
 window.updateCustomCopyrightAppearance = function() {
