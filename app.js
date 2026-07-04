@@ -223,6 +223,7 @@ document.body.className = "light";
     };
     setupColorUpdate('styleColor', 'styleColorHex');
     setupColorUpdate('stylePointsColor', 'stylePointsColorHex');
+    initColorisPicker();
     
     const pdfModalEl = document.getElementById('pdfModal');
     if (pdfModalEl) {
@@ -8386,5 +8387,30 @@ function isolateColorInputs() {
                 e.stopPropagation();
             });
         });
+    });
+}
+/* --- INTEGRACJA COLORIS: ROZWIĄZANIE PROBLEMU BLOKOWANIA OKIEN --- */
+function initColorisPicker() {
+    // 1. Pobieramy wszystkie natywne wejścia koloru
+    const nativeInputs = document.querySelectorAll('input[type="color"]');
+    
+    nativeInputs.forEach(input => {
+        // Konwertujemy typ z "color" na bezpieczny "text", który obsłuży Coloris
+        input.type = 'text';
+        input.setAttribute('data-coloris', '');
+        
+        // Zachowujemy oryginalny styl szerokości/wysokości, aby nie psuć układu modali
+        input.style.cursor = 'pointer';
+    });
+
+    // 2. Inicjalizujemy globalne ustawienia Coloris
+    Coloris({
+        el: '[data-coloris]',
+        theme: 'polaroid',    // Estetyczny motyw (dostępne: default, large, polaroid, pill)
+        themeMode: 'dark',    // Ciemny motyw dopasowany do modali aplikacji
+        alpha: false,         // Wyłączamy przezroczystość (niepotrzebna w standardowych polach)
+        forceToBody: true,    // Gwarantuje poprawne pozycjonowanie na warstwach (z-index) modali
+        closeButton: true,    // Dodatkowy przycisk zamknięcia w panelu
+        closeLabel: 'Zamknij'
     });
 }
