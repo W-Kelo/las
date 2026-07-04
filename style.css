@@ -993,7 +993,8 @@ canvas#elevation {
     table-layout: fixed !important;
     word-wrap: break-word !important;
 }
-//Edytor tekstu do eksportu w PDf-ie
+
+/* Edytor tekstu do eksportu w PDF-ie (Poprawiony komentarz CSS) */
 .rt-editor-toolbar {
     display: flex !important;
     flex-direction: row !important;
@@ -1005,30 +1006,39 @@ canvas#elevation {
     width: 100% !important;
     box-sizing: border-box !important;
 }
-.light .rt-editor-toolbar { background: rgba(0,0,0,0.05); }
+
+.light .rt-editor-toolbar { 
+    background: rgba(0,0,0,0.05) !important; 
+}
+
 .rt-editor-toolbar button {
     flex: 1 !important; /* Rozkłada przyciski idealnie i równomiernie w linii */
     max-width: 60px !important; /* Blokada szerokości przycisków */
     padding: 6px 10px !important;
     font-size: 0.85rem !important;
     margin: 0 !important;
-    height: auto !important;
+    height: 32px !important; /* Stała wysokość dla wyrównania */
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     box-shadow: none !important;
+    color: #ffffff !important; /* Jasny tekst na ciemnym motywie */
 }
-.rt-editor-toolbar button:hover { background: rgba(255,255,255,0.2); }
-.light .rt-editor-toolbar button { background: #fff; border-color: #ccc; }
-.rt-editor-content { 
- background: rgba(0,0,0,0.2);
- min-height: 150px; 
- padding: 10px; 
- border-radius: 0 0 6px 6px; 
- outline: none; border: 1px solid rgba(255,255,255,0.1); 
- border-top: none; 
+
+.rt-editor-toolbar button:hover { 
+    background: rgba(255,255,255,0.2) !important; 
 }
-.light .rt-editor-content { background: #fff; border-color: #ccc; }
+
+/* Dopasowanie przycisków dla jasnego motywu - czytelna ciemna czcionka na jasnym tle */
+.light .rt-editor-toolbar button { 
+    background: #ffffff !important; 
+    border: 1px solid #cbd5e1 !important; 
+    color: #0f172a !important; /* Przywrócenie ciemnego tekstu na białym tle przycisku */
+}
+
+.light .rt-editor-toolbar button:hover {
+    background: #f1f5f9 !important;
+}
 /* ===================================
    16. Stylizacja trasy i nagrywanie GIf
 =================================== */
