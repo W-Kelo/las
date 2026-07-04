@@ -1,5 +1,5 @@
 /* =========================================================
-   copyright.js - MODUŁ OBSŁUGI COPYRIGHT (ŹRÓDŁA) 
+   copyright.js - MODUŁ OBSŁUGI COPYRIGHT (ŹRÓDŁA)
 ========================================================= */
 
 let customCopyrightEl = null;
