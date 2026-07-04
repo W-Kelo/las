@@ -2462,10 +2462,7 @@ function executeRefreshRoute() {
     // Na koniec odświeżamy punkty (żeby wskoczyły na nowe współrzędne trasy)
     syncExportPoints();
 }
-/* ================= ELASTYCZNA SKALA I COPYRIGHT W EKSPORCIE ================= */
-window.initAlwaysOnCopyright = function() {
-    if (!customCopyrightEl) createCustomCopyright();
-};
+
 
 
 /* =========================================================
