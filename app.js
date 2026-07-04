@@ -91,7 +91,6 @@ let exportPolyline = null;
 let scaleControl = null;
 let scaleVisible = false;
 let customScaleEl = null;
-let customCopyrightEl = null;
 let scaleUpdateTimeout = null;
 
 let animLineLayer = null;
@@ -2467,70 +2466,6 @@ function executeRefreshRoute() {
 window.initAlwaysOnCopyright = function() {
     if (!customCopyrightEl) createCustomCopyright();
 };
-
-
-
-
-
-// 4. TWORZENIE ELEMENTU COPYRIGHT
-function createCustomCopyright() {
-    const wrapper = document.getElementById('exportWrapper');
-    if(!wrapper) return;
-    
-    customCopyrightEl = document.createElement('div');
-    customCopyrightEl.id = 'export-custom-copyright';
-    
-    Object.assign(customCopyrightEl.style, {
-        position: 'absolute', bottom: '10px', left: '15px', zIndex: '99999', // ABSOLUTNIE NAJWYŻSZA WARSTWA
-        cursor: 'ew-resize', padding: '2px 6px', borderRadius: '4px',
-        background: 'rgba(255,255,255,0.6)', color: '#333333',
-        fontFamily: 'sans-serif', fontSize: '10px', userSelect: 'none', border: '1px solid rgba(0,0,0,0.1)',
-        width: 'max-content', height: 'max-content', boxSizing: 'border-box', whiteSpace: 'nowrap'
-    });
-
-    wrapper.appendChild(customCopyrightEl);
-    updateCopyrightText();
-    makeStrictEdgeDraggable(customCopyrightEl, wrapper, false); 
-    
-    customCopyrightEl.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        openCenteredModal('copySettingsModal');
-    });
-}
-
-
-window.updateCopyrightText = function() {
-    if (!customCopyrightEl) return;
-    if (typeof isExportSatellite !== 'undefined' && isExportSatellite) {
-        customCopyrightEl.innerHTML = '&copy; <a href="https://www.google.com/intl/pl_pl/help/terms_maps/" target="_blank" style="color:inherit; text-decoration:none;">Google Maps</a>';
-    } else {
-        customCopyrightEl.innerHTML = '&copy; Autorzy OpenStreetMap';
-    }
-};
-
-
-window.updateCustomCopyrightAppearance = function() {
-    if (!customCopyrightEl) return;
-    const hexBg = document.getElementById('copyBgColor').value;
-    const opacity = document.getElementById('copyBgOpacity').value;
-    const textColor = document.getElementById('copyTextColor').value;
-    
-    const ratio = checkContrastRatio(hexBg, textColor, opacity);
-    if (ratio < 3.0) {
-        showCustomAlert("⚠️ Odmowa zmiany! Źródło (Copyright) byłoby nieczytelne na mapie.");
-        document.getElementById('copyBgColor').value = "#ffffff";
-        document.getElementById('copyBgOpacity').value = 60;
-        document.getElementById('copyTextColor').value = "#333333";
-        return; 
-    }
-
-    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
-    customCopyrightEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacity/100})`;
-    customCopyrightEl.style.color = textColor;
-    customCopyrightEl.style.borderColor = `rgba(${r}, ${g}, ${b}, ${Math.min(1, opacity/100+0.2)})`;
-};
-
-
 
 
 /* =========================================================
