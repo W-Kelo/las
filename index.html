@@ -1080,9 +1080,10 @@
             <!-- Paleta wygenerowana dynamicznie przez JS -->
         </div>
         
-        <!-- Przycisk pipety (pobierania z ekranu) widoczny tylko gdy przeglądarka go wspiera -->
+       <!-- Przycisk pipety (pobierania z ekranu) widoczny tylko gdy przeglądarka go wspiera -->
         <div id="pickerPipetteContainer" style="display:none; margin: 4px 0;">
-            <button type="button" onclick="triggerPickerPipette()" style="width:100%; background: #3b82f6; font-size:0.85rem; padding: 8px;">🧪 Pobierz z ekranu (Pipeta)</button>
+            <!-- KLUCZOWE: Dodany parametr 'event' do wywołania funkcji -->
+            <button type="button" onclick="triggerPickerPipette(event)" style="width:100%; background: #3b82f6; font-size:0.85rem; padding: 8px; margin: 0;">🧪 Pobierz z ekranu (Pipeta)</button>
         </div>
 
         <!-- Ręczny zapis HEX -->
