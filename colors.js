@@ -44,8 +44,15 @@ function rgbToHex(r, g, b) {
     return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
 }
 
+// Ulepszona, w pełni bezpieczna konwersja HSL do RGB (Rozwiązanie błędu resekcji 360 stopni)
 function hslToRgb(h, s, l) {
-    s /= 100; l /= 100;
+    // Twarda normalizacja kąta barwy (ochrona przed wartościami >= 360)
+    h = h % 360;
+    if (h < 0) h += 360;
+
+    s /= 100; 
+    l /= 100;
+    
     let c = (1 - Math.abs(2 * l - 1)) * s,
         x = c * (1 - Math.abs((h / 60) % 2 - 1)),
         m = l - c / 2,
@@ -56,7 +63,7 @@ function hslToRgb(h, s, l) {
     else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
     else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
     else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
-    else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
+    else if (300 <= h && h <= 360) { r = c; g = 0; b = x; } // Obsługa domknięcia przedziału
     
     return {
         r: Math.round((r + m) * 255),
@@ -64,7 +71,6 @@ function hslToRgb(h, s, l) {
         b: Math.round((b + m) * 255)
     };
 }
-
 function rgbToHsl(r, g, b) {
     r /= 255; g /= 255; b /= 255;
     let cmin = Math.min(r, g, b),
@@ -386,15 +392,21 @@ function selectPickerColor(color, element) {
         hexInput.value = color.toUpperCase();
     }
     
+    // Usunięcie zaznaczenia z obu siatek kolorów
     document.querySelectorAll('#pickerPredefinedColors .predefined-color-btn, #pickerRecentColors .predefined-color-btn').forEach(btn => btn.classList.remove('selected'));
     if (element) {
         element.classList.add('selected');
     }
     
-    // AKTUALIZACJA MIESZALNIKA HSL PO KLIKNIĘCIU GOTOWEGO KOLORU (Rozwiązanie błędu 2)
+    // Konwersja na HSL dla poprawnego ustawienia suwaków mieszalnika
     const hsl = hexToHsl(color);
     currentHsl = { h: hsl.h, s: hsl.s, l: hsl.l };
+    
+    // Aktualizacja suwaków HSL i pozycji kropki
     updateHslPickerUI();
+    
+    // WYMUSZENIE dokładnego koloru na podglądzie (Pomija błędy zaokrągleń matematycznych HSL->HEX)
+    updateFinalPreview(color);
 }
 
 /* --- HISTORIA (LOCAL STORAGE) --- */
@@ -704,7 +716,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (styleColorInput) {
         styleColorInput.addEventListener('input', (e) => {
             routePrefColor = e.target.value;
-            renderRouteLineWithStyle();
+            if (typeof renderRouteLineWithStyle === 'function') {
+                renderRouteLineWithStyle();
+            }
         });
     }
 
@@ -712,7 +726,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (stylePointsColorInput) {
         stylePointsColorInput.addEventListener('input', (e) => {
             routePrefPointsColor = e.target.value;
-            renderPointsWithStyle(); // Płynna aktualizacja kropek (Błędy 3 i 4)
+            if (typeof renderPointsWithStyle === 'function') {
+                renderPointsWithStyle(); // Płynna aktualizacja kropek (Błędy 3 i 4)
+            }
         });
     }
 });
