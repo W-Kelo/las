@@ -167,6 +167,17 @@ const WALK_SPEED_M_PER_MIN = 70; // 4.2 km/h;
 const STOP_EMOJIS = ["☕", "🍔", "⛺", "🔥", "📸", "🛌", "🔋", "🚾", "🥪", "🪑"];
 const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
 const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
+let activeColorPickerTarget = null; // Przechowuje ID aktywnego pola (np. 'styleColor')
+let tempSelectedColor = '#22c55e'; // Tymczasowy kolor wybrany w modalu
+
+// Gotowa paleta barw (estetyczne, nasycone kolory do szybkiego kliknięcia)
+const PREDEFINED_COLORS = [
+    '#22c55e', '#16a34a', '#3b82f6', '#1d4ed8', '#ef4444', '#dc2626',
+    '#eab308', '#d97706', '#8b5cf6', '#6d28d9', '#ec4899', '#be185d',
+    '#f97316', '#c2410c', '#06b6d4', '#0891b2', '#0f172a', '#f1f5f9',
+    '#64748b', '#475569', '#334155', '#1e293b', '#000000', '#ffffff'
+];
+
 window._currentGalleryData = [];
 window._modalGalleryData = [];
 window.isElevationAnimated = true;
@@ -8414,3 +8425,140 @@ function initColorisPicker() {
         closeLabel: 'Zamknij'
     });
 }
+function openCustomColorPicker(targetId) {
+    activeColorPickerTarget = targetId;
+    
+    // Pobranie aktualnego koloru z ukrytego mostka
+    const currentValElement = document.getElementById(targetId);
+    const currentVal = currentValElement ? currentValElement.value : '#22c55e';
+    tempSelectedColor = currentVal;
+
+    // Generowanie palety gotowych kafelków
+    const grid = document.getElementById('pickerPredefinedColors');
+    if (grid) {
+        grid.innerHTML = PREDEFINED_COLORS.map(c => `
+            <div class="predefined-color-btn ${c.toLowerCase() === tempSelectedColor.toLowerCase() ? 'selected' : ''}" 
+                 style="background-color: ${c};" 
+                 onclick="selectPickerColor('${c}', this)"></div>
+        `).join('');
+    }
+
+    // Obsługa natywnej pipety (tylko na wspieranych systemach/przeglądarkach)
+    const pipetteContainer = document.getElementById('pickerPipetteContainer');
+    if (pipetteContainer) {
+        pipetteContainer.style.display = ('EyeDropper' in window) ? 'block' : 'none';
+    }
+
+    // Wpisanie wartości do pola tekstowego HEX i aktualizacja małego podglądu
+    const hexInput = document.getElementById('pickerHexInput');
+    if (hexInput) {
+        hexInput.value = tempSelectedColor.toUpperCase();
+    }
+    updatePickerPreview(tempSelectedColor);
+
+    // Otwarcie i wycentrowanie modalu wyboru
+    const modal = document.getElementById('customColorPickerModal');
+    modal.style.display = 'flex';
+    modal.style.left = '50%';
+    modal.style.top = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
+    modal.style.zIndex = '99999'; // Gwarancja najwyższej warstwy
+
+    // Sprawienie, że modal wyboru koloru też można przesuwać
+    makeDraggable(modal);
+}
+
+function selectPickerColor(color, element) {
+    tempSelectedColor = color;
+    
+    const hexInput = document.getElementById('pickerHexInput');
+    if (hexInput) {
+        hexInput.value = color.toUpperCase();
+    }
+    
+    document.querySelectorAll('.predefined-color-btn').forEach(btn => btn.classList.remove('selected'));
+    if (element) {
+        element.classList.add('selected');
+    }
+    
+    updatePickerPreview(color);
+}
+
+function updatePickerPreview(color) {
+    const preview = document.getElementById('pickerHexPreview');
+    if (preview) {
+        preview.style.backgroundColor = color;
+    }
+}
+
+// Obsługa natywnej pipety w przeglądarkach Chromium
+async function triggerPickerPipette() {
+    if ('EyeDropper' in window) {
+        try {
+            const eyeDropper = new EyeDropper();
+            const result = await eyeDropper.open();
+            selectPickerColor(result.sRGBHex);
+        } catch (e) {
+            console.log("Anulowano pobieranie koloru");
+        }
+    }
+}
+
+function closeCustomColorPicker(confirm) {
+    const modal = document.getElementById('customColorPickerModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+
+    if (confirm && activeColorPickerTarget) {
+        // Zapisanie wybranego koloru do ukrytego mostu danych
+        const targetInput = document.getElementById(activeColorPickerTarget);
+        if (targetInput) {
+            targetInput.value = tempSelectedColor;
+            
+            // Wymuszenie wyzwolenia zdarzenia zmiany, aby linia trasy natychmiast się przerysowała
+            const event = new Event('input', { bubbles: true });
+            targetInput.dispatchEvent(event);
+        }
+
+        // Aktualizacja podglądu kwadratu w modalu nadrzędnym
+        const previewRect = document.getElementById(`${activeColorPickerTarget}Preview`);
+        if (previewRect) {
+            previewRect.style.backgroundColor = tempSelectedColor;
+        }
+
+        // Aktualizacja tekstu HEX w modalu nadrzędnym
+        const hexSpan = document.getElementById(`${activeColorPickerTarget}Hex`);
+        if (hexSpan) {
+            hexSpan.innerText = tempSelectedColor.toUpperCase();
+        }
+    }
+    activeColorPickerTarget = null;
+}
+
+// Podpięcie ręcznego wpisywania HEX w modalu koloru
+document.addEventListener('DOMContentLoaded', () => {
+    const hexInput = document.getElementById('pickerHexInput');
+    if (hexInput) {
+        hexInput.addEventListener('input', (e) => {
+            let val = e.target.value.trim();
+            if (!val.startsWith('#')) val = '#' + val;
+            if (/^#[0-9A-F]{6}$/i.test(val)) {
+                tempSelectedColor = val;
+                updatePickerPreview(val);
+            }
+        });
+    }
+});
+
+// ROZSZERZENIE FUNKCJI ZAMYKANIA MODALI (Zapewnia autozamykanie okna wyboru koloru)
+const originalCloseModal = closeModal;
+closeModal = function(id) {
+    // Wywołanie oryginalnej funkcji
+    originalCloseModal(id);
+
+    // Jeśli zamykamy modal stylu trasy, a okienko koloru było dla niego otwarte - zamykamy je
+    if (id === 'styleModal' && activeColorPickerTarget === 'styleColor') {
+        closeCustomColorPicker(false);
+    }
+};
