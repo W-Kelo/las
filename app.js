@@ -178,6 +178,29 @@ const PREDEFINED_COLORS = [
     '#f97316', '#c2410c', '#06b6d4', '#0891b2', '#0f172a', '#f1f5f9',
     '#64748b', '#475569', '#334155', '#1e293b', '#000000', '#ffffff'
 ];
+/* =========================================================
+   GLOBALNE ZMIENNE DLA SYSTEMU WYBORU KOLORÓW
+========================================================= */
+let activeColorPickerTarget = null; // ID pola, dla którego otwieramy picker (np. 'styleColor')
+let activeColorPickerType = 'line'; // Typ elementu, dla którego otwieramy picker (np. 'line', 'text', 'background')
+let currentPickerMode = 'color'; // 'color' (jednolity) lub 'gradient'
+let tempSelectedColor = '#22c55e'; // Tymczasowy kolor jednolity wybrany w modalu
+let tempSelectedGradient = null;   // Tymczasowy gradient wybrany w modalu
+
+let currentHsl = { h: 120, s: 100, l: 50 }; // Aktualne wartości HSL dla mieszalnika
+
+// Ostatnie kolory/gradienty (pobierane z localStorage)
+let recentColors = [];
+let recentGradients = [];
+
+// Zmienne do obsługi konfiguracji gradientu
+let currentGradientConfig = null; // { colors: [{hex, pos}], count: 2 }
+let currentGradientBeingEdited = null; // Obiekt gradientu, jeśli jest edytowany
+
+// Nazwa kluczy w LocalStorage
+const LS_RECENT_COLORS_KEY = 'gpx_recent_colors';
+const LS_RECENT_GRADIENTS_KEY = 'gpx_recent_gradients';
+
 
 window._currentGalleryData = [];
 window._modalGalleryData = [];
@@ -8401,63 +8424,35 @@ function isolateColorInputs() {
         });
     });
 }
-/* --- INTEGRACJA COLORIS: ROZWIĄZANIE PROBLEMU BLOKOWANIA OKIEN --- */
-function initColorisPicker() {
-    // 1. Pobieramy wszystkie natywne wejścia koloru
-    const nativeInputs = document.querySelectorAll('input[type="color"]');
-    
-    nativeInputs.forEach(input => {
-        // Konwertujemy typ z "color" na bezpieczny "text", który obsłuży Coloris
-        input.type = 'text';
-        input.setAttribute('data-coloris', '');
-        
-        // Zachowujemy oryginalny styl szerokości/wysokości, aby nie psuć układu modali
-        input.style.cursor = 'pointer';
-    });
+/* =========================================================
+   LOGIKA GŁÓWNEGO MODALU WYBORU KOLORU/GRADIENTU
+========================================================= */
 
-    // 2. Inicjalizujemy globalne ustawienia Coloris
-    Coloris({
-        el: '[data-coloris]',
-        theme: 'polaroid',    // Estetyczny motyw (dostępne: default, large, polaroid, pill)
-        themeMode: 'dark',    // Ciemny motyw dopasowany do modali aplikacji
-        alpha: false,         // Wyłączamy przezroczystość (niepotrzebna w standardowych polach)
-        forceToBody: true,    // Gwarantuje poprawne pozycjonowanie na warstwach (z-index) modali
-        closeButton: true,    // Dodatkowy przycisk zamknięcia w panelu
-        closeLabel: 'Zamknij'
-    });
-}
-function openCustomColorPicker(targetId) {
+// Otwieranie Modalu wyboru koloru
+function openCustomColorPicker(targetId, type = 'line') {
     activeColorPickerTarget = targetId;
-    
-    // Pobranie aktualnego koloru z ukrytego mostka
+    activeColorPickerType = type;
+
+    loadRecentColors(); // Wczytaj ostatnie kolory przed otwarciem
+    loadRecentGradients(); // Wczytaj ostatnie gradienty
+
+    // Pobranie aktualnej wartości koloru/gradientu z elementu docelowego
     const currentValElement = document.getElementById(targetId);
-    const currentVal = currentValElement ? currentValElement.value : '#22c55e';
-    tempSelectedColor = currentVal;
+    let currentVal = currentValElement ? currentValElement.value : '#22c55e'; // Domyślny kolor
 
-    // Generowanie palety gotowych kafelków
-    const grid = document.getElementById('pickerPredefinedColors');
-    if (grid) {
-        grid.innerHTML = PREDEFINED_COLORS.map(c => `
-            <div class="predefined-color-btn ${c.toLowerCase() === tempSelectedColor.toLowerCase() ? 'selected' : ''}" 
-                 style="background-color: ${c};" 
-                 onclick="selectPickerColor('${c}', this)"></div>
-        `).join('');
+    // Sprawdzenie, czy aktualna wartość to gradient
+    if (currentVal.startsWith('linear-gradient') || currentVal.startsWith('radial-gradient')) {
+        currentPickerMode = 'gradient';
+        tempSelectedGradient = currentVal;
+    } else {
+        currentPickerMode = 'color';
+        tempSelectedColor = currentVal;
     }
 
-    // Obsługa natywnej pipety (tylko na wspieranych systemach/przeglądarkach)
-    const pipetteContainer = document.getElementById('pickerPipetteContainer');
-    if (pipetteContainer) {
-        pipetteContainer.style.display = ('EyeDropper' in window) ? 'block' : 'none';
-    }
+    // Odśwież UI w zależności od trybu
+    updateCustomColorPickerUI();
 
-    // Wpisanie wartości do pola tekstowego HEX i aktualizacja małego podglądu
-    const hexInput = document.getElementById('pickerHexInput');
-    if (hexInput) {
-        hexInput.value = tempSelectedColor.toUpperCase();
-    }
-    updatePickerPreview(tempSelectedColor);
-
-    // Otwarcie i wycentrowanie modalu wyboru
+    // Otwarcie i wycentrowanie modalu
     const modal = document.getElementById('customColorPickerModal');
     modal.style.display = 'flex';
     modal.style.left = '50%';
@@ -8465,80 +8460,84 @@ function openCustomColorPicker(targetId) {
     modal.style.transform = 'translate(-50%, -50%)';
     modal.style.zIndex = '99999'; // Gwarancja najwyższej warstwy
 
-    // Sprawienie, że modal wyboru koloru też można przesuwać
+    // Inicjalizacja mieszalnika HSL na podstawie aktualnego koloru
+    if (currentPickerMode === 'color') {
+        const hsl = hexToHsl(tempSelectedColor);
+        currentHsl = { h: hsl.h, s: hsl.s, l: hsl.l };
+        updateHslPickerUI(); // Ustawia suwaki i wskaźnik
+    } else {
+        // Jeśli gradient, mieszalnik HSL nie jest używany, ale jego UI musi być spójne
+        const hsl = hexToHsl(PREDEFINED_COLORS[0]); // Ustaw na jakiś domyślny, aby nie było błędów
+        currentHsl = { h: hsl.h, s: hsl.s, l: hsl.l };
+        updateHslPickerUI();
+    }
+
     makeDraggable(modal);
 }
 
-function selectPickerColor(color, element) {
-    tempSelectedColor = color;
-    
+// Przełączanie między trybem Koloru Jednolitego a Gradientu
+function selectPickerMode(mode) {
+    currentPickerMode = mode;
+    updateCustomColorPickerUI();
+}
+
+// Aktualizacja UI całego modalu (ukrywanie/pokazywanie sekcji)
+function updateCustomColorPickerUI() {
+    const singleColorSection = document.getElementById('singleColorPickerSection');
+    const gradientPickerSection = document.getElementById('gradientPickerSection');
+    const btnSelectColor = document.getElementById('btnSelectColorMode');
+    const btnSelectGradient = document.getElementById('btnSelectGradientMode');
+
+    if (currentPickerMode === 'color') {
+        if (singleColorSection) singleColorSection.style.display = 'block';
+        if (gradientPickerSection) gradientPickerSection.style.display = 'none';
+        if (btnSelectColor) btnSelectColor.classList.add('active'); // Style w CSS
+        if (btnSelectGradient) btnSelectGradient.classList.remove('active');
+        updateFinalPreview(tempSelectedColor);
+        updateHslPickerUI(); // Odśwież mieszalnik HSL
+    } else {
+        if (singleColorSection) singleColorSection.style.display = 'none';
+        if (gradientPickerSection) gradientPickerSection.style.display = 'block';
+        if (btnSelectColor) btnSelectColor.classList.remove('active');
+        if (btnSelectGradient) btnSelectGradient.classList.add('active');
+        updateFinalPreview(tempSelectedGradient);
+        renderRecentGradients(); // Odśwież listę ostatnich gradientów
+    }
+
+    // Renderowanie gotowych kolorów
+    const predefinedGrid = document.getElementById('pickerPredefinedColors');
+    if (predefinedGrid) {
+        predefinedGrid.innerHTML = PREDEFINED_COLORS.map(c => `
+            <div class="predefined-color-btn ${c.toLowerCase() === tempSelectedColor.toLowerCase() ? 'selected' : ''}" 
+                 style="background-color: ${c};" 
+                 onclick="selectPickerColor('${c}', this)"></div>
+        `).join('');
+    }
+
+    // Renderowanie ostatnich kolorów
+    renderRecentColors();
+}
+
+// Aktualizacja końcowego podglądu (kolor lub gradient)
+function updateFinalPreview(value) {
+    const finalPreview = document.getElementById('finalColorPreview');
+    const finalHex = document.getElementById('finalColorHex');
     const hexInput = document.getElementById('pickerHexInput');
-    if (hexInput) {
-        hexInput.value = color.toUpperCase();
-    }
-    
-    document.querySelectorAll('.predefined-color-btn').forEach(btn => btn.classList.remove('selected'));
-    if (element) {
-        element.classList.add('selected');
-    }
-    
-    updatePickerPreview(color);
-}
 
-function updatePickerPreview(color) {
-    const preview = document.getElementById('pickerHexPreview');
-    if (preview) {
-        preview.style.backgroundColor = color;
+    if (!finalPreview || !finalHex || !hexInput) return;
+
+    if (currentPickerMode === 'color') {
+        finalPreview.style.background = value;
+        finalHex.innerText = value.toUpperCase();
+        hexInput.value = value.toUpperCase();
+    } else { // Gradient
+        finalPreview.style.background = value;
+        finalHex.innerText = "GRADIENT";
+        hexInput.value = ""; // Pole HEX nie ma zastosowania dla gradientów
     }
 }
 
-// Obsługa natywnej pipety w przeglądarkach Chromium
-async function triggerPickerPipette(event) {
-    // 1. Zatrzymujemy bąbelkowanie zdarzenia, aby Leaflet i inne skrypty w tle nie zarejestrowały kliknięcia
-    if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
-
-    // 2. Blokada przed wielokrotnym uruchomieniem (np. przy szybkim double-clicku)
-    if (isPipetteOpen) {
-        console.warn("[Pipeta] Ostrzeżenie: Próba ponownego otwarcia zablokowana. Proces jest już w toku.");
-        return;
-    }
-
-    if (!('EyeDropper' in window)) {
-        showCustomAlert("Twoja przeglądarka nie wspiera funkcji natywnej pipety (wymagany jest Chrome, Edge lub Opera uruchomione w bezpiecznym kontekście HTTPS/localhost).");
-        return;
-    }
-
-    // 3. Bezpieczne usunięcie aktywnego skupienia (focus) z jakichkolwiek elementów strony przed otwarciem systemowego okna
-    if (document.activeElement) {
-        document.activeElement.blur();
-    }
-
-    // Aktywacja blokady i kursora oczekiwania
-    isPipetteOpen = true;
-    document.body.style.cursor = 'wait';
-
-    try {
-        const eyeDropper = new EyeDropper();
-        
-        // Wywołanie asynchronicznego pobierania koloru z oczekiwaniem na obietnicę
-        const result = await eyeDropper.open();
-        
-        if (result && result.sRGBHex) {
-            selectPickerColor(result.sRGBHex);
-        }
-    } catch (err) {
-        // Przechwycenie i bezpieczne zalogowanie anulowania (np. naciśnięcie klawisza Escape)
-        console.log("[Pipeta] Pobieranie koloru zostało przerwane lub anulowane przez użytkownika:", err.message);
-    } finally {
-        // Gwarantowane zdjęcie blokady i przywrócenie kursora w bloku finally (wykona się zawsze)
-        isPipetteOpen = false;
-        document.body.style.cursor = '';
-    }
-}
-
+// Zamykanie Modalu wyboru koloru
 function closeCustomColorPicker(confirm) {
     const modal = document.getElementById('customColorPickerModal');
     if (modal) {
@@ -8546,54 +8545,600 @@ function closeCustomColorPicker(confirm) {
     }
 
     if (confirm && activeColorPickerTarget) {
-        // Zapisanie wybranego koloru do ukrytego mostu danych
         const targetInput = document.getElementById(activeColorPickerTarget);
-        if (targetInput) {
-            targetInput.value = tempSelectedColor;
-            
-            // Wymuszenie wyzwolenia zdarzenia zmiany, aby linia trasy natychmiast się przerysowała
-            const event = new Event('input', { bubbles: true });
-            targetInput.dispatchEvent(event);
+        if (!targetInput) return;
+
+        let finalValue = '';
+        if (currentPickerMode === 'color') {
+            finalValue = tempSelectedColor;
+            addRecentColor(finalValue); // Zapisz do ostatnich
+        } else {
+            finalValue = tempSelectedGradient;
+            addRecentGradient(finalValue); // Zapisz do ostatnich
         }
 
-        // Aktualizacja podglądu kwadratu w modalu nadrzędnym
-        const previewRect = document.getElementById(`${activeColorPickerTarget}Preview`);
-        if (previewRect) {
-            previewRect.style.backgroundColor = tempSelectedColor;
-        }
+        targetInput.value = finalValue;
 
-        // Aktualizacja tekstu HEX w modalu nadrzędnym
-        const hexSpan = document.getElementById(`${activeColorPickerTarget}Hex`);
-        if (hexSpan) {
-            hexSpan.innerText = tempSelectedColor.toUpperCase();
-        }
+        // Wymuszenie wyzwolenia zdarzenia zmiany, aby powiązany element (np. linia trasy) się przerysował
+        const event = new Event('input', { bubbles: true }); // Używamy 'input' dla dynamicznych zmian
+        targetInput.dispatchEvent(event);
+
+        // Aktualizacja podglądu i tekstu w modalu nadrzędnym (np. `#styleModal`)
+        updateParentModalPreview(targetInput.value);
     }
     activeColorPickerTarget = null;
+    activeColorPickerType = 'line'; // Reset do wartości domyślnej
 }
 
-// Podpięcie ręcznego wpisywania HEX w modalu koloru
+// Funkcja aktualizująca podgląd w modalu nadrzędnym (np. `#styleModal`)
+function updateParentModalPreview(value) {
+    const previewRect = document.getElementById(`${activeColorPickerTarget}Preview`);
+    const hexSpan = document.getElementById(`${activeColorPickerTarget}Hex`);
+    const lineModeSpan = document.getElementById('styleLineMode');
+
+    if (previewRect) {
+        previewRect.style.background = value;
+    }
+
+    if (hexSpan) {
+        hexSpan.innerText = value.startsWith('linear-gradient') || value.startsWith('radial-gradient') ? "GRADIENT" : value.toUpperCase();
+    }
+
+    if (lineModeSpan && activeColorPickerTarget === 'styleColor') {
+        lineModeSpan.innerText = value.startsWith('linear-gradient') || value.startsWith('radial-gradient') ? "(gradient)" : "(jednolity)";
+    }
+}
+
+// --- Obsługa mieszalnika HSL ---
+
+let isDraggingSaturationLightness = false;
+
+function updateHslPickerUI() {
+    const hueSlider = document.getElementById('hueSlider');
+    const slPicker = document.getElementById('saturationLightnessPicker');
+    const slPointer = document.getElementById('slPointer');
+    const hslHueInput = document.getElementById('hslHueInput');
+    const hslSaturationInput = document.getElementById('hslSaturationInput');
+    const hslLightnessInput = document.getElementById('hslLightnessInput');
+
+    if (!hueSlider || !slPicker || !slPointer || !hslHueInput || !hslSaturationInput || !hslLightnessInput) return;
+
+    hueSlider.value = currentHsl.h;
+    hslHueInput.value = currentHsl.h;
+    hslSaturationInput.value = currentHsl.s;
+    hslLightnessInput.value = currentHsl.l;
+
+    // Ustawienie tła dla Saturation/Lightness Picker (zależy od Hue)
+    const baseColorRgb = hslToRgb(currentHsl.h, 100, 50); // Maksymalna saturacja i średnia jasność dla tła
+    const baseHex = rgbToHex(baseColorRgb.r, baseColorRgb.g, baseColorRgb.b);
+    slPicker.style.background = `linear-gradient(to top, black, transparent), linear-gradient(to right, #fff, ${baseHex})`;
+
+    // Pozycja wskaźnika SL
+    const x = (currentHsl.s / 100) * slPicker.clientWidth;
+    const y = (1 - (currentHsl.l / 100)) * slPicker.clientHeight; // Odwrócona oś Y dla jasności
+    slPointer.style.left = `${Math.max(0, Math.min(x - slPointer.offsetWidth / 2, slPicker.clientWidth - slPointer.offsetWidth))}px`;
+    slPointer.style.top = `${Math.max(0, Math.min(y - slPointer.offsetHeight / 2, slPicker.clientHeight - slPointer.offsetHeight))}px`;
+    
+    // Aktualizacja podglądu końcowego
+    updateFinalPreview(hslToHex(currentHsl.h, currentHsl.s, currentHsl.l));
+}
+
+function updateHslColor() {
+    const hueSlider = document.getElementById('hueSlider');
+    const hslHueInput = document.getElementById('hslHueInput');
+    const hslSaturationInput = document.getElementById('hslSaturationInput');
+    const hslLightnessInput = document.getElementById('hslLightnessInput');
+    
+    if (!hueSlider || !hslHueInput || !hslSaturationInput || !hslLightnessInput) return;
+
+    currentHsl.h = parseInt(hueSlider.value);
+    currentHsl.s = parseInt(hslSaturationInput.value);
+    currentHsl.l = parseInt(hslLightnessInput.value);
+    
+    updateHslPickerUI();
+}
+
+function updateHslFromInput() {
+    const hslHueInput = document.getElementById('hslHueInput');
+    const hslSaturationInput = document.getElementById('hslSaturationInput');
+    const hslLightnessInput = document.getElementById('hslLightnessInput');
+
+    if (!hslHueInput || !hslSaturationInput || !hslLightnessInput) return;
+
+    currentHsl.h = parseInt(hslHueInput.value) || 0;
+    currentHsl.s = parseInt(hslSaturationInput.value) || 0;
+    currentHsl.l = parseInt(hslLightnessInput.value) || 0;
+
+    // Ograniczenia wartości
+    currentHsl.h = Math.max(0, Math.min(currentHsl.h, 359));
+    currentHsl.s = Math.max(0, Math.min(currentHsl.s, 100));
+    currentHsl.l = Math.max(0, Math.min(currentHsl.l, 100));
+
+    updateHslPickerUI();
+}
+
+function startSaturationLightnessDrag(e) {
+    if (currentPickerMode !== 'color') return; // Tylko w trybie jednolitego koloru
+    isDraggingSaturationLightness = true;
+    updateSaturationLightness(e);
+
+    document.addEventListener('mousemove', updateSaturationLightness);
+    document.addEventListener('mouseup', stopSaturationLightnessDrag);
+    document.addEventListener('touchmove', updateSaturationLightness, { passive: false });
+    document.addEventListener('touchend', stopSaturationLightnessDrag);
+}
+
+function updateSaturationLightness(e) {
+    if (!isDraggingSaturationLightness) return;
+    if (e.cancelable) e.preventDefault(); // Zapobiega przewijaniu na dotyku
+
+    const slPicker = document.getElementById('saturationLightnessPicker');
+    if (!slPicker) return;
+    const rect = slPicker.getBoundingClientRect();
+
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    let x = clientX - rect.left;
+    let y = clientY - rect.top;
+
+    x = Math.max(0, Math.min(x, rect.width));
+    y = Math.max(0, Math.min(y, rect.height));
+
+    currentHsl.s = Math.round((x / rect.width) * 100);
+    currentHsl.l = Math.round((1 - (y / rect.height)) * 100); // Odwrócona oś Y
+
+    updateHslPickerUI();
+}
+
+function stopSaturationLightnessDrag() {
+    isDraggingSaturationLightness = false;
+    document.removeEventListener('mousemove', updateSaturationLightness);
+    document.removeEventListener('mouseup', stopSaturationLightnessDrag);
+    document.removeEventListener('touchmove', updateSaturationLightness);
+    document.removeEventListener('touchend', stopSaturationLightnessDrag);
+}
+
+// --- Obsługa ręcznego wpisywania HEX ---
 document.addEventListener('DOMContentLoaded', () => {
     const hexInput = document.getElementById('pickerHexInput');
     if (hexInput) {
         hexInput.addEventListener('input', (e) => {
+            if (currentPickerMode !== 'color') return; // Tylko w trybie jednolitego koloru
             let val = e.target.value.trim();
             if (!val.startsWith('#')) val = '#' + val;
             if (/^#[0-9A-F]{6}$/i.test(val)) {
-                tempSelectedColor = val;
-                updatePickerPreview(val);
+                tempSelectedColor = val.toUpperCase();
+                const hsl = hexToHsl(tempSelectedColor);
+                currentHsl = { h: hsl.h, s: hsl.s, l: hsl.l };
+                updateHslPickerUI(); // Zaktualizuj suwaki i wskaźnik
             }
         });
     }
 });
 
-// ROZSZERZENIE FUNKCJI ZAMYKANIA MODALI (Zapewnia autozamykanie okna wyboru koloru)
+// --- Obsługa "Moje ostatnie kolory" ---
+function loadRecentColors() {
+    try {
+        const savedColors = localStorage.getItem(LS_RECENT_COLORS_KEY);
+        recentColors = savedColors ? JSON.parse(savedColors) : [];
+        renderRecentColors();
+    } catch (e) {
+        console.error("Błąd wczytywania ostatnich kolorów z LocalStorage:", e);
+        recentColors = [];
+    }
+}
+
+function addRecentColor(color) {
+    if (!color || typeof color !== 'string' || color.startsWith('linear-gradient')) return; // Nie zapisujemy gradientów jako jednolite kolory
+    
+    // Usuń, jeśli kolor już istnieje (przesuniemy go na początek)
+    recentColors = recentColors.filter(c => c.toLowerCase() !== color.toLowerCase());
+    
+    // Dodaj na początek
+    recentColors.unshift(color.toUpperCase());
+    
+    // Ogranicz do 5
+    if (recentColors.length > 5) {
+        recentColors = recentColors.slice(0, 5);
+    }
+    
+    saveRecentColors();
+    renderRecentColors();
+}
+
+function saveRecentColors() {
+    try {
+        localStorage.setItem(LS_RECENT_COLORS_KEY, JSON.stringify(recentColors));
+    } catch (e) {
+        console.error("Błąd zapisu ostatnich kolorów do LocalStorage:", e);
+    }
+}
+
+function renderRecentColors() {
+    const grid = document.getElementById('pickerRecentColors');
+    if (grid) {
+        grid.innerHTML = recentColors.map(c => `
+            <div class="predefined-color-btn ${c.toLowerCase() === tempSelectedColor.toLowerCase() ? 'selected' : ''}" 
+                 style="background-color: ${c};" 
+                 onclick="selectPickerColor('${c}', this)"></div>
+        `).join('');
+        if (recentColors.length === 0) {
+            grid.innerHTML = `<span style="font-size:0.8rem; opacity:0.6;">Brak ostatnich kolorów.</span>`;
+        }
+    }
+}
+
+
+// --- Obsługa "Moje ostatnie gradienty" ---
+function loadRecentGradients() {
+    try {
+        const savedGradients = localStorage.getItem(LS_RECENT_GRADIENTS_KEY);
+        recentGradients = savedGradients ? JSON.parse(savedGradients) : [];
+        renderRecentGradients();
+    } catch (e) {
+        console.error("Błąd wczytywania ostatnich gradientów z LocalStorage:", e);
+        recentGradients = [];
+    }
+}
+
+function addRecentGradient(gradientCss) {
+    if (!gradientCss || typeof gradientCss !== 'string' || !gradientCss.startsWith('linear-gradient')) return;
+    
+    // Usuń, jeśli gradient już istnieje (przesuniemy go na początek)
+    recentGradients = recentGradients.filter(g => g !== gradientCss);
+    
+    // Dodaj na początek
+    recentGradients.unshift(gradientCss);
+    
+    // Ogranicz do 5
+    if (recentGradients.length > 5) {
+        recentGradients = recentGradients.slice(0, 5);
+    }
+    
+    saveRecentGradients();
+    renderRecentGradients();
+}
+
+function saveRecentGradients() {
+    try {
+        localStorage.setItem(LS_RECENT_GRADIENTS_KEY, JSON.stringify(recentGradients));
+    } catch (e) {
+        console.error("Błąd zapisu ostatnich gradientów do LocalStorage:", e);
+    }
+}
+
+function renderRecentGradients() {
+    const grid = document.getElementById('pickerRecentGradients');
+    if (grid) {
+        grid.innerHTML = recentGradients.map(g => `
+            <div class="predefined-color-btn ${g === tempSelectedGradient ? 'selected' : ''}" 
+                 style="background: ${g};" 
+                 onclick="selectRecentGradient('${g}', this)"></div>
+        `).join('');
+        if (recentGradients.length === 0) {
+            grid.innerHTML = `<span style="font-size:0.8rem; opacity:0.6;">Brak ostatnich gradientów.</span>`;
+        }
+    }
+}
+
+function selectRecentGradient(gradientCss, element) {
+    tempSelectedGradient = gradientCss;
+    document.querySelectorAll('.recent-gradients-grid .predefined-color-btn').forEach(btn => btn.classList.remove('selected'));
+    if (element) element.classList.add('selected');
+    updateFinalPreview(tempSelectedGradient);
+}
+
+
+/* =========================================================
+   LOGIKA MODALU KONFIGURACJI GRADIENTU
+========================================================= */
+function openGradientConfigModal() {
+    // Ukryj główny modal wyboru koloru, aby ten nowy był na wierzchu
+    closeModal('customColorPickerModal'); 
+
+    // Wczytaj/przygotuj konfigurację gradientu
+    if (tempSelectedGradient && tempSelectedGradient.startsWith('linear-gradient')) {
+        // Parsuj istniejący gradient
+        currentGradientConfig = parseCssGradient(tempSelectedGradient);
+    } else {
+        // Domyślna konfiguracja dla nowego gradientu (2 kolory)
+        currentGradientConfig = {
+            colors: [
+                { hex: '#22c55e', pos: 0 },
+                { hex: '#3b82f6', pos: 100 }
+            ],
+            count: 2 // Domyślnie 2 kolory
+        };
+    }
+    
+    // Otwórz modal i zaktualizuj UI
+    const modal = document.getElementById('gradientConfigModal');
+    modal.style.display = 'flex';
+    modal.style.left = '50%';
+    modal.style.top = '50%';
+    modal.style.transform = 'translate(-50%, -50%)';
+    modal.style.zIndex = '100000'; // Najwyższa warstwa
+    
+    // Ustawienie liczby kolorów w dropdownie
+    document.getElementById('gradientColorCount').value = currentGradientConfig.count;
+
+    updateGradientConfigUI();
+    makeDraggable(modal);
+}
+
+// Parsowanie CSS gradientu (uproszczone, dla linear-gradient)
+function parseCssGradient(cssString) {
+    const match = cssString.match(/linear-gradient\(([^)]*)\)/);
+    if (!match) return null;
+
+    const parts = match[1].split(',').map(p => p.trim());
+    let angle = 90; // Domyślny kąt to "to right"
+    let colorPoints = [];
+
+    // Jeśli pierwszy element to kąt (np. 'to right', '45deg')
+    if (parts[0].startsWith('to ') || parts[0].endsWith('deg')) {
+        const angleMatch = parts[0].match(/(\d+)deg/);
+        if (angleMatch) angle = parseInt(angleMatch[1]);
+        else if (parts[0] === 'to right') angle = 90;
+        else if (parts[0] === 'to left') angle = 270;
+        else if (parts[0] === 'to top') angle = 0;
+        else if (parts[0] === 'to bottom') angle = 180;
+        parts.shift(); // Usuń kąt
+    }
+
+    parts.forEach(part => {
+        const colorMatch = part.match(/(#[0-9A-F]{6}|rgba?\([^)]+\))\s*(\d*\.?\d*)?%?/i);
+        if (colorMatch) {
+            let hex = colorMatch[1];
+            // Konwertuj RGB/RGBA na HEX jeśli to możliwe dla uproszczenia
+            if (hex.startsWith('rgb')) {
+                 const rgbVal = hex.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+                 if(rgbVal) hex = rgbToHex(parseInt(rgbVal[1]), parseInt(rgbVal[2]), parseInt(rgbVal[3]));
+            }
+
+            let pos = parseFloat(colorMatch[2]);
+            if (isNaN(pos) && colorPoints.length > 0) {
+                // Jeśli pozycja nie jest określona, równo rozłóż
+                pos = (100 / (parts.length - 1)) * colorPoints.length;
+            } else if (isNaN(pos)) {
+                pos = 0; // Pierwszy kolor bez pozycji
+            }
+            colorPoints.push({ hex: hex.toUpperCase(), pos: Math.round(pos) });
+        }
+    });
+
+    // Upewnij się, że pierwszy i ostatni kolor mają 0% i 100%
+    if (colorPoints.length > 0 && colorPoints[0].pos !== 0) colorPoints[0].pos = 0;
+    if (colorPoints.length > 1 && colorPoints[colorPoints.length - 1].pos !== 100) colorPoints[colorPoints.length - 1].pos = 100;
+
+
+    return {
+        colors: colorPoints,
+        count: colorPoints.length,
+        angle: angle // Kąt nie jest jeszcze używany w UI, ale warto go parsować
+    };
+}
+
+
+// Aktualizacja UI modalu konfiguracji gradientu
+function updateGradientConfigUI() {
+    const countSelect = document.getElementById('gradientColorCount');
+    const container = document.getElementById('gradientColorPointsContainer');
+    if (!countSelect || !container) return;
+
+    const newCount = parseInt(countSelect.value);
+    currentGradientConfig.count = newCount;
+
+    // Dopasuj liczbę kolorów w konfiguracji
+    while (currentGradientConfig.colors.length < newCount) {
+        currentGradientConfig.colors.push({ 
+            hex: PREDEFINED_COLORS[currentGradientConfig.colors.length % PREDEFINED_COLORS.length], 
+            pos: Math.round((100 / (newCount - 1)) * currentGradientConfig.colors.length) 
+        });
+    }
+    currentGradientConfig.colors = currentGradientConfig.colors.slice(0, newCount);
+
+    // Zaktualizuj pozycje, jeśli brakuje
+    currentGradientConfig.colors.forEach((color, i) => {
+        if (i === 0) color.pos = 0;
+        else if (i === currentGradientConfig.colors.length - 1) color.pos = 100;
+        else if (isNaN(color.pos) || color.pos === null) {
+            color.pos = Math.round((100 / (currentGradientConfig.colors.length - 1)) * i);
+        }
+    });
+
+
+    container.innerHTML = ''; // Wyczyść stare elementy
+
+    currentGradientConfig.colors.forEach((colorPoint, index) => {
+        const div = document.createElement('div');
+        div.className = 'gradient-color-point-row';
+        div.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.1); padding:10px; border-radius:8px;">
+                <span style="font-weight:bold; font-size:0.9rem;">Kolor ${index + 1}:</span>
+                <button type="button" class="color-picker-btn" onclick="openCustomColorPicker('gradientColor_${index}', 'gradientPoint')" style="flex-shrink:0; padding:6px 10px; font-size:0.8rem; background:var(--accent); margin:0;">Wybierz</button>
+                <div id="gradientColor_${index}Preview" class="color-preview-rect" style="background-color: ${colorPoint.hex};"></div>
+                <input type="hidden" id="gradientColor_${index}" value="${colorPoint.hex}">
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+                <label style="font-size:0.8rem; opacity:0.8; flex-shrink:0;">Pozycja:</label>
+                <input type="range" min="0" max="100" value="${colorPoint.pos}" oninput="updateGradientColorPosition(${index}, this.value)" style="flex-grow:1;">
+                <span style="font-size:0.8rem; opacity:0.8; flex-shrink:0;">${colorPoint.pos}%</span>
+            </div>
+        `;
+        container.appendChild(div);
+
+        // Aktualizacja podglądu koloru po zmianie (bezpośrednie mapowanie do hexInput)
+        const hexInput = document.getElementById(`gradientColor_${index}`);
+        if (hexInput) {
+            hexInput.addEventListener('input', (e) => {
+                currentGradientConfig.colors[index].hex = e.target.value;
+                updateGradientConfigUI(); // Odśwież cały UI, aby gradient się przerysował
+            });
+        }
+    });
+
+    updateLiveGradientPreview(); // Odśwież podgląd gradientu na żywo
+}
+
+function updateGradientColorPosition(index, newPos) {
+    currentGradientConfig.colors[index].pos = parseInt(newPos);
+    
+    // Sortowanie punktów po pozycji, aby gradient był prawidłowy
+    currentGradientConfig.colors.sort((a, b) => a.pos - b.pos);
+    updateGradientConfigUI(); // Odśwież UI, aby odzwierciedlić sortowanie
+}
+
+function updateLiveGradientPreview() {
+    const preview = document.getElementById('liveGradientPreview');
+    if (!preview || !currentGradientConfig) return;
+
+    // Tworzenie stringa CSS dla gradientu
+    const colorStops = currentGradientConfig.colors
+        .map(c => `${c.hex} ${c.pos}%`)
+        .join(', ');
+    
+    // Używamy linear-gradient to right dla uproszczenia
+    preview.style.background = `linear-gradient(to right, ${colorStops})`;
+    
+    // Aktualizuj również podgląd w głównym modalu wyboru koloru
+    const selectedGradientPreview = document.getElementById('selectedGradientPreview');
+    if(selectedGradientPreview) selectedGradientPreview.style.background = `linear-gradient(to right, ${colorStops})`;
+
+    // Zapisz wygenerowany gradient do tymczasowego wyboru
+    tempSelectedGradient = `linear-gradient(to right, ${colorStops})`;
+    updateFinalPreview(tempSelectedGradient);
+}
+
+function saveGradientConfig() {
+    // Zaktualizuj globalny tempSelectedGradient
+    updateLiveGradientPreview();
+    
+    // Zamknij modal gradientu i otwórz ponownie główny modal wyboru koloru
+    closeGradientConfigModal();
+    openCustomColorPicker(activeColorPickerTarget, activeColorPickerType); // Ponowne otwarcie z aktualnym gradientem
+    currentPickerMode = 'gradient'; // Upewnij się, że tryb jest ustawiony na gradient
+    updateCustomColorPickerUI();
+}
+
+function closeGradientConfigModal() {
+    const modal = document.getElementById('gradientConfigModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    // Ponownie otwórz główny modal wyboru koloru
+    openCustomColorPicker(activeColorPickerTarget, activeColorPickerType);
+}
+
+// --- Rozszerzenie funkcji closeModal (aby zamknąć również picker koloru) ---
 const originalCloseModal = closeModal;
 closeModal = function(id) {
     // Wywołanie oryginalnej funkcji
     originalCloseModal(id);
 
-    // Jeśli zamykamy modal stylu trasy, a okienko koloru było dla niego otwarte - zamykamy je
-    if (id === 'styleModal' && activeColorPickerTarget === 'styleColor') {
-        closeCustomColorPicker(false);
+    // Jeśli zamykamy modal, który mógł otworzyć picker koloru
+    if (id === 'styleModal' || id === 'gradientConfigModal') { // Dodatkowo, jeśli zamykamy modal gradientu
+        if (activeColorPickerTarget) {
+            closeCustomColorPicker(false); // Zamknij picker bez zatwierdzania
+        }
     }
 };
+
+// Inicjalizacja przy ładowaniu DOM
+document.addEventListener('DOMContentLoaded', () => {
+    // ... (pozostały kod DOMContentLoaded) ...
+
+    loadRecentColors(); // Wczytaj ostatnie kolory przy starcie
+    loadRecentGradients(); // Wczytaj ostatnie gradienty przy starcie
+});
+/* =========================================================
+   FUNKCJE KONWERSJI KOLORÓW (HEX, RGB, HSL)
+========================================================= */
+
+// HEX do RGB
+function hexToRgb(hex) {
+    const bigint = parseInt(hex.slice(1), 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return { r, g, b };
+}
+
+// RGB do HEX
+function rgbToHex(r, g, b) {
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+}
+
+// HSL do RGB (zaadaptowane z algorytmu konwersji)
+function hslToRgb(h, s, l) {
+    s /= 100;
+    l /= 100;
+    let c = (1 - Math.abs(2 * l - 1)) * s,
+        x = c * (1 - Math.abs((h / 60) % 2 - 1)),
+        m = l - c / 2,
+        r = 0,
+        g = 0,
+        b = 0;
+
+    if (0 <= h && h < 60) {
+        r = c; g = x; b = 0;
+    } else if (60 <= h && h < 120) {
+        r = x; g = c; b = 0;
+    } else if (120 <= h && h < 180) {
+        r = 0; g = c; b = x;
+    } else if (180 <= h && h < 240) {
+        r = 0; g = x; b = c;
+    } else if (240 <= h && h < 300) {
+        r = x; g = 0; b = c;
+    } else if (300 <= h && h < 360) {
+        r = c; g = 0; b = x;
+    }
+    r = Math.round((r + m) * 255);
+    g = Math.round((g + m) * 255);
+    b = Math.round((b + m) * 255);
+
+    return { r, g, b };
+}
+
+// RGB do HSL (zaadaptowane z algorytmu konwersji)
+function rgbToHsl(r, g, b) {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+
+    let cmin = Math.min(r, g, b),
+        cmax = Math.max(r, g, b),
+        delta = cmax - cmin,
+        h = 0,
+        s = 0,
+        l = 0;
+
+    if (delta === 0) h = 0;
+    else if (cmax === r) h = ((g - b) / delta) % 6;
+    else if (cmax === g) h = (b - r) / delta + 2;
+    else h = (r - g) / delta + 4;
+
+    h = Math.round(h * 60);
+
+    if (h < 0) h += 360;
+
+    l = (cmax + cmin) / 2;
+    s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+    s = +(s * 100).toFixed(1);
+    l = +(l * 100).toFixed(1);
+
+    return { h: h, s: s, l: l };
+}
+
+// HEX do HSL
+function hexToHsl(hex) {
+    const { r, g, b } = hexToRgb(hex);
+    return rgbToHsl(r, g, b);
+}
+
+// HSL do HEX
+function hslToHex(h, s, l) {
+    const { r, g, b } = hslToRgb(h, s, l);
+    return rgbToHex(r, g, b);
+}
