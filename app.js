@@ -733,54 +733,6 @@ map.on('locationfound', function(e) {
     openCustomPoiModal(gpsObj);
 });
 
-/* ================= IMPORT GPX ================= */
-function importGPX(e) {
-    if (isRouting) return alert("Poczekaj na zakończenie obecnego przeliczania.");
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-        try {
-            const xml = new DOMParser().parseFromString(ev.target.result, "text/xml");
-            const pts = Array.from(xml.querySelectorAll("trkpt"));
-            if (pts.length === 0) throw new Error("Pusty plik GPX");
-
-            // SYNCHRONICZNE czyszczenie mapy (Zastępuje wywołanie clearAll z alertem)
-            routePoints.forEach(p => map.removeLayer(p.marker));
-            routePoints = []; 
-            routeGeometry = [];
-            if(polyline) polyline.setLatLngs([]);
-            if(animLineLayer) map.removeLayer(animLineLayer);
-            if(animDotMarker) map.removeLayer(animDotMarker);
-            document.getElementById('pointsList').innerHTML = "";
-            updateStats(0);
-
-            const step = pts.length > 50 ? Math.floor(pts.length / 20) : 1; 
-            
-            const startLat = parseFloat(pts[0].getAttribute("lat"));
-            const startLon = parseFloat(pts[0].getAttribute("lon"));
-            await addRoutePoint(L.latLng(startLat, startLon), false);
-
-            for(let i = step; i < pts.length; i += step) {
-                const lat = parseFloat(pts[i].getAttribute("lat"));
-                const lon = parseFloat(pts[i].getAttribute("lon"));
-                await addRoutePoint(L.latLng(lat, lon), false);
-            }
-            
-            const endLat = parseFloat(pts[pts.length-1].getAttribute("lat"));
-            const endLon = parseFloat(pts[pts.length-1].getAttribute("lon"));
-            await addRoutePoint(L.latLng(endLat, endLon), true);
-
-            map.fitBounds(polyline.getBounds());
-            
-        } catch(err) {
-            console.error(err);
-            alert("Błąd importu GPX");
-        }
-    };
-    reader.readAsText(file);
-}
-
 
 async function getRouteSegment(start, end) {
     let lastError = null;
@@ -1614,33 +1566,7 @@ function calculateTotalDist() {
     return d;
 }
 
-function exportGPX() {
-    if (routeGeometry.length < 2) return alert("Brak trasy");
-    const startTime = new Date();
-    const speedMs = 1.2; 
-    let currentTime = new Date(startTime);
-    let gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="GPX Hiker Puszcza" xmlns="http://www.topografix.com/GPX/1/1">
-<metadata><name>Wycieczka Puszcza</name><time>${startTime.toISOString()}</time></metadata>
-<trk><name>Trasa Puszcza</name><trkseg>`;
-    let prevPt = null;
-    routeGeometry.forEach((p, index) => {
-        if (index > 0 && prevPt) {
-            const d = L.latLng(prevPt).distanceTo(L.latLng(p));
-            currentTime.setSeconds(currentTime.getSeconds() + (d / speedMs));
-        }
-        prevPt = p;
-        gpx += `\n<trkpt lat="${p[0]}" lon="${p[1]}"><time>${currentTime.toISOString()}</time></trkpt>`;
-    });
-    gpx += `\n</trkseg></trk>`;
-    pois.forEach(p => { gpx += `\n<wpt lat="${p.latlng.lat}" lon="${p.latlng.lng}"><name>${p.name}</name></wpt>`; });
-    gpx += `\n</gpx>`;
-    const blob = new Blob([gpx], {type: "application/gpx+xml"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `trasa_puszcza_${new Date().toLocaleDateString()}.gpx`;
-    a.click();
-}
+
     // Odwracanie całej trasy (START staje się METĄ i odwrotnie)
 function reverseRoute() {
     if (isRouting || routePoints.length < 2) return;
