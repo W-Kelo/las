@@ -881,6 +881,9 @@ async function addRoutePoint(latlng, recalc = true) {
     routePoints.push({ id: pointId, latlng: latlng, marker: m, elevation: 0, distFromPrev: 0 });
     renderPointsList();
     if (recalc) await recalculateRoute();
+    if (typeof renderPointsWithStyle === 'function') {
+    renderPointsWithStyle();
+}
 }
 
 async function recalculateRoute() {
@@ -926,6 +929,10 @@ async function recalculateRoute() {
     renderRouteLineWithStyle();
 } else {
     polyline.setLatLngs(routeGeometry);
+}
+        // Nowa aktualizacja gradientowa punktów po przeliczeniu trasy
+if (typeof renderPointsWithStyle === 'function') {
+    renderPointsWithStyle();
 }
         
         await fetchFullElevationProfile();
@@ -1787,7 +1794,7 @@ function unhighlightPointOnMap(idx) {
     if (!pt) return;
     
     // Przywracamy domyślny styl (zależny od preferencji użytkownika z panelu stylu)
-    const dotColor = routePrefPointsEnabled ? routePrefPointsColor : '#22c55e';
+    const dotColor = typeof getPointColorWithStyle === 'function' ? getPointColorWithStyle(idx) : (routePrefPointsEnabled ? routePrefPointsColor : '#22c55e');
     pt.marker.setStyle({
         radius: 8,
         fillColor: dotColor,
@@ -4391,6 +4398,9 @@ if (typeof renderRouteLineWithStyle === 'function') {
     renderRouteLineWithStyle();
 } else {
     polyline.setStyle({ color: routePrefColor, weight: routePrefWeight });
+}
+    if (typeof renderPointsWithStyle === 'function') {
+    renderPointsWithStyle();
 }
 }
 
