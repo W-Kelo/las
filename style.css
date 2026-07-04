@@ -994,9 +994,30 @@ canvas#elevation {
     word-wrap: break-word !important;
 }
 //Edytor tekstu do eksportu w PDf-ie
-.rt-editor-toolbar { display: flex; gap: 5px; background: rgba(0,0,0,0.1); padding: 5px; border-radius: 6px 6px 0 0; }
+.rt-editor-toolbar {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    background: rgba(0,0,0,0.15) !important;
+    padding: 6px !important;
+    border-radius: 8px 8px 0 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
 .light .rt-editor-toolbar { background: rgba(0,0,0,0.05); }
-.rt-editor-toolbar button { padding: 4px 8px; font-size: 0.9rem; background: rgba(255,255,255,0.1); color: inherit; border: 1px solid transparent; }
+.rt-editor-toolbar button {
+    flex: 1 !important; /* Rozkłada przyciski idealnie i równomiernie w linii */
+    max-width: 60px !important; /* Blokada szerokości przycisków */
+    padding: 6px 10px !important;
+    font-size: 0.85rem !important;
+    margin: 0 !important;
+    height: auto !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: none !important;
+}
 .rt-editor-toolbar button:hover { background: rgba(255,255,255,0.2); }
 .light .rt-editor-toolbar button { background: #fff; border-color: #ccc; }
 .rt-editor-content { 
