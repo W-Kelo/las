@@ -56,8 +56,6 @@ let tempLegendClickLatLng = null;
 let selectedEmoji = "📍";
 let exportMapDark = dark; 
 let exportTileLayer = null;
-let isPanelDraggable = false;
-let isPanelResizable = false;
 let userSavedPois = []; 
 let tempVisibleMarker = null; 
 let manualPointMode = false; 
@@ -67,8 +65,6 @@ let elevPhase = 0;
 let wasExportEmpty = false;
  
 let customPdfText = "";
-let isPanelsSplitMode = false;
-let isScissorsMode = false;
 
 let lbCurrentIndex = 0;
 let lbCurrentZoom = 1;
@@ -76,7 +72,6 @@ let lbPanX = 0;
 let lbPanY = 0;
 let isExportSatellite = false;
 let exportSatelliteLayer = null;
-let isPanelScaleMode = false;
 let draggedLegendItem = null;
 let routePrefAnimPoints = localStorage.getItem('gpx_anim_points') || 'all';
 let legendNumberStyles = JSON.parse(localStorage.getItem('gpx_number_styles')) || {
@@ -2702,89 +2697,7 @@ async function printExportMap() {
         <script>window.onload = () => window.print()<\/script>
     `);
 }
-/* --- INTELIGENTNE ZARZĄDZANIE PASKIEM NARZĘDZI --- */
-/* --- ODNOWIONA I BEZBŁĘDNA WIDOCZNOŚĆ PANELU NARZĘDZI --- */
-function updatePanelVisibility() {
-    const panel = document.getElementById('mapInfoPanel');
-    if (!panel) return;
 
-    // Pobranie referencji do elementów składowych panelu
-    const miTitle = document.getElementById('miTitle');
-    const miDate = document.getElementById('miDate');
-    const miDesc = document.getElementById('miDesc');
-    const miStats = document.getElementById('miStats');
-    const miLegendContainer = document.getElementById('miLegendContainer');
-    const exportLegendList = document.getElementById('exportLegendList');
-
-    // Dokładna weryfikacja widoczności poszczególnych sekcji tekstowych
-    const hasTitle = miTitle && miTitle.style.display === 'block' && miTitle.innerHTML.trim() !== '';
-    const hasDate = miDate && miDate.style.display === 'block' && miDate.innerHTML.trim() !== '';
-    const hasDesc = miDesc && miDesc.style.display === 'block' && miDesc.innerHTML.trim() !== '';
-    const hasStats = miStats && miStats.style.display === 'flex' && miStats.innerHTML.trim() !== '';
-    
-    const hasText = hasTitle || hasDate || hasDesc || hasStats;
-
-    // Legenda aktywna wyłącznie wtedy, gdy kontener jest widoczny i zawiera realne pozycje
-    const hasLegend = miLegendContainer && 
-                      miLegendContainer.style.display === 'block' && 
-                      exportLegendList && 
-                      exportLegendList.children.length > 0 && 
-                      (!document.getElementById('temp_empty_leg') || exportLegendList.children.length > 1);
-
-    // Pobranie liczby aktywnych paneli oderwanych na mapie
-    const detachedCount = document.querySelectorAll('.detached-panel').length;
-    const hasAnyPanel = hasText || hasLegend || (detachedCount > 0);
-
-    const btnDrag = document.getElementById('btnDragPanel');
-    const btnResize = document.getElementById('btnResizePanel');
-    const btnScale = document.getElementById('btnScalePanel');
-    const btnScissors = document.getElementById('btnScissors');
-    const btnMerge = document.getElementById('btnMerge');
-
-    // Zarządzanie widocznością głównego kontenera mapInfoPanel
-    if (hasText || hasLegend) {
-        panel.style.display = 'block';
-    } else {
-        panel.style.display = 'none';
-    }
-
-    // 1. ZARZĄDZANIE PRZYCISKAMI PODSTAWOWYMI (Drag, Resize, Scale)
-    // Przyciski pokazują się tylko wtedy, gdy na ekranie istnieje przynajmniej JEDEN panel!
-    if (hasAnyPanel) {
-        if (btnDrag) btnDrag.style.display = 'inline-block';
-        if (btnResize) btnResize.style.display = 'inline-block';
-        if (btnScale) btnScale.style.display = 'inline-block';
-    } else {
-        if (btnDrag) btnDrag.style.display = 'none';
-        if (btnResize) btnResize.style.display = 'none';
-        if (btnScale) btnScale.style.display = 'none';
-        
-        // Wyłączenie aktywnych trybów edycji w celu zachowania spójności interfejsu
-        if (isPanelDraggable) togglePanelDrag();
-        if (isPanelResizable) togglePanelResize();
-        if (isPanelScaleMode) togglePanelScale();
-    }
-
-    // 2. ZARZĄDZANIE NOŻYCZKAMI I SCALANIEM
-    let activeChildrenCount = 0;
-    if (hasTitle) activeChildrenCount++;
-    if (hasDate) activeChildrenCount++;
-    if (hasDesc) activeChildrenCount++;
-    if (hasStats) activeChildrenCount++;
-    if (hasLegend) activeChildrenCount++;
-
-    const totalPanelsCount = activeChildrenCount + detachedCount;
-
-    // Przycisk rozłączania wymaga co najmniej dwóch sekcji
-    if (totalPanelsCount >= 2) {
-        if (btnScissors) btnScissors.style.display = 'inline-block';
-        if (btnMerge) btnMerge.style.display = detachedCount > 0 ? 'inline-block' : 'none';
-    } else {
-        if (btnScissors) btnScissors.style.display = 'none';
-        if (btnMerge) btnMerge.style.display = 'none';
-        if (isScissorsMode) activateScissorsMode(); 
-    }
-}
 
 
 
@@ -2863,148 +2776,11 @@ function executeRefreshRoute() {
     }
 }
 
-/* --- FUNKCJE PRZESUWANIA (DRAG & DROP) --- */
-
-
-function togglePanelDrag() {
-    isPanelDraggable = !isPanelDraggable;
-    const btn = document.getElementById('btnDragPanel');
-    btn.style.boxShadow = isPanelDraggable ? "0 0 10px white" : "none";
-    
-    // Aplikuj do głównego i wszystkich oderwanych
-    const targets = [document.getElementById('mapInfoPanel'), ...document.querySelectorAll('.detached-panel')];
-    targets.forEach(el => {
-        if(!el) return;
-        if(isPanelDraggable) {
-            el.classList.add('draggable');
-            forceEnableDragAndResize(el);
-        } else {
-            el.classList.remove('draggable');
-            el.onmousedown = null;
-        }
-    });
-}
-
-function makePanelDraggable(el) {
-    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-    el.onmousedown = dragMouseDown;
-
-    function dragMouseDown(e) {
-        if(!isPanelDraggable) return;
-        // Zignoruj przeciąganie, jeśli użytkownik klika w suwak (resize) w rogu
-        if(e.offsetX > el.clientWidth - 15 && e.offsetY > el.clientHeight - 15) return;
-        
-        e.preventDefault();
-        pos3 = e.clientX;
-        pos4 = e.clientY;
-        document.onmouseup = closeDragElement;
-        document.onmousemove = elementDrag;
-    }
-
-    function elementDrag(e) {
-        e.preventDefault();
-        pos1 = pos3 - e.clientX;
-        pos2 = pos4 - e.clientY;
-        pos3 = e.clientX;
-        pos4 = e.clientY;
-        el.style.top = (el.offsetTop - pos2) + "px";
-        el.style.left = (el.offsetLeft - pos1) + "px";
-    }
-
-    function closeDragElement() {
-        document.onmouseup = null;
-        document.onmousemove = null;
-    }
-}
-
-function removePanelDraggable(el) {
-    el.onmousedown = null;
-}
 
 
 
 
-// --- PREMIUM KADROWANIE (Nakładka) ---
-function togglePanelResize() {
-    isPanelResizable = !isPanelResizable;
-    const btn = document.getElementById('btnResizePanel');
-    btn.style.boxShadow = isPanelResizable ? "0 0 10px white" : "none";
-    
-    const targets = [document.getElementById('mapInfoPanel'), ...document.querySelectorAll('.detached-panel')];
-    
-    targets.forEach(el => {
-        if(!el) return;
-        
-        if (isPanelResizable) {
-            // Wymuszamy, by panel miał relative, by siatka trzymała się jego ram
-            if (window.getComputedStyle(el).position === 'static') el.style.position = 'relative';
-            
-            // Tworzymy siatkę, jeśli jej nie ma
-            let overlay = el.querySelector('.premium-resize-overlay');
-            if (!overlay) {
-                overlay = document.createElement('div');
-                overlay.className = 'premium-resize-overlay';
-                overlay.innerHTML = `
-                    <div class="prem-handle prem-e" data-dir="x"></div>
-                    <div class="prem-handle prem-s" data-dir="y"></div>
-                    <div class="prem-handle prem-se" data-dir="xy"></div>
-                `;
-                el.appendChild(overlay);
-                setupPremiumResize(el, overlay);
-            }
-            overlay.style.display = 'block';
-            el.style.overflow = 'visible'; // By uchwyty nie były ucinane
-        } else {
-            // Wyłączamy kadrowanie - czysto ukrywamy siatkę, bez zmiany rozmiarów!
-            const overlay = el.querySelector('.premium-resize-overlay');
-            if (overlay) overlay.style.display = 'none';
-            el.style.overflow = 'hidden'; 
-        }
-    });
-}
 
-function setupPremiumResize(panel, overlay) {
-    const handles = overlay.querySelectorAll('.prem-handle');
-    
-    handles.forEach(handle => {
-        let startX, startY, startW, startH;
-
-        const startResize = (e) => {
-            e.preventDefault();
-            e.stopPropagation(); // Blokuje przesuwanie (drag) i dwuklik (delete)
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            
-            startX = clientX;
-            startY = clientY;
-            startW = panel.offsetWidth;
-            startH = panel.offsetHeight;
-
-            document.addEventListener(e.touches ? 'touchmove' : 'mousemove', doResize, {passive: false});
-            document.addEventListener(e.touches ? 'touchend' : 'mouseup', stopResize);
-        };
-
-        const doResize = (e) => {
-            e.preventDefault();
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            const dir = handle.getAttribute('data-dir');
-
-            if (dir.includes('x')) panel.style.width = Math.max(100, startW + (clientX - startX)) + 'px';
-            if (dir.includes('y')) panel.style.height = Math.max(40, startH + (clientY - startY)) + 'px';
-        };
-
-        const stopResize = () => {
-            document.removeEventListener('mousemove', doResize);
-            document.removeEventListener('mouseup', stopResize);
-            document.removeEventListener('touchmove', doResize);
-            document.removeEventListener('touchend', stopResize);
-        };
-
-        handle.addEventListener('mousedown', startResize);
-        handle.addEventListener('touchstart', startResize, {passive: false});
-    });
-}
     /* ================= STYLIZACJA TRASY ================= */
 function openStyleModal() {
     document.getElementById('styleColor').value = routePrefColor;
@@ -3928,57 +3704,6 @@ async function saveExportMapToSession() {
     }
 }
 
-/* ================= MAGICZNE ROZŁĄCZANIE PANELI W EKSPORCIE ================= */
-
-
-function toggleSplitPanels() {
-    isPanelsSplitMode = !isPanelsSplitMode;
-    const parentPanel = document.getElementById('mapInfoPanel');
-    const ids = ['miTitle', 'miDate', 'miDesc', 'miStats', 'miLegendContainer'];
-    
-    if (isPanelsSplitMode) {
-        // ROZŁĄCZANIE
-        parentPanel.style.background = 'transparent';
-        parentPanel.style.border = 'none';
-        parentPanel.style.boxShadow = 'none';
-        parentPanel.style.backdropFilter = 'none';
-        
-        ids.forEach((id, index) => {
-            const el = document.getElementById(id);
-            if (el && el.style.display !== 'none' && el.innerHTML.trim() !== '') {
-                el.classList.add('split-panel');
-                // Rozrzucamy je kaskadowo w lewym górnym rogu
-                el.style.top = (index * 60 + 20) + 'px';
-                el.style.left = (index * 20 + 20) + 'px';
-                
-                // Klonujemy domyślne style z parenta
-                el.style.backgroundColor = 'rgba(255,255,255,0.92)';
-                
-                makePanelDraggable(el);
-            }
-        });
-        showCustomAlert("Panele zostały rozłączone! Możesz teraz chwycić i przesunąć każdy z osobna. Użyj przycisku 'Kadruj panel' by zmieniać ich rozmiar.");
-    } else {
-        // ŁĄCZENIE (Powrót do normy)
-        parentPanel.style.background = 'rgba(255, 255, 255, 0.92)';
-        parentPanel.style.border = '1px solid rgba(0,0,0,0.1)';
-        parentPanel.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
-        parentPanel.style.backdropFilter = 'blur(4px)';
-        
-        ids.forEach(id => {
-            const el = document.getElementById(id);
-            if(el) {
-                el.classList.remove('split-panel', 'draggable', 'resizable');
-                el.style.position = 'static';
-                el.style.top = 'auto';
-                el.style.left = 'auto';
-                el.style.backgroundColor = 'transparent';
-                removePanelDraggable(el);
-            }
-        });
-    }
-}
-
 
 
 /* ================= NOWE AKCJE LEGENDY I POSTOJE ================= */
@@ -4027,199 +3752,15 @@ function removeCompletelyFromExport(autoId) {
     
     delete exportLegendItems[autoId];
 }
-// --- NOŻYCZKI / ROZŁĄCZANIE (Poprawiony dotyk i wizualny skok) ---
-function activateScissorsMode() {
-    isScissorsMode = !isScissorsMode;
-    const btn = document.getElementById('btnScissors');
-    const parentPanel = document.getElementById('mapInfoPanel');
-    
-    document.querySelectorAll('.split-divider').forEach(el => el.remove());
 
-    if (isScissorsMode) {
-        btn.style.boxShadow = "0 0 10px white";
-        btn.innerText = "🛑 Zakończ cięcie";
-        parentPanel.style.border = "2px dashed #eab308";
-        
-        const children = Array.from(parentPanel.children).filter(el => 
-            el && el.style && el.style.display !== 'none' && el.id && el.id !== '' && el.innerHTML.trim() !== '' && !el.classList.contains('premium-resize-overlay')
-        );
-        
-        if (children.length <= 1) {
-            showCustomAlert("Brak wystarczającej liczby sekcji do rozłączenia.");
-            activateScissorsMode(); 
-            return;
-        }
 
-        for (let i = 1; i < children.length; i++) {
-            const divider = document.createElement('div');
-            divider.className = 'split-divider';
-            divider.setAttribute('data-html2canvas-ignore', 'true');
-            
-            // Pointerdown radzi sobie i z myszką, i z dotykiem (bez opóźnień)
-            divider.addEventListener('pointerdown', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                detachPanel(children[i].id, divider);
-            });
-            parentPanel.insertBefore(divider, children[i]);
-        }
-        showCustomAlert("✂️ Naciśnij przerywaną żółtą linię między sekcjami, aby oderwać panel.");
-    } else {
-        btn.style.boxShadow = "none";
-        btn.innerText = "✂️ Rozłącz panele";
-        parentPanel.style.border = parentPanel.style.backgroundColor !== 'transparent' ? "1px solid rgba(0,0,0,0.1)" : "none";
-    }
-}
 
-function detachPanel(targetId, dividerEl) {
-    const el = document.getElementById(targetId);
-    const wrapper = document.getElementById('exportWrapper');
-    const parentPanel = document.getElementById('mapInfoPanel');
-    
-    if (!el || !wrapper || !parentPanel) return;
-    
-    const rect = el.getBoundingClientRect();
-    const wrapperRect = wrapper.getBoundingClientRect();
-    
-    wrapper.appendChild(el);
-    if(dividerEl) dividerEl.remove();
-    
-    el.classList.add('detached-panel');
-    
-    // WIZUALNY SKOK - Przesuwamy panel mocno w dół i lekko w prawo, by pokazać rozłączenie
-    el.style.top = (rect.top - wrapperRect.top + 25) + 'px'; 
-    el.style.left = (rect.left - wrapperRect.left + 15) + 'px';
-    
-    el.style.width = Math.max(rect.width, 150) + 'px';
-    el.style.height = 'auto'; 
-    
-    const currentBg = el.style.backgroundColor;
-    if (!currentBg || currentBg === 'transparent' || currentBg === 'rgba(0, 0, 0, 0)') {
-        const parentBg = window.getComputedStyle(parentPanel).backgroundColor;
-        el.style.backgroundColor = parentBg !== 'rgba(0, 0, 0, 0)' ? parentBg : 'rgba(255,255,255,0.95)';
-        el.style.padding = "10px 15px"; 
-        el.style.borderRadius = "8px";
-    }
-
-    const mergeBtn = document.getElementById('btnMerge');
-    if(mergeBtn) mergeBtn.style.display = 'inline-block';
-    
-    // Aktywujemy drag, upewniamy się że ma dwuklik i wyłączamy siatkę na czas transportu
-    forceEnableDragAndResize(el);
-    setupQuadTapDelete(el);
-    
-    // Jeśli kadrowanie jest włączone globalnie, odświeżamy by nałożyło siatkę na ten nowy element
-    if (isPanelResizable) {
-        isPanelResizable = false;
-        togglePanelResize();
-    }
-}
  
-  // --- WIBRUJĄCE PRZESUWANIE DOTYKOWE (LONG PRESS) ---
-function forceEnableDragAndResize(el) {
-    if(!el) return;
-    if(isPanelDraggable) el.classList.add('draggable');
-    
-    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-    let pressTimer = null;
-    let isTouchDragging = false;
-    
-    // --- OBSŁUGA MYSZY (PC) ---
-    el.onmousedown = (e) => {
-        if(!el.classList.contains('draggable') || e.target.classList.contains('mobile-resize-handle')) return;
-        e.preventDefault();
-        pos3 = e.clientX; pos4 = e.clientY;
-        document.onmouseup = closeDrag;
-        document.onmousemove = elementDrag;
-    };
-
-    function elementDrag(e) {
-        e.preventDefault();
-        pos1 = pos3 - e.clientX; pos2 = pos4 - e.clientY;
-        pos3 = e.clientX; pos4 = e.clientY;
-        el.style.top = (el.offsetTop - pos2) + "px";
-        el.style.left = (el.offsetLeft - pos1) + "px";
-    }
-    
-    function closeDrag() {
-        document.onmouseup = null; document.onmousemove = null;
-    }
-
-    // --- OBSŁUGA DOTYKU (MOBILE - LONG PRESS) ---
-    el.addEventListener('touchstart', (e) => {
-        if(!el.classList.contains('draggable') || e.target.classList.contains('mobile-resize-handle')) return;
-        
-        // Czekamy 300ms na aktywację przesuwania
-        pressTimer = setTimeout(() => {
-            isTouchDragging = true;
-            // Emisja wibracji (jeśli urządzenie pozwala)
-            if (navigator.vibrate) navigator.vibrate(50);
-            
-            el.style.opacity = '0.7'; // Wizualna informacja "złapałem"
-            pos3 = e.touches[0].clientX;
-            pos4 = e.touches[0].clientY;
-        }, 300);
-    }, {passive: false});
-
-    el.addEventListener('touchmove', (e) => {
-        if(!isTouchDragging) {
-            clearTimeout(pressTimer); // Anuluj jeśli palec się zsunął za wcześnie
-            return;
-        }
-        e.preventDefault(); // Zablokuj przesuwanie mapy!
-        pos1 = pos3 - e.touches[0].clientX;
-        pos2 = pos4 - e.touches[0].clientY;
-        pos3 = e.touches[0].clientX;
-        pos4 = e.touches[0].clientY;
-        el.style.top = (el.offsetTop - pos2) + "px";
-        el.style.left = (el.offsetLeft - pos1) + "px";
-    }, {passive: false});
-
-    const endTouch = () => {
-        clearTimeout(pressTimer);
-        if(isTouchDragging) {
-            isTouchDragging = false;
-            el.style.opacity = '1'; // Powrót do normy
-        }
-    };
-
-    el.addEventListener('touchend', endTouch);
-    el.addEventListener('touchcancel', endTouch);
-}
+ 
 
   
 
-function resetSplitPanels() {
-    const parentPanel = document.getElementById('mapInfoPanel');
-    if (!parentPanel) return;
 
-    // Musimy przywrócić elementy w konkretnej kolejności
-    const order = ['miTitle', 'miDate', 'miDesc', 'miStats', 'miLegendContainer'];
-    
-    order.forEach(id => {
-        const el = document.getElementById(id);
-        // ZABEZPIECZENIE: Sprawdzamy czy element istnieje ORAZ czy został oderwany
-        if (el && el.classList.contains('detached-panel')) {
-            el.classList.remove('detached-panel', 'draggable', 'resizable');
-            
-            // Czyścimy fizyczne style pozycjonujące na mapie
-            el.style.position = '';
-            el.style.top = '';
-            el.style.left = '';
-            el.style.width = '';
-            el.style.height = '';
-            el.onmousedown = null; // usuń zdarzenie przesuwania
-            
-            // Wrzucamy grzecznie z powrotem do matki
-            parentPanel.appendChild(el); 
-        }
-    });
-    
-    const mergeBtn = document.getElementById('btnMerge');
-    if(mergeBtn) mergeBtn.style.display = 'none';
-    
-    if(isScissorsMode) activateScissorsMode(); // Wyłącz bezpiecznie nożyczki
-}
     /* ================= ZAAWANSOWANE ZARZĄDZANIE STYLEM ================= */
 // Funkcja wywoływana przy zmianie w dropdownie - wczytuje stan
 function loadStylesForTarget(targetId) {
@@ -4256,69 +3797,8 @@ function loadStylesForTarget(targetId) {
     document.getElementById('expPanelRadius').value = radius;
     document.getElementById('expPanelRadiusVal').innerText = radius;
 }
-/* --- SKALOWANIE MODALI DWOMA PALCAMI (PINCH-TO-ZOOM) --- */
-function makePinchZoomable(el) {
-    let initialDistance = null;
-    let currentScale = 1;
-    const MIN_SCALE = 0.3;  // Maksymalne pomniejszenie (80%)
-    const MAX_SCALE = 1.4;  // Maksymalne powiększenie (140%)
 
-    // Nasłuchuj tylko na urządzeniach dotykowych
-    el.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 2) {
-            // Zablokuj domyślne zachowanie (np. scrollowanie strony/mapy)
-            e.stopPropagation();
-            
-            // Oblicz początkowy dystans między dwoma palcami
-            initialDistance = Math.hypot(
-                e.touches[0].pageX - e.touches[1].pageX,
-                e.touches[0].pageY - e.touches[1].pageY
-            );
-            
-            // Pobierz aktualną skalę (jeśli była już modyfikowana)
-            currentScale = el.dataset.scale ? parseFloat(el.dataset.scale) : 1;
-            
-            // Włącz płynne przejście tylko przy puszczeniu palców, podczas gestu wyłączamy dla płynności
-            el.style.transition = 'none';
-        }
-    }, { passive: false });
 
-    el.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2 && initialDistance !== null) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const currentDistance = Math.hypot(
-                e.touches[0].pageX - e.touches[1].pageX,
-                e.touches[0].pageY - e.touches[1].pageY
-            );
-
-            // Oblicz mnożnik skali
-            const distanceRatio = currentDistance / initialDistance;
-            let newScale = currentScale * distanceRatio;
-
-            // Ogranicz zakres skalowania
-            newScale = Math.max(MIN_SCALE, Math.min(newScale, MAX_SCALE));
-
-            // Zastosuj skalę używając niezależnej właściwości CSS scale (działa obok transform)
-            el.style.scale = newScale;
-            // Zapisz w zmiennej roboczej do użycia przy puszczeniu ekranu
-            el.dataset.tempScale = newScale; 
-        }
-    }, { passive: false });
-
-    el.addEventListener('touchend', (e) => {
-        if (e.touches.length < 2 && initialDistance !== null) {
-            initialDistance = null;
-            // Zapisz nową skalę na stałe po puszczeniu palców
-            if (el.dataset.tempScale) {
-                el.dataset.scale = el.dataset.tempScale;
-            }
-            // Przywróć ewentualne przejścia CSS
-            el.style.transition = 'scale 0.2s ease-out';
-        }
-    });
-}
 // --- 1. MODAL GALERII (TERAZ UNIWERSALNY) ---
 
 // Wywoływane z kafelka POI (np. "+5 Zobacz wszystkie")
@@ -4645,59 +4125,6 @@ function toggleSatelliteMap() {
 }
 // --- NOWE: USUWANIE PANELI PRZEZ SZYBKI DWUKLIK / DOUBLE TAP ---
 // --- NOWE: USUWANIE PANELI PRZEZ SZYBKI 4-KROTNY KLIK / QUAD-TAP ---
-function setupQuadTapDelete(panel) {
-    let tapCount = 0;
-    let tapTimer = null;
-    
-    // Używamy pointerup - rejestruje precyzyjnie oderwanie palca/kliku myszki
-    panel.addEventListener('pointerup', function(e) {
-        // Zignoruj jeśli to siatka kadrowania lub systemowy przycisk
-        if(e.target.closest('.premium-resize-overlay') || e.target.closest('button')) return;
-
-        tapCount++;
-
-        // Resetowanie licznika kliknięć, jeśli użytkownik przestanie klikać (okienko 500ms na całą operację)
-        clearTimeout(tapTimer);
-        tapTimer = setTimeout(() => {
-            tapCount = 0;
-        }, 500); // Ma 0.5 sekundy na wykonanie 4 kliknięć
-
-        // Jeśli kliknął 4 razy
-        if (tapCount >= 4) {
-            e.preventDefault();
-            e.stopPropagation(); 
-            
-            // Zerujemy licznik, by nie wyświetliło podwójnego alertu
-            tapCount = 0;
-            clearTimeout(tapTimer);
-
-            showCustomConfirm("Czy chcesz trwale usunąć ten panel z mapy?", () => {
-                // Jeśli usuwamy panel statystyk, odznacz z ptaszków
-                if (panel.id === 'miStats' || panel.querySelector('#miStats')) {
-                    document.getElementById('statCheckDist').checked = false;
-                    document.getElementById('statCheckTime').checked = false;
-                }
-                
-                // Trwałe czyszczenie i ukrycie
-                panel.innerHTML = '';
-                panel.style.display = 'none';
-                
-                // Jeśli to był oderwany panel, usuwamy mu klasę i czyścimy style, by matka znowu mogła nim zarządzać w przyszłości
-                if(panel.classList.contains('detached-panel')) {
-                    panel.classList.remove('detached-panel', 'draggable', 'resizable');
-                    panel.style.position = '';
-                    const parentPanel = document.getElementById('mapInfoPanel');
-                    if(parentPanel) parentPanel.appendChild(panel);
-                }
-
-                updatePanelVisibility(); // Wymusi przeliczenie paska narzędzi
-            });
-        }
-    });
-
-    // Blokada domyślnego przytrzymania ekranu na mobile
-    panel.addEventListener('contextmenu', e => e.preventDefault());
-}
 
 // Inicjalizujemy nowy 4-krotny klik na starcie dla wszystkich paneli bazowych
 document.addEventListener('DOMContentLoaded', () => {
@@ -4736,61 +4163,7 @@ exportSatelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}
         window.updateCopyrightText();
     }
 }
-function togglePanelScale() {
-    isPanelScaleMode = !isPanelScaleMode;
-    const btn = document.getElementById('btnScalePanel');
-    btn.style.boxShadow = isPanelScaleMode ? "0 0 10px white" : "none";
-    
-    const targets = [document.getElementById('mapInfoPanel'), ...document.querySelectorAll('.detached-panel')];
-    
-    targets.forEach(el => {
-        if(!el) return;
-        
-        if(isPanelScaleMode) {
-            // Dodajemy widoczną obwódkę informującą, że panel można powiększać
-            el.style.outline = "2px dashed #ec4899";
-            el.style.cursor = "zoom-in";
-            
-            // Obsługa KÓŁKA MYSZY do precyzyjnego skalowania (PC)
-            el.addEventListener('wheel', handlePanelWheelZoom);
-            // Użycie Twojej wcześniejszej funkcji na telefony (Pinch-to-zoom)
-            if(typeof window.makePinchZoomable === 'function') {
-                window.makePinchZoomable(el);
-            }
-        } else {
-            el.style.outline = "none";
-            el.style.cursor = "";
-            el.removeEventListener('wheel', handlePanelWheelZoom);
-        }
-    });
-    
-    if(isPanelScaleMode) {
-        showCustomAlert("Tryb Skalowania aktywny! Użyj kółka myszy na wybranym panelu, aby go powiększyć lub pomniejszyć (na telefonie użyj dwóch palców).");
-    }
-}
 
-function handlePanelWheelZoom(e) {
-    e.preventDefault(); // Blokujemy przewijanie mapy lub strony
-    e.stopPropagation();
-
-    const el = e.currentTarget;
-    let currentScale = el.dataset.scale ? parseFloat(el.dataset.scale) : 1;
-
-    // e.deltaY to kierunek rolki (w dół/w górę)
-    if (e.deltaY < 0) {
-        currentScale += 0.05; // Powiększ
-    } else {
-        currentScale -= 0.05; // Pomniejsz
-    }
-
-    // Bezpieczne limity od 40% do 250%
-    currentScale = Math.max(0.4, Math.min(currentScale, 2.5));
-    
-    // Ustawienie transform origin na centrum, żeby tekst nie uciekał z rogu okna
-    el.style.transformOrigin = "top left";
-    el.style.scale = currentScale;
-    el.dataset.scale = currentScale;
-}
 // --- PANCERNY STRAŻNIK V3: Źródło idealnie zrośnięte z panelem ---
 function keepAttributionSafe() {
     const nav = document.getElementById('mobileBottomNav');
