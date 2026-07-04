@@ -569,7 +569,7 @@
         <div class="custom-alert-btns" id="customAlertBtns"></div>
     </div>
 </div>
- <!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) - PŁYWAJĄCY -->
+<!-- MODAL STYLU TRASY (WIDOK GŁÓWNY) - PŁYWAJĄCY -->
 <div id="styleModal" class="floating-modal" style="width: 340px;" data-html2canvas-ignore>
     <div class="modal-header">
         <span style="color: #f59e0b; font-weight: bold;">🎨 Styl i Animacja</span>
@@ -582,20 +582,15 @@
     </div>
     <div class="modal-body">
         
-       <div class="style-control-group">
+        <!-- SEKCJA KOLORU LINII -->
+        <div class="style-control-group">
             <label>Kolor linii:</label>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 5px; background: rgba(0,0,0,0.1); padding: 8px; border-radius: 6px;">
-                <!-- Lewa strona: Śliczny przycisk otwierający nasz modal -->
-                <button type="button" onclick="openCustomColorPicker('styleColor', 'line')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin: 0;">Wybierz kolor</button>
-                
-                <!-- Prawa strona: Podpis HEX/Gradient oraz prostokąt z aktualnym kolorem/gradientem -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 5px; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 6px;">
+                <button type="button" onclick="openCustomColorPicker('styleColor', 'line')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin:0;">Wybierz kolor</button>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span id="styleColorHex" style="font-family: monospace; font-size: 0.9em; opacity: 0.8;">#22C55E</span>
                     <div id="styleColorPreview" class="color-preview-rect" style="background-color: #22c55e;"></div>
-                    <span id="styleLineMode" style="font-size: 0.75em; opacity: 0.6; margin-left: 8px; white-space: nowrap;">(jednolity)</span>
                 </div>
-                
-                <!-- Ukryty mostek danych - zachowuje oryginalne ID, dzięki czemu nie psujemy logiki zapisu trasy! -->
                 <input type="hidden" id="styleColor" value="#22c55e">
             </div>
         </div>
@@ -605,14 +600,21 @@
             <input type="range" id="styleWeight" class="thick-slider" min="2" max="15" value="6" oninput="document.getElementById('styleWeightVal').innerText=this.value">
         </div>
         
+        <!-- SEKCJA KOLORU KROPKÓW (Wdrożenie nowej technologii - Błąd 4) -->
         <div class="style-control-group" style="padding-top: 5px;">
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom: 5px;">
                 <input type="checkbox" id="stylePointsToggle" onchange="togglePointsColorInput(this.checked)">
                 Zmień kolor kropek trasy (GPX)
             </label>
-            <div id="stylePointsColorWrap" class="color-picker-wrap" style="display:none; margin-top:5px;">
-                <input type="color" id="stylePointsColor" value="#22c55e">
-                <span id="stylePointsColorHex" style="font-family: monospace; font-size: 0.9em;">#22c55e</span>
+            <div id="stylePointsColorWrap" style="display:none; margin-top:5px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.1); padding: 8px; border-radius: 6px;">
+                    <button type="button" onclick="openCustomColorPicker('stylePointsColor', 'dot')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin:0;">Wybierz kolor</button>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span id="stylePointsColorHex" style="font-family: monospace; font-size: 0.9em; opacity: 0.8;">#22C55E</span>
+                        <div id="stylePointsColorPreview" class="color-preview-rect" style="background-color: #22c55e;"></div>
+                    </div>
+                    <input type="hidden" id="stylePointsColor" value="#22c55e">
+                </div>
             </div>
         </div>
 
@@ -1077,7 +1079,6 @@
     </div>
     <div class="modal-body" style="display:flex; flex-direction:column; gap:15px; padding: 15px;">
         
-        <!-- Podgląd finalnego koloru/gradientu -->
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
             <div id="finalColorPreview" class="color-preview-rect" style="width: 100px; height: 50px; border: none; margin: 0; box-shadow: none;"></div>
             <span id="finalColorHex" style="font-family: monospace; font-size: 1.1em; font-weight: bold; opacity: 0.9;">#22C55E</span>
@@ -1086,16 +1087,12 @@
         <!-- Sekcja Kolorów Jednolitych -->
         <div id="singleColorPickerSection">
             <div style="font-weight: bold; font-size: 0.85rem; color: #94a3b8; margin-bottom: 8px;">Szybki wybór:</div>
-            <div class="predefined-colors-grid" id="pickerPredefinedColors">
-                <!-- Paleta wygenerowana dynamicznie przez JS -->
-            </div>
+            <div class="predefined-colors-grid" id="pickerPredefinedColors"></div>
             
             <div style="font-weight: bold; font-size: 0.85rem; color: #94a3b8; margin-top: 15px; margin-bottom: 8px;">Moje ostatnie kolory:</div>
-            <div class="predefined-colors-grid" id="pickerRecentColors">
-                <!-- Ostatnie 5 kolorów z localStorage -->
-            </div>
+            <div class="predefined-colors-grid" id="pickerRecentColors"></div>
 
-            <!-- MIESZALNIK HSL (Hue, Saturation, Lightness) -->
+            <!-- MIESZALNIK HSL -->
             <div style="margin-top: 20px;">
                 <label style="display:block; font-size:0.8rem; font-weight:bold; color: #94a3b8; margin-bottom:4px;">Mieszalnik koloru HSL:</label>
                 <div class="hsl-picker">
@@ -1113,7 +1110,6 @@
                 </div>
             </div>
             
-            <!-- Ręczny zapis HEX -->
             <div style="margin-top: 15px;">
                 <label style="display:block; font-size:0.8rem; font-weight:bold; color: #94a3b8; margin-bottom:4px;">Własny kolor (HEX):</label>
                 <div style="display:flex; gap:8px; align-items:center;">
@@ -1122,14 +1118,12 @@
             </div>
         </div>
 
-        <!-- Sekcja wyboru gradientu -->
+        <!-- Sekcja Gradientu -->
         <div id="gradientPickerSection" style="display:none;">
             <div id="selectedGradientPreview" style="height: 50px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;"></div>
             <button type="button" onclick="openGradientConfigModal()" style="width:100%; background: #a855f7; font-size:0.9rem; padding: 10px;">🌈 Edytuj gradient</button>
             <div style="font-weight: bold; font-size: 0.85rem; color: #94a3b8; margin-top: 15px; margin-bottom: 8px;">Moje ostatnie gradienty:</div>
-            <div class="recent-gradients-grid" id="pickerRecentGradients">
-                <!-- Ostatnie 5 gradientów z localStorage -->
-            </div>
+            <div class="recent-gradients-grid" id="pickerRecentGradients"></div>
         </div>
 
         <!-- Przełącznik Kolor / Gradient -->
@@ -1138,10 +1132,37 @@
             <button type="button" onclick="selectPickerMode('gradient')" id="btnSelectGradientMode" class="secondary" style="flex:1; padding:8px;">Gradient</button>
         </div>
 
-        <!-- Przyciski akcji -->
         <div style="display:flex; gap:10px; margin-top:10px;">
             <button type="button" onclick="closeCustomColorPicker(true)" style="flex:1; background:#22c55e; font-weight:bold; padding: 10px;">OK</button>
             <button type="button" onclick="closeCustomColorPicker(false)" class="danger" style="flex:1; font-weight:bold; padding: 10px;">Anuluj</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL KONFIGURACJI GRADIENTU -->
+<div id="gradientConfigModal" class="floating-modal" style="width: 450px; z-index: 100000; display: none;" data-html2canvas-ignore>
+    <div class="modal-header">
+        <span style="font-weight: bold; color: #a855f7;">🌈 Konfiguracja gradientu</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeGradientConfigModal()">X</button>
+    </div>
+    <div class="modal-body" style="display:flex; flex-direction:column; gap:15px; padding: 15px;">
+        
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+            <label style="font-size: 0.95rem; font-weight: bold; color: #94a3b8;">Liczba kolorów w gradiencie:</label>
+            <select id="gradientColorCount" onchange="updateGradientConfigUI()" style="padding: 6px; border-radius: 6px; background: rgba(0,0,0,0.2); color: inherit; border: 1px solid rgba(255,255,255,0.2);">
+                <option value="2">2 kolory</option>
+                <option value="3">3 kolory</option>
+                <option value="4">4 kolory</option>
+            </select>
+        </div>
+
+        <div id="liveGradientPreview" style="height: 60px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 10px;"></div>
+
+        <div id="gradientColorPointsContainer" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+        <div style="display:flex; gap:10px; margin-top:10px;">
+            <button type="button" onclick="saveGradientConfig()" style="flex:1; background:#a855f7; font-weight:bold; padding: 10px;">Zastosuj gradient</button>
+            <button type="button" onclick="closeGradientConfigModal()" class="danger" style="flex:1; font-weight:bold; padding: 10px;">Anuluj</button>
         </div>
     </div>
 </div>
@@ -1196,7 +1217,9 @@
     align-items: center; 
     justify-content: center;
     " onclick="showMeasureModal()">👁️</button>
+<script src="colors.js"></script>
 <script src="app.js"></script>
+
 
 </body>
 </html>
