@@ -34,7 +34,7 @@ let globalElevationLatLng = [];
 let chartHoverMarker = null;
 let exportLineColor = routePrefColor;
 let exportLineWeight = routePrefWeight;   
-let globalCustomPois = []; 
+
 let searchMarker = null;
 let globalOsmPois = [];  
 let globalTrails = [];
@@ -94,7 +94,6 @@ let tempPickerType = '';
 const userSavedLayer = L.layerGroup().addTo(map);
 
 const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
-const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw0FNvby9iW6kxPgOatMdpHNrR25X-A1HJ8AhNEQ3uI4dm16P0ocPe5iXlPnGUsPxo-/exec";
 
 
 
@@ -115,7 +114,7 @@ document.body.className = "light";
    document.addEventListener('DOMContentLoaded', () => {
     // 1. Ładowanie danych
     loadUserSavedPois();
-    loadGoogleSheetsPOIs();
+    
     
     // 2. Mobilna wyszukiwarka
     if (window.innerWidth <= 768 && sessionStorage.getItem('hideMobileSearch') === 'true') {
@@ -2994,71 +2993,12 @@ document.addEventListener('DOMContentLoaded', () => {
 /* ================= PUNKTY Z BAZY DANYCH (GOOGLE SHEETS) ================= */
 
 
-async function loadGoogleSheetsPOIs() {
-    const searchInput = document.getElementById('searchInput');
-    const searchBtn = document.getElementById('searchBtn');
-    
-    try {
-        const response = await fetch(GAS_WEBAPP_URL);
-        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-        const data = await response.json();
-        
-        if (data.error) throw new Error(data.error);
-
-        globalCustomPois = []; 
-        data.forEach((item, index) => {
-            const cleanCoordsStr = item.coords.replace(/[^0-9.,-]/g, '');
-            const coordsSplit = cleanCoordsStr.split(',');
-            if (coordsSplit.length !== 2) return; 
-            
-            const lat = parseFloat(coordsSplit[0]);
-            const lng = parseFloat(coordsSplit[1]);
-            if (isNaN(lat) || isNaN(lng)) return;
-
-            const iconEmoji = item.icon || '📍';
-           // W loadGoogleSheetsPOIs zmień poiObj:
-            const poiObj = {
-                id: item.id ? String(item.id).trim() : `obiekt_${index}`,
-                latlng: L.latLng(lat, lng),
-                name: item.name,
-                icon: iconEmoji,
-                category: item.category || 'Atrakcja',
-                description: item.description || '',
-                photos: item.photos || [], // ZMIANA: odbieramy jako tablicę obiektów, a nie string
-                isGas: true
-            };
-            
-            globalCustomPois.push(poiObj);
-
-            const marker = L.marker([lat, lng], {
-                icon: L.divIcon({
-                    html: `<div style="font-size:26px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.6));">${iconEmoji}</div>`,
-                    className: 'poi-icon custom-db-poi'
-                }),
-                zIndexOffset: 500
-            }).addTo(customPoiLayer);
-
-            marker.on('click', () => openCustomPoiModal(poiObj));
-        });
-
-    } catch (error) {
-        // Ciche przechwycenie błędu - aplikacja się nie zawiesi, po prostu nie pobierze punktów
-        console.warn("Brak połączenia z Bazą Danych (Google Sheets) lub zły link. Punkty GS nie zostały wczytane.", error.message);
-    } finally {
-        // Zawsze aktywuj pasek wyszukiwania, by działał dla OSM i punktów lokalnych
-        if(searchInput && searchBtn) {
-            searchInput.disabled = false;
-            searchBtn.disabled = false;
-            searchInput.placeholder = "Szukaj (nazwa, ID lub współ.)";
-        }
-    }
-}
 
 // Inicjalizacja pobierania danych przy starcie strony
 // Podmień istniejący event DOMContentLoaded na ten:
 document.addEventListener('DOMContentLoaded', () => {
     loadUserSavedPois();
-    loadGoogleSheetsPOIs();
+   
     
     // Sprawienie, że wszystkie modale są pływające
     makeDraggable(document.getElementById('pointsModal'));
@@ -3079,26 +3019,7 @@ document.addEventListener('DOMContentLoaded', () => {
     drawEmptyElevationAnimation(); 
         isolateColorInputs();
 });
-/* --- UNIWERSALNY PARSER LINKÓW (ZABEZPIECZONY PRZED OVERFLOW) --- */
-function linkify(text) {
-    if (!text) return "";
-    let parsed = text.toString();
-    
-    // 1. Parser dla konstrukcji dedykowanej GAS: [adres url]"klikany tekst"
-    // Przykłady: [https://onet.pl]"czytaj" lub [https://google.com]"kliknij tutaj"
-    parsed = parsed.replace(/\[(https?:\/\/[^\]]+)\]"([^"]+)"/g, function(match, url, linkText) {
-        return `<a href="${url}" target="_blank" class="custom-app-link">${linkText}</a>`;
-    });
 
-    // 2. Parser dla standardowych "nagich" adresów URL (np. wklejonych bezpośrednio)
-    // Wyrażenie regularne pomija adresy URL znajdujące się już w atrybucie href="..." tagu <a>
-    const urlRegex = /(?<!href=")(?<!">)(https?:\/\/[^\s<"\[\]]+)/g;
-    parsed = parsed.replace(urlRegex, function(url) {
-        return `<a href="${url}" target="_blank" class="custom-app-link">${url}</a>`;
-    });
-
-    return parsed;
-}
 
 
 // Funkcja wypełniająca i otwierająca Modal
