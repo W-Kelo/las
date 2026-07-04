@@ -2004,13 +2004,15 @@ const OSM_DICT = {
     "picnic_shelter": "Wiata piknikowa",
     "citymap": "Mapa miasta",
     "history": "Historia",
-    "stela": "slupek przystankowy",
+    "stela": "słupek przystankowy",
     "gazebo": "altana/pawilon",
     "fireplace": "miejsce na ognisko",
     "street side": "wzdłuż ulicy",
     "ground": "nawierzchnia",
     "supervised": "nadzorowany",
     "capacity": "pojedmność",
+    "Name:de:": "Po niemiecku:",
+    
     
     
     
