@@ -1,131 +1,11 @@
 /* =========================================================
-   scale.js - MODUŁ SKALI MAPY Z AKTYWNYM STRAŻNIKIEM STABILNOŚCI
+   scale.js - MODUŁ SKALOWANIA (WERSJA OCZYSZCZONA)
 ========================================================= */
 
 let isCustomScaleVisible = false;
 
-/* --- STRAŻNIK STABILNOŚCI KODU (WATCHDOG) --- */
-const StraznikSkali = {
-    lastUpdates: [],
-    maxUpdatesInShortWindow: 12, // Maksymalna bezpieczna liczba wywołań
-    windowSizeMs: 400,          // Okno analizy
-    recursionDepth: 0,
-    maxRecursionDepth: 4,
-    isHalted: false,
-
-    reset() {
-        this.lastUpdates = [];
-        this.recursionDepth = 0;
-        this.isHalted = false;
-    },
-
-    // Skanowanie stabilności wątku przed wykonaniem operacji
-    check(action) {
-        if (this.isHalted) return false;
-
-        const now = performance.now();
-        
-        // 1. Ochrona przed nieskończoną rekurzją
-        this.recursionDepth++;
-        if (this.recursionDepth > this.maxRecursionDepth) {
-            this.halt(
-                "Nieskończona rekurzja (Recursion Loop)", 
-                `Wykryto zapętlenie kodu przy akcji: "${action}". Głębokość wywołań stosu przekroczyła krytyczny limit (${this.maxRecursionDepth}).`
-            );
-            return false;
-        }
-
-        // 2. Ochrona przed przeciążeniem zdarzeniami (Event Flooding)
-        this.lastUpdates.push(now);
-        this.lastUpdates = this.lastUpdates.filter(t => now - t < this.windowSizeMs);
-
-        if (this.lastUpdates.length > this.maxUpdatesInShortWindow) {
-            this.halt(
-                "Przeciążenie zdarzeniami (Event Flooding)", 
-                `Wykryto zbyt dużą częstotliwość wywoływania akcji: "${action}" (${this.lastUpdates.length} razy w ciągu ${this.windowSizeMs}ms).`
-            );
-            return false;
-        }
-
-        return true;
-    },
-
-    resetRecursion() {
-        this.recursionDepth = Math.max(0, this.recursionDepth - 1);
-    },
-
-    // Awaryjne zatrzymanie modułu
-    halt(reason, details) {
-        this.isHalted = true;
-        console.error(`[Strażnik Skali] ZABLOKOWANO CRASH: ${reason}\n${details}`);
-        
-        // Usunięcie skali z ekranu na czas paraliżu
-        if (customScaleEl) {
-            customScaleEl.remove();
-            customScaleEl = null;
-            isCustomScaleVisible = false;
-        }
-
-        this.showEmergencyPanel(reason, details);
-    },
-
-    // Eleganckie, autorskie okno Pogotowia Ratunkowego Kodu
-    showEmergencyPanel(reason, details) {
-        let emergencyModal = document.getElementById('pogotowieRatunkoweModal');
-        if (!emergencyModal) {
-            emergencyModal = document.createElement('div');
-            emergencyModal.id = 'pogotowieRatunkoweModal';
-            emergencyModal.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.9); z-index:999999; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(5px); font-family:sans-serif;";
-            
-            emergencyModal.innerHTML = `
-                <div style="background:#1e293b; color:#f1f5f9; padding:25px; border-radius:12px; width:480px; max-width:92vw; box-shadow:0 15px 50px rgba(0,0,0,0.6); border:2px solid #3b82f6; box-sizing:border-box;">
-                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:15px; border-bottom:1px solid rgba(59,130,246,0.2); padding-bottom:12px;">
-                        <span style="font-size:2rem;">🩺</span>
-                        <div>
-                            <h3 style="margin:0; color:#3b82f6; font-size:1.15rem; font-weight:bold; letter-spacing:0.5px;">Pogotowie Ratunkowe Kodu</h3>
-                            <small style="color:#94a3b8; font-size:0.75rem; text-transform:uppercase;">System prewencji i ochrony stabilności skali</small>
-                        </div>
-                    </div>
-                    <p style="font-size:0.9rem; line-height:1.5; color:#cbd5e1; margin-top:0;">
-                        Wykryto zagrożenie stabilności wątku głównego. Strażnik zablokował dalsze wywołania, aby uchronić stronę przed całkowitym zawieszeniem.
-                    </p>
-                    <div style="background:rgba(59,130,246,0.08); border-left:4px solid #3b82f6; padding:12px; border-radius:4px; margin-bottom:15px;">
-                        <strong style="display:block; color:#93c5fd; font-size:0.85rem; margin-bottom:4px; text-transform:uppercase;">Zdiagnozowane zdarzenie:</strong>
-                        <span id="emergencyReason" style="font-size:0.9rem; line-height:1.4; font-weight:500;">-</span>
-                    </div>
-                    <div style="background:rgba(0,0,0,0.25); padding:12px; border-radius:6px; font-family:monospace; font-size:0.8rem; line-height:1.45; color:#cbd5e1; margin-bottom:20px; border:1px solid rgba(255,255,255,0.05); max-height:120px; overflow-y:auto;">
-                        <strong style="color:#94a3b8; display:block; margin-bottom:6px; font-size:0.75rem; text-transform:uppercase;">Raport diagnostyczny:</strong>
-                        <div id="pogotowieDetails" style="white-space:pre-wrap;">-</div>
-                    </div>
-                    <div style="display:flex; gap:10px;">
-                        <button onclick="StraznikSkali.recover()" style="flex:1; background:#3b82f6; color:white; border:none; padding:11px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.85rem; transition:background 0.2s;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">Zresetuj i odblokuj</button>
-                        <button onclick="document.getElementById('pogotowieRatunkoweModal').style.display='none'" style="flex:1; background:#475569; color:white; border:none; padding:11px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.85rem; transition:background 0.2s;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='#475569'">Zamknij</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(emergencyModal);
-        }
-        
-        document.getElementById('emergencyReason').innerText = reason;
-        document.getElementById('pogotowieDetails').innerText = details;
-        emergencyModal.style.display = 'flex';
-    },
-
-    recover() {
-        this.isHalted = false;
-        this.lastUpdates = [];
-        this.recursionDepth = 0;
-        const modal = document.getElementById('pogotowieRatunkoweModal');
-        if (modal) modal.style.display = 'none';
-        showCustomAlert("Moduł skali został pomyślnie odblokowany.");
-    }
-};
-window.StraznikSkali = StraznikSkali;
-
-/* --- LOGIKA DZIAŁANIA SKALI NA MAPIE --- */
-
 window.toggleScale = function() {
-    if (!exportMap || StraznikSkali.isHalted) return;
+    if (!exportMap) return;
     
     isCustomScaleVisible = !isCustomScaleVisible;
     const btn = document.querySelector('button[onclick="toggleScale()"]');
@@ -181,9 +61,7 @@ function getHumanFriendlyRounding(val) {
 }
 
 function updateScaleValues() {
-    if (!customScaleEl || !exportMap || !exportMap._loaded || StraznikSkali.isHalted) return;
-
-    if (!StraznikSkali.check("Przeliczenie Skali")) return;
+    if (!customScaleEl || !exportMap || !exportMap._loaded) return;
 
     try {
         const bounds = exportMap.getBounds();
@@ -201,11 +79,13 @@ function updateScaleValues() {
         const pxPerMeter = mapWidthPx / mapWidthMeters;
         if (!pxPerMeter || isNaN(pxPerMeter) || pxPerMeter <= 0 || !isFinite(pxPerMeter)) return;
 
-        const type = document.getElementById('scaleTypeInput').value;
+        const typeEl = document.getElementById('scaleTypeInput');
         const textEl = document.getElementById('scaleText');
         const barEl = document.getElementById('scaleBar');
 
-        if (!textEl || !barEl) return;
+        if (!typeEl || !textEl || !barEl) return;
+
+        const type = typeEl.value;
 
         if (type === 'text') {
             customScaleEl.style.width = 'max-content';
@@ -242,16 +122,14 @@ function updateScaleValues() {
             barEl.style.display = 'block';
         }
     } catch(e) {
-        StraznikSkali.halt("Błąd kalkulacji skali", e.stack || e.message);
-    } finally {
-        StraznikSkali.resetRecursion();
+        console.error("Błąd kalkulacji skali:", e);
     }
 }
 
-// Zmodyfikowana, bezbłędna aktualizacja wyglądu skali z bufferingiem klatek
+// Płynna aktualizacja wyglądu skali z kolejkowaniem klatek (Bez obciążenia procesora)
 let scaleUpdateFrameId = null;
 window.updateCustomScaleAppearance = function() {
-    if (!customScaleEl || StraznikSkali.isHalted) return;
+    if (!customScaleEl) return;
 
     if (scaleUpdateFrameId) cancelAnimationFrame(scaleUpdateFrameId);
 
@@ -262,12 +140,10 @@ window.updateCustomScaleAppearance = function() {
         const fontSize = document.getElementById('scaleFontSize').value;
         const fontStyle = document.getElementById('scaleFontStyle').value;
 
-        // --- SPRAWDZACZ CZYTELNOŚCI (Z uwzględnieniem przezroczystości tła) ---
         const opacityVal = parseInt(opacity);
-        let ratio = 21; // Domyślnie maksymalny kontrast (brak ostrzeżenia)
+        let ratio = 21; 
         
         if (opacityVal > 0) {
-            // Kontrola kontrastu zachodzi tylko, gdy tło nie jest całkowicie przezroczyste
             ratio = checkContrastRatio(hexBg, textColor, opacityVal);
         }
 
@@ -276,8 +152,7 @@ window.updateCustomScaleAppearance = function() {
             warningDiv.style.display = (opacityVal > 0 && ratio < 3.0) ? 'block' : 'none';
         }
 
-        // --- APLIKACJA STYLÓW NA ELEMENT SKALI ---
-        // Pełna integracja z gradientami (colors.js)
+        // Zastosowanie tła (obsługuje kolory jednolite oraz gradienty)
         if (hexBg.startsWith('linear-gradient')) {
             customScaleEl.style.background = hexBg;
         } else {
@@ -310,7 +185,7 @@ window.updateCustomScaleAppearance = function() {
     });
 };
 
-// Automatyczne nasłuchiwanie w locie przy zmianach z modalów colors.js
+// Automatyczna synchronizacja zmian w tle
 document.addEventListener('DOMContentLoaded', () => {
     const bgInput = document.getElementById('scaleBgColor');
     if (bgInput) {
