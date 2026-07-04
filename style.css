@@ -1197,61 +1197,18 @@ select.style-select {
     width: 100%; /* Dopasowanie do szerokości pól w formularzu */
     max-width: 100%;
 }
+
 .clr-field button {
     border-radius: 5px; /* Zaokrąglenie podglądu koloru */
     width: 32px !important;
     height: 32px !important;
 }
+
 .floating-modal input[data-coloris] {
     padding-left: 40px !important; /* Miejsce na kółko podglądu koloru wewnątrz pola */
 }
-/* --- STYLE WYBORU KOLORU (NOWA TECHNOLOGIA) --- */
 
-/* Prostokątny podgląd w modalu nadrzędnym */
-.color-preview-rect {
-    width: 45px;
-    height: 30px;
-    border-radius: 6px;
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-    display: inline-block;
-    vertical-align: middle;
-}
-
-.light .color-preview-rect {
-    border-color: rgba(0, 0, 0, 0.15);
-}
-
-/* Siatka szybkich kolorów w modalu wyboru */
-.predefined-colors-grid {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 8px;
-    margin-bottom: 5px;
-}
-
-/* Pojedynczy kafelek koloru */
-.predefined-color-btn {
-    width: 100%;
-    padding-bottom: 100%; /* Tworzy idealny kwadrat bez względu na rozdzielczość */
-    border-radius: 6px;
-    border: 2px solid rgba(255, 255, 255, 0.15);
-    cursor: pointer;
-    transition: transform 0.15s ease, border-color 0.15s ease;
-}
-
-.predefined-color-btn:hover {
-    transform: scale(1.15);
-    border-color: #ffffff;
-}
-
-/* Wyróżnienie zaznaczonego koloru */
-.predefined-color-btn.selected {
-    border-color: #ffffff;
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
-    transform: scale(1.05);
-}
-/* --- STYLE WYBORU KOLORU I GRADIENTU (NOWA TECHNOLOGIA) --- */
+/* --- STYLE WYBORU KOLORU I GRADIENTU --- */
 
 /* Prostokątny podgląd w modalu nadrzędnym */
 .color-preview-rect {
@@ -1310,7 +1267,6 @@ select.style-select {
     padding-bottom: 50%; /* Prostokąt dla gradientu */
 }
 
-
 /* --- MIESZALNIK HSL --- */
 .hsl-picker {
     position: relative;
@@ -1357,6 +1313,7 @@ select.style-select {
     box-shadow: 0 0 5px rgba(0,0,0,0.5);
     cursor: grab;
 }
+
 .hue-slider-wrap input[type="range"]::-moz-range-thumb {
     height: 25px;
     width: 10px;
@@ -1366,7 +1323,6 @@ select.style-select {
     box-shadow: 0 0 5px rgba(0,0,0,0.5);
     cursor: grab;
 }
-
 
 .saturation-lightness-picker {
     position: absolute;
@@ -1382,6 +1338,25 @@ select.style-select {
     border-radius: 50%;
     box-shadow: 0 0 5px rgba(0,0,0,0.5);
     pointer-events: none; /* Nie blokuje kliknięć na tle */
+}
+
+/* Pola numeryczne dla HSL */
+.hsl-picker input[type="number"] {
+    width: 100%;
+    padding: 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(0,0,0,0.2);
+    color: inherit;
+    font-family: monospace;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.light .hsl-picker input[type="number"] {
+    background: #fff;
+    border-color: #ccc;
+    color: #000;
 }
 
 /* --- Gradient Configuration Modal --- */
@@ -1418,25 +1393,6 @@ select.style-select {
     background: var(--accent) !important;
     color: white !important;
     box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
-}
-
-/* Pola numeryczne dla HSL */
-.hsl-picker input[type="number"] {
-    width: 100%;
-    padding: 6px;
-    border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.2);
-    background: rgba(0,0,0,0.2);
-    color: inherit;
-    font-family: monospace;
-    font-size: 0.85rem;
-    text-align: center;
-}
-
-.light .hsl-picker input[type="number"] {
-    background: #fff;
-    border-color: #ccc;
-    color: #000;
 }
 /* ===================================
    23. TAJEMNICZE POZOSTAŁOŚCI
