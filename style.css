@@ -1205,6 +1205,52 @@ select.style-select {
 .floating-modal input[data-coloris] {
     padding-left: 40px !important; /* Miejsce na kółko podglądu koloru wewnątrz pola */
 }
+/* --- STYLE WYBORU KOLORU (NOWA TECHNOLOGIA) --- */
+
+/* Prostokątny podgląd w modalu nadrzędnym */
+.color-preview-rect {
+    width: 45px;
+    height: 30px;
+    border-radius: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.light .color-preview-rect {
+    border-color: rgba(0, 0, 0, 0.15);
+}
+
+/* Siatka szybkich kolorów w modalu wyboru */
+.predefined-colors-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-bottom: 5px;
+}
+
+/* Pojedynczy kafelek koloru */
+.predefined-color-btn {
+    width: 100%;
+    padding-bottom: 100%; /* Tworzy idealny kwadrat bez względu na rozdzielczość */
+    border-radius: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    cursor: pointer;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.predefined-color-btn:hover {
+    transform: scale(1.15);
+    border-color: #ffffff;
+}
+
+/* Wyróżnienie zaznaczonego koloru */
+.predefined-color-btn.selected {
+    border-color: #ffffff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+    transform: scale(1.05);
+}
 /* ===================================
    23. TAJEMNICZE POZOSTAŁOŚCI
 =================================== */        
