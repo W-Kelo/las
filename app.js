@@ -148,6 +148,7 @@ let _isLongPress = false;
 let routePrefGifHiking = localStorage.getItem('gpx_gif_hiking') !== 'false';
 let routePrefGifOsm = localStorage.getItem('gpx_gif_osm') !== 'false';
 let routePrefGifGas = localStorage.getItem('gpx_gif_gas') !== 'false';
+let isPipetteOpen = false; // Twarda blokada stanowa przed podwójnym otwarciem
 let routePrefGifUser = localStorage.getItem('gpx_gif_user') !== 'false';
 let exportPointSettings = {
     gas: { ids: new Set() },
@@ -8492,15 +8493,49 @@ function updatePickerPreview(color) {
 }
 
 // Obsługa natywnej pipety w przeglądarkach Chromium
-async function triggerPickerPipette() {
-    if ('EyeDropper' in window) {
-        try {
-            const eyeDropper = new EyeDropper();
-            const result = await eyeDropper.open();
+async function triggerPickerPipette(event) {
+    // 1. Zatrzymujemy bąbelkowanie zdarzenia, aby Leaflet i inne skrypty w tle nie zarejestrowały kliknięcia
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    // 2. Blokada przed wielokrotnym uruchomieniem (np. przy szybkim double-clicku)
+    if (isPipetteOpen) {
+        console.warn("[Pipeta] Ostrzeżenie: Próba ponownego otwarcia zablokowana. Proces jest już w toku.");
+        return;
+    }
+
+    if (!('EyeDropper' in window)) {
+        showCustomAlert("Twoja przeglądarka nie wspiera funkcji natywnej pipety (wymagany jest Chrome, Edge lub Opera uruchomione w bezpiecznym kontekście HTTPS/localhost).");
+        return;
+    }
+
+    // 3. Bezpieczne usunięcie aktywnego skupienia (focus) z jakichkolwiek elementów strony przed otwarciem systemowego okna
+    if (document.activeElement) {
+        document.activeElement.blur();
+    }
+
+    // Aktywacja blokady i kursora oczekiwania
+    isPipetteOpen = true;
+    document.body.style.cursor = 'wait';
+
+    try {
+        const eyeDropper = new EyeDropper();
+        
+        // Wywołanie asynchronicznego pobierania koloru z oczekiwaniem na obietnicę
+        const result = await eyeDropper.open();
+        
+        if (result && result.sRGBHex) {
             selectPickerColor(result.sRGBHex);
-        } catch (e) {
-            console.log("Anulowano pobieranie koloru");
         }
+    } catch (err) {
+        // Przechwycenie i bezpieczne zalogowanie anulowania (np. naciśnięcie klawisza Escape)
+        console.log("[Pipeta] Pobieranie koloru zostało przerwane lub anulowane przez użytkownika:", err.message);
+    } finally {
+        // Gwarantowane zdjęcie blokady i przywrócenie kursora w bloku finally (wykona się zawsze)
+        isPipetteOpen = false;
+        document.body.style.cursor = '';
     }
 }
 
