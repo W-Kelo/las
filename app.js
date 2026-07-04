@@ -4687,6 +4687,28 @@ function initColorisPicker() {
         closeLabel: 'Zamknij'
     });
 }
+function selectPickerColor(color, element) {
+    tempSelectedColor = color;
+    
+    const hexInput = document.getElementById('pickerHexInput');
+    if (hexInput) {
+        hexInput.value = color.toUpperCase();
+    }
+    
+    document.querySelectorAll('.predefined-color-btn').forEach(btn => btn.classList.remove('selected'));
+    if (element) {
+        element.classList.add('selected');
+    }
+    
+    updatePickerPreview(color);
+}
+function updatePickerPreview(color) {
+    const preview = document.getElementById('pickerHexPreview');
+    if (preview) {
+        preview.style.backgroundColor = color;
+    }
+}
+
 /* ================= ZAAWANSOWANE NAGRYWANIE GIF W TLE (Z WARSTWAMI I ZAMYKANIEM TOASTU) ================= */
 async function recordRouteGIF() {
     if (routeGeometry.length < 2) {
