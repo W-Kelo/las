@@ -4392,6 +4392,7 @@ if (typeof renderRouteLineWithStyle === 'function') {
 } else {
     polyline.setStyle({ color: routePrefColor, weight: routePrefWeight });
 }
+}
 
 function togglePointsColorInput(isChecked) {
     document.getElementById('stylePointsColorWrap').style.display = isChecked ? 'flex' : 'none';
@@ -8460,7 +8461,7 @@ window.toggleMeasureMode = toggleMeasureMode;
 window.handleMeasureClick = handleMeasureClick;
 window.closeMeasurementShape = closeMeasurementShape;
 window.updateMeasureLine = updateMeasureLine;
-window.updateMeasureSmal
+window.updateMeasureSmallModal = updateMeasureSmallModal; 
 window.startNewMeasure = startNewMeasure;
 window.undoLastMeasurePoint = undoLastMeasurePoint;
 window.toggleDrawMode = toggleDrawMode;
@@ -8501,4 +8502,3 @@ function saveRecentGradients() {
         console.error("Błąd zapisu ostatnich gradientów do LocalStorage:", e);
     }
 }
-
