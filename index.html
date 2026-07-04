@@ -584,9 +584,18 @@
         
         <div class="style-control-group">
             <label>Kolor linii:</label>
-            <div class="color-picker-wrap">
-                <input type="color" id="styleColor" value="#22c55e">
-                <span id="styleColorHex" style="font-family: monospace; font-size: 0.9em;">#22c55e</span>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 5px; background: rgba(0,0,0,0.1); padding: 8px; border-radius: 6px;">
+                <!-- Lewa strona: Śliczny przycisk otwierający nasz modal -->
+                <button type="button" onclick="openCustomColorPicker('styleColor')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin: 0;">Wybierz kolor</button>
+                
+                <!-- Prawa strona: Podpis HEX oraz prostokąt z aktualnym kolorem -->
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span id="styleColorHex" style="font-family: monospace; font-size: 0.9em; opacity: 0.8;">#22C55E</span>
+                    <div id="styleColorPreview" class="color-preview-rect" style="background-color: #22c55e;"></div>
+                </div>
+                
+                <!-- Ukryty mostek danych - zachowuje oryginalne ID, dzięki czemu nie psujemy logiki zapisu trasy! -->
+                <input type="hidden" id="styleColor" value="#22c55e">
             </div>
         </div>
 
@@ -1058,7 +1067,40 @@
         <!-- Wypełniane dynamicznie przez JS -->
     </div>
 </div>
+<!-- DEDYKOWANY MODAL WYBORU KOLORU (NAJWYŻSZA WARSTWA) -->
+<div id="customColorPickerModal" class="floating-modal" style="width: 320px; z-index: 99999; display: none;" data-html2canvas-ignore>
+    <div class="modal-header">
+        <span style="font-weight: bold; color: var(--accent);">🎨 Wybór koloru</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeCustomColorPicker(false)">X</button>
+    </div>
+    <div class="modal-body" style="display:flex; flex-direction:column; gap:12px; padding: 15px;">
+        
+        <div style="font-weight: bold; font-size: 0.85rem; color: #94a3b8; margin-bottom: 2px;">Szybki wybór:</div>
+        <div class="predefined-colors-grid" id="pickerPredefinedColors">
+            <!-- Paleta wygenerowana dynamicznie przez JS -->
+        </div>
+        
+        <!-- Przycisk pipety (pobierania z ekranu) widoczny tylko gdy przeglądarka go wspiera -->
+        <div id="pickerPipetteContainer" style="display:none; margin: 4px 0;">
+            <button type="button" onclick="triggerPickerPipette()" style="width:100%; background: #3b82f6; font-size:0.85rem; padding: 8px;">🧪 Pobierz z ekranu (Pipeta)</button>
+        </div>
 
+        <!-- Ręczny zapis HEX -->
+        <div>
+            <label style="display:block; font-size:0.8rem; font-weight:bold; color: #94a3b8; margin-bottom:4px;">Własny kolor (HEX):</label>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <input type="text" id="pickerHexInput" placeholder="#22C55E" style="flex-grow:1; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.2); color:inherit; font-family:monospace; text-align:center;">
+                <div id="pickerHexPreview" style="width:40px; height:34px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); flex-shrink:0;"></div>
+            </div>
+        </div>
+
+        <!-- Przyciski akcji -->
+        <div style="display:flex; gap:10px; margin-top:10px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top:12px;">
+            <button type="button" onclick="closeCustomColorPicker(true)" style="flex:1; background:#22c55e; font-weight:bold; padding: 10px;">OK</button>
+            <button type="button" onclick="closeCustomColorPicker(false)" class="secondary" style="flex:1; font-weight:bold; padding: 10px;">Anuluj</button>
+        </div>
+    </div>
+</div>
 <!-- PŁYWAJĄCY PRZYCISK PRZYWRACANIA POMIARU (OCZKO) -->
 <button id="measureRestoreBtn" 
     style="position: fixed; 
