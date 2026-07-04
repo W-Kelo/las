@@ -61,15 +61,16 @@
     </div>
 </div>
 
-<!-- MODAL: ZARZĄDZANIE WYGLĄDEM SKALI (ZABEZPIECZONY PRZED ZAWIESZENIEM) -->
-<div id="scaleSettingsModal" class="floating-modal" style="width: 350px; z-index: 4000; display: none;" data-html2canvas-ignore>
+<!-- MODAL: ZARZĄDZANIE WYGLĄDEM SKALI (NOWY INTERFEJS) -->
+<div id="scaleSettingsModal" class="floating-modal" style="width: 380px; z-index: 4000; display: none;" data-html2canvas-ignore>
     <div class="modal-header">
         <span style="color: #3b82f6; font-weight:bold;">📏 Wygląd Skali</span>
         <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('scaleSettingsModal')">X</button>
     </div>
-    <div class="modal-body search-save-form" style="display: flex; flex-direction: column; gap: 10px;">
-        <div id="scaleContrastWarning" style="display:none; background:rgba(245,158,11,0.2); color:#f59e0b; padding:8px; border-left:3px solid #f59e0b; font-size:0.8rem; border-radius: 4px;">
-            ⚠️ Użyte kolory mogą być nieczytelne (za słaby kontrast).
+    <div class="modal-body search-save-form" style="display: flex; flex-direction: column; gap: 10px; padding: 15px;">
+        <!-- Inteligentny sprawdzacz czytelności (ostrzeżenie wbudowane) -->
+        <div id="scaleContrastWarning" style="display:none; background:rgba(245,158,11,0.15); color:#f59e0b; padding:10px; border-left:4px solid #f59e0b; font-size:0.8rem; border-radius: 4px; line-height: 1.4;">
+            ⚠️ <strong>Niska czytelność!</strong> Wybrany kolor tekstu i tła są bardzo zbliżone. Skala może być niewidoczna na mapie.
         </div>
         
         <label>Typ skali:</label>
@@ -78,21 +79,39 @@
             <option value="text" selected>Liczbowa / Mianowana</option>
         </select>
 
-        <label>Tło panelu i przezroczystość:</label>
-        <div style="display:flex; gap:10px; align-items:center;">
-            <!-- Zmiana oninput na onchange w celu ochrony wątku przeglądarki -->
-            <input type="color" id="scaleBgColor" value="#ffffff" style="height:35px; width:45px; border:none; background:none; cursor:pointer;" onchange="updateCustomScaleAppearance()">
-            <input type="range" id="scaleBgOpacity" class="thick-slider" min="0" max="100" value="85" oninput="updateCustomScaleAppearance()">
+        <!-- TŁO PANELU SKALI (Wdrożenie nowej technologii) -->
+        <div class="style-control-group" style="background: none; padding: 0; margin-bottom: 5px;">
+            <label>Tło panelu:</label>
+            <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 6px;">
+                <button type="button" onclick="openCustomColorPicker('scaleBgColor', 'background')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin:0;">Wybierz kolor</button>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span id="scaleBgColorHex" style="font-family: monospace; font-size: 0.9em; opacity: 0.8;">#FFFFFF</span>
+                    <div id="scaleBgColorPreview" class="color-preview-rect" style="background-color: #ffffff;"></div>
+                </div>
+                <input type="hidden" id="scaleBgColor" value="#ffffff">
+            </div>
         </div>
 
-        <label>Stylizacja tekstu i paska:</label>
+        <div style="margin-bottom: 5px;">
+            <label style="margin:0;">Przezroczystość tła: <span id="scaleBgOpacityVal">85</span>%</label>
+            <input type="range" id="scaleBgOpacity" class="thick-slider" min="0" max="100" value="85" oninput="document.getElementById('scaleBgOpacityVal').innerText=this.value; updateCustomScaleAppearance();">
+        </div>
+
+        <!-- KOLOR TEKSTU I PASKA SKALI (Wdrożenie nowej technologii) -->
+        <div class="style-control-group" style="background: none; padding: 0; margin-bottom: 5px;">
+            <label>Kolor tekstu i paska:</label>
+            <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 6px;">
+                <button type="button" onclick="openCustomColorPicker('scaleTextColor', 'text')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin:0;">Wybierz kolor</button>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span id="scaleTextColorHex" style="font-family: monospace; font-size: 0.9em; opacity: 0.8;">#000000</span>
+                    <div id="scaleTextColorPreview" class="color-preview-rect" style="background-color: #000000;"></div>
+                </div>
+                <input type="hidden" id="scaleTextColor" value="#000000">
+            </div>
+        </div>
+
         <div style="display:flex; gap:10px; margin-bottom: 5px;">
             <div style="flex:1;">
-                <label style="font-size:0.75rem; margin:0;">Kolor tekstu:</label>
-                <!-- Zmiana oninput na onchange w celu ochrony wątku przeglądarki -->
-                <input type="color" id="scaleTextColor" value="#000000" style="height:35px; width:100%; border:none; background:none; cursor:pointer;" onchange="updateCustomScaleAppearance()">
-            </div>
-            <div style="flex:2;">
                 <label style="font-size:0.75rem; margin:0;">Styl czcionki:</label>
                 <select id="scaleFontStyle" class="style-select" onchange="updateCustomScaleAppearance()">
                     <option value="bold" selected>Pogrubiony</option>
@@ -100,17 +119,16 @@
                     <option value="italic">Kursywa</option>
                 </select>
             </div>
-        </div>
-
-        <div>
-            <label style="font-size:0.75rem; margin:0;">Rozmiar czcionki:</label>
-            <input type="range" id="scaleFontSize" class="thick-slider" min="8" max="24" value="12" oninput="updateCustomScaleAppearance()">
+            <div style="flex:1;">
+                <label style="font-size:0.75rem; margin:0;">Rozmiar: <span id="scaleFontSizeVal">12</span>px</label>
+                <input type="range" id="scaleFontSize" class="thick-slider" min="8" max="24" value="12" oninput="document.getElementById('scaleFontSizeVal').innerText=this.value; updateCustomScaleAppearance();">
+            </div>
         </div>
 
         <div style="padding: 5px 0;">
             <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85rem;">
                 <input type="checkbox" id="scaleRoundingToggle" checked onchange="updateCustomScaleAppearance()" style="width:16px; height:16px; accent-color: var(--accent);">
-                Zastosuj ludzkie zaokrąglenia (np. 1:800 zamiast 1:767)
+                Zastosuj ludzkie zaokrąglenia (np. 1:800)
             </label>
         </div>
     </div>
@@ -1221,6 +1239,7 @@
     justify-content: center;
     " onclick="showMeasureModal()">👁️</button>
 <script src="colors.js"></script>
+<script src="scale.js"></script>
 <script src="app.js"></script>
 
 
