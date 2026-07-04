@@ -400,23 +400,32 @@
     </div>
 </div>
    <!-- ZMODYFIKOWANY MODAL PDF -->
+<!-- ZMODYFIKOWANY MODAL PDF -->
 <div id="pdfModal" class="floating-modal" style="width: 420px;">
     <div class="modal-header">
         <span>📄 Elegancki Eksport PDF</span>
         <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('pdfModal')">X</button>
     </div>
-    <div class="modal-body">
+    <div class="modal-body" style="padding: 15px; display:flex; flex-direction:column; gap:10px;">
         <label>Tytuł wycieczki:</label>
-        <input type="text" id="pdfTitle" value="Wycieczka - Puszcza Wkrzańska" style="width:100%; padding:8px; margin: 4px 0 12px 0; border-radius:5px; border:1px solid #ccc; box-sizing: border-box;">
+        <input type="text" id="pdfTitle" value="Wycieczka - Puszcza Wkrzańska" style="width:100%; padding:8px; border-radius:5px; border:1px solid #ccc; box-sizing: border-box; background:rgba(0,0,0,0.1); color:inherit; border:1px solid rgba(255,255,255,0.2);">
         
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-            <div>
-                <label style="font-size: 0.8rem;">Kolor akcentów:</label>
-                <input type="color" id="pdfColor" value="#16a34a" style="width:100%; height: 30px; border:none; padding:0;">
+        <!-- NOWY SYSTEM WYBORU KOLORU AKCENTÓW DLA PDF -->
+        <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; margin-bottom: 5px; align-items: end;">
+            <div class="style-control-group" style="background: none; padding: 0; margin: 0;">
+                <label style="font-size: 0.8rem; display: block; margin-bottom: 4px;">Kolor akcentów:</label>
+                <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 6px; border-radius: 6px;">
+                    <button type="button" onclick="openCustomColorPicker('pdfColor', 'pdfAccent')" style="padding: 4px 8px; font-size: 0.75rem; background: var(--accent); margin:0;">Wybierz</button>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span id="pdfColorHex" style="font-family: monospace; font-size: 0.8em; opacity: 0.8;">#16A34A</span>
+                        <div id="pdfColorPreview" class="color-preview-rect" style="background-color: #16a34a; width: 30px; height: 20px;"></div>
+                    </div>
+                    <input type="hidden" id="pdfColor" value="#16a34a">
+                </div>
             </div>
             <div>
-                <label style="font-size: 0.8rem;">Czcionka:</label>
-                <select id="pdfFont" style="width:100%; padding: 4px;">
+                <label style="font-size: 0.8rem; display: block; margin-bottom: 4px;">Czcionka:</label>
+                <select id="pdfFont" style="width:100%; padding: 6px; border-radius: 6px; background: rgba(0,0,0,0.1); color: inherit; border: 1px solid rgba(255,255,255,0.2); font-size: 0.85rem;">
                     <option value="'Segoe UI', sans-serif">Nowoczesna (Segoe)</option>
                     <option value="Georgia, serif">Klasyczna (Georgia)</option>
                     <option value="'Courier New', monospace">Maszynowa</option>
@@ -424,21 +433,21 @@
             </div>
         </div>
 
-        <div id="pdfMapStatus" style="font-size: 0.8rem; padding: 8px; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; margin-bottom: 10px;">
+        <div id="pdfMapStatus" style="font-size: 0.8rem; padding: 8px; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; margin-bottom: 5px; border-radius: 4px;">
             Sprawdzanie dostępności mapy z sesji...
         </div>
         
-        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; background: rgba(0,0,0,0.05); padding: 10px; border-radius: 6px;">
-            <label><input type="checkbox" id="pdfIncludeStats" checked> Statystyki (Dystans, Czas, Podejścia)</label>
-            <label><input type="checkbox" id="pdfIncludeMap" checked> Mapa trasy <small id="pdfMapLabel">(Zrzut z okna głównego)</small></label>
-            <label><input type="checkbox" id="pdfIncludeElev" checked> Profil wysokościowy</label>
-            <label><input type="checkbox" id="pdfIncludeDesc" checked> Nawigacja (Opis krok po kroku)</label>
-            <label><input type="checkbox" id="pdfIncludePoints" checked> Lista punktów nawigacyjnych</label>
-            <label><input type="checkbox" id="pdfIncludeStops" checked> Lista postojów</label>
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; background: rgba(0,0,0,0.15); padding: 10px; border-radius: 6px;">
+            <label style="cursor:pointer;"><input type="checkbox" id="pdfIncludeStats" checked> Statystyki (Dystans, Czas, Podejścia)</label>
+            <label style="cursor:pointer;"><input type="checkbox" id="pdfIncludeMap" checked> Mapa trasy <small id="pdfMapLabel">(Zrzut z okna głównego)</small></label>
+            <label style="cursor:pointer;"><input type="checkbox" id="pdfIncludeElev" checked> Profil wysokościowy</label>
+            <label style="cursor:pointer;"><input type="checkbox" id="pdfIncludeDesc" checked> Nawigacja (Opis krok po kroku)</label>
+            <label style="cursor:pointer;"><input type="checkbox" id="pdfIncludePoints" checked> Lista punktów nawigacyjnych</label>
+            <label style="cursor:pointer;"><input type="checkbox" id="pdfIncludeStops" checked> Lista postojów</label>
         </div>
 
-        <button onclick="openCustomDescModal()" style="width:100%; background: #8b5cf6; margin-top: 10px; padding: 8px;">✏️ Dodaj własny opis / notatki do PDF</button>
-        <button onclick="generatePDF()" id="pdfGenBtn" style="width:100%; background: #22c55e; margin-top: 10px; padding: 10px; font-weight: bold;">Generuj Elegancki PDF</button>
+        <button onclick="openCustomDescModal()" style="width:100%; background: #8b5cf6; margin-top: 5px; padding: 8px;">✏️ Dodaj własny opis / notatki do PDF</button>
+        <button onclick="generatePDF()" id="pdfGenBtn" style="width:100%; background: #22c55e; margin-top: 5px; padding: 10px; font-weight: bold;">Generuj Elegancki PDF</button>
     </div>
 </div>
 
@@ -470,21 +479,22 @@
     </div>
 </div>
 
-<!-- NOWY MODAL: WŁASNY OPIS PDF -->
+<!-- NOWY MODAL: WŁASNY OPIS PDF (POZIOME IKONY) -->
 <div id="customDescModal" class="floating-modal" style="width: 450px; z-index: 2500;">
     <div class="modal-header">
         <span>📝 Własny opis do PDF</span>
         <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('customDescModal')">X</button>
     </div>
-    <div class="modal-body">
+    <div class="modal-body" style="padding:15px; display:flex; flex-direction:column; gap:10px;">
+        <!-- Poziomy i responsywny pasek edytora bogatego tekstu -->
         <div class="rt-editor-toolbar">
-            <button onclick="formatText('bold')" title="Pogrubienie"><b>B</b></button>
-            <button onclick="formatText('italic')" title="Kursywa"><i>I</i></button>
-            <button onclick="formatText('underline')" title="Podkreślenie"><u>U</u></button>
-            <button onclick="formatText('insertUnorderedList')" title="Lista">ul</button>
+            <button type="button" onclick="formatText('bold')" title="Pogrubienie"><b>B</b></button>
+            <button type="button" onclick="formatText('italic')" title="Kursywa"><i>I</i></button>
+            <button type="button" onclick="formatText('underline')" title="Podkreślenie"><u>U</u></button>
+            <button type="button" onclick="formatText('insertUnorderedList')" title="Lista punktowana">ul</button>
         </div>
         <div id="pdfCustomDescEditor" class="rt-editor-content" contenteditable="true" placeholder="Wpisz tutaj swój wstęp, notatki lub podsumowanie trasy..."></div>
-        <button onclick="closeModal('customDescModal')" style="width:100%; background: #3b82f6; margin-top:10px;">Zapisz treść</button>
+        <button type="button" onclick="closeModal('customDescModal')" style="width:100%; background: #3b82f6; margin-top: 5px; padding:10px; font-weight:bold;">Zapisz treść</button>
     </div>
 </div>
 <!-- GŁÓWNY MODAL EKSPORTU -->
@@ -1289,6 +1299,7 @@
 <script src="scale.js"></script>
 <script src="copyright.js"></script>
 <script src="exportStyle.js"></script>
+<script src="pdf.js"></script>
 <script src="app.js"></script>
 
 
