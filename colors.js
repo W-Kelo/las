@@ -136,7 +136,6 @@ function getGradientColorAt(gradientConfig, factor) {
     return interpolateColor(leftStop.hex, rightStop.hex, localFactor);
 }
 
-/* --- OBSŁUGA OBSZARU WYBORU KOLORÓW --- */
 function openCustomColorPicker(targetId, type = 'line') {
     activeColorPickerTarget = targetId;
     activeColorPickerType = type;
@@ -147,7 +146,11 @@ function openCustomColorPicker(targetId, type = 'line') {
     const currentValElement = document.getElementById(targetId);
     let currentVal = currentValElement ? currentValElement.value : '#22c55e';
 
-    if (currentVal.startsWith('linear-gradient')) {
+    // Jeśli edytujemy pojedynczy punkt gradientu, wymuszamy tryb jednolitego koloru (prewencja rekurzji)
+    if (type === 'gradientPoint') {
+        currentPickerMode = 'color';
+        tempSelectedColor = currentVal;
+    } else if (currentVal.startsWith('linear-gradient')) {
         currentPickerMode = 'gradient';
         tempSelectedGradient = currentVal;
     } else {
@@ -162,7 +165,13 @@ function openCustomColorPicker(targetId, type = 'line') {
     modal.style.left = '50%';
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
-    modal.style.zIndex = '99999';
+    
+    // Z-INDEX TUNELOWANIE (Rozwiązanie błędu niewidocznego modalu nad gradientami)
+    if (type === 'gradientPoint') {
+        modal.style.zIndex = '200000'; // Wyżej niż modal gradientu (100000)
+    } else {
+        modal.style.zIndex = '99999';  // Standardowa warstwa nad oknem stylu trasy
+    }
 
     if (currentPickerMode === 'color') {
         const hsl = hexToHsl(tempSelectedColor);
@@ -181,12 +190,20 @@ function selectPickerMode(mode) {
     updateCustomColorPickerUI();
 }
 
-/* --- OCZYSZCZONA I POPRAWNA AKTUALIZACJA UI MODALU WYBORU --- */
 function updateCustomColorPickerUI() {
     const singleColorSection = document.getElementById('singleColorPickerSection');
     const gradientPickerSection = document.getElementById('gradientPickerSection');
     const btnSelectColor = document.getElementById('btnSelectColorMode');
     const btnSelectGradient = document.getElementById('btnSelectGradientMode');
+
+    // UKRYWANIE PRZEŁĄCZNIKA TRYBÓW (Wybór koloru punktu gradientu musi być czystym kolorem jednolitym)
+    const modeSwitcher = btnSelectColor ? btnSelectColor.parentElement : null;
+    if (activeColorPickerType === 'gradientPoint') {
+        currentPickerMode = 'color'; // Wymuszenie koloru jednolitego
+        if (modeSwitcher) modeSwitcher.style.display = 'none';
+    } else {
+        if (modeSwitcher) modeSwitcher.style.display = 'flex';
+    }
 
     if (currentPickerMode === 'color') {
         if (singleColorSection) singleColorSection.style.display = 'block';
@@ -215,7 +232,6 @@ function updateCustomColorPickerUI() {
 
     renderRecentColors();
 }
-
 function updateFinalPreview(value) {
     const finalPreview = document.getElementById('finalColorPreview');
     const finalHex = document.getElementById('finalColorHex');
@@ -239,6 +255,7 @@ function closeCustomColorPicker(confirm) {
     const modal = document.getElementById('customColorPickerModal');
     if (modal) {
         modal.style.display = 'none';
+        modal.style.zIndex = '99999'; // Przywrócenie domyślnego z-index po zamknięciu
     }
 
     if (confirm && activeColorPickerTarget) {
@@ -256,6 +273,7 @@ function closeCustomColorPicker(confirm) {
 
         targetInput.value = finalValue;
 
+        // Wywołanie zdarzenia wejściowego, które automatycznie zaktualizuje konfigurację i podgląd na żywo
         const event = new Event('input', { bubbles: true });
         targetInput.dispatchEvent(event);
 
