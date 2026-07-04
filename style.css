@@ -1188,8 +1188,25 @@ select.style-select {
     color: #3b82f6; /* Delikatny błękit przy najechaniu myszką */
     border-bottom: 1px solid #3b82f6;
 }
+
 /* ===================================
-   22. TAJEMNICZE POZOSTAŁOŚCI
+   22. POPRAWKKI ESTETYCZNE DLA COLORIS
+=================================== */  
+.clr-field {
+    display: inline-block;
+    width: 100%; /* Dopasowanie do szerokości pól w formularzu */
+    max-width: 100%;
+}
+.clr-field button {
+    border-radius: 5px; /* Zaokrąglenie podglądu koloru */
+    width: 32px !important;
+    height: 32px !important;
+}
+.floating-modal input[data-coloris] {
+    padding-left: 40px !important; /* Miejsce na kółko podglądu koloru wewnątrz pola */
+}
+/* ===================================
+   23. TAJEMNICZE POZOSTAŁOŚCI
 =================================== */        
 .modal-footer-actions {
     display: flex;
@@ -1200,7 +1217,7 @@ select.style-select {
 }
 .light .modal-footer-actions { border-top-color: rgba(0,0,0,0.1); }
 /* ===================================
-   23. MOBILE MEDIA QUERY
+   24. MOBILE MEDIA QUERY
 =================================== */
 /* --- Wersja mobilna --- */
 @media (max-width: 768px) {
