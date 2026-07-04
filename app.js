@@ -1,47 +1,3 @@
-const OSM_BLACKLIST = {
-    amenity: [
-        'parking_entrance',
-        'bbq',
-        'picnic_site',
-        'bicycle_parking',
-        'waste_transfer_station',
-        'loading_dock'
-    ],
-    man_made: [
-        'survey_point',
-        'utility_pole'
-    ]
-};
- 
-/* --- CZARNA LISTA OSM (KLUCZ: [LISTA WARTOŚCI]) --- */ 
-const OSM_HIDE_RULES = {
-    "access": ["private", "no", "customers", "prywatny", "zamknięty"], // Ukryj prywatne/brak dostępu
-    "parking": ["private", "multi-storey", "underground"],             // Ukryj parkingi prywatne/piętrowe
-    "parking_space": ["disabled"],
-    "shelter_type": ["public_transport"],                             // Ukrywam wiaty przystnakowe
-    "amenity": ["vending_machine", "waste_disposal", "atm"],          // Ukryj automaty, śmietniska, bankomaty
-    "abandoned": ["yes"],                                             // Ukryj obiekty opuszczone
-    "construction": ["yes"]                                           // Ukryj obiekty w budowie
-};
- 
-// Funkcja sprawdzająca, czy dany punkt powinien zostać ukryty
-function isForbiddenOSM(tags) {
-    if (!tags) return false;
-
-    for (const key in tags) {
-        const value = tags[key].toLowerCase();
-        
-        // Sprawdzamy, czy dla tego klucza (np. "access") mamy jakieś zakazane wartości
-        if (OSM_HIDE_RULES[key]) {
-            if (OSM_HIDE_RULES[key].includes(value)) {
-              //  console.log(`[Filtr OSM] Ukryto obiekt: ${tags.name || 'bez nazwy'} z powodu ${key}=${value}`);
-                return true; // Znaleziono zakazaną parę - ukryj!
-            }
-        }
-    }
-    return false;
-}
-
 /* ================= KONFIGURACJA MAPY ================= */
 const map = L.map('map', { 
     zoomControl: false,
@@ -235,41 +191,9 @@ const customPoiLayer = L.layerGroup().addTo(map);
     document.addEventListener('DOMContentLoaded', () => {
     loadUserSavedPois();
 });
-const OVERPASS_SERVERS = [
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
-    'https://overpass.nchc.org.tw/api/interpreter'
-];
-  async function initOSM() {
-    const CACHE_KEY = 'osm_puszcza_wkrzanska_v1';
 
-    const query = `[out:json][timeout:25];
-    (
-        relation["route"="hiking"](53.4,14.3,53.6,14.7);
-        node["amenity"~"shelter|drinking_water|parking"](53.4,14.3,53.6,14.7);
-        node["tourism"~"viewpoint|picnic_site|information"](53.4,14.3,53.6,14.7);
-    );
-    out body;
-    >;
-    out skel qt;`;
+ 
 
-    try {
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-            loadOSMData(JSON.parse(cached));
-            return;
-        }
-
-        const data = await fetchFromAnyOverpass(query);
-        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-        loadOSMData(data);
-
-    } catch (e) {
-        console.error('OSM init failed', e);
-    }
-}
-
-initOSM();
     // --- SYSTEM WŁASNYCH KOMUNIKATÓW ---
 function showCustomAlert(msg) {
     document.getElementById('customAlertMsg').innerHTML = msg;
@@ -1740,103 +1664,7 @@ function toggleSidebar() { document.getElementById('sidebar').classList.toggle('
         }
     }
 }
-async function fetchFromAnyOverpass(query) {
-    for (const server of OVERPASS_SERVERS) {
-        try {
-            const res = await fetch(server, {
-                method: 'POST',
-                body: query
-            });
-            if (!res.ok) throw new Error();
-            return await res.json();
-        } catch {
-            console.warn(`Overpass mirror failed: ${server}`);
-        }
-    }
-    throw new Error("All Overpass servers failed");
-}
 
-
-async function loadOSMData(externalData = null) {
-    const query = `[out:json][timeout:25];(relation["route"="hiking"](53.4,14.3,53.6,14.7);node["amenity"~"shelter|drinking_water|parking"](53.4,14.3,53.6,14.7);node["tourism"~"viewpoint|picnic_site|information"](53.4,14.3,53.6,14.7););out body;>;out skel qt;`;
-    
-    try {
-        let data;
-        
-        // Sprawdzamy, czy dane już mamy, czy musimy je pobrać
-        if (externalData) {
-            data = externalData;
-        } else {
-            const resp = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
-            if (!resp.ok) return;
-            data = await resp.json();
-        }
-
-        const nodes = {}, ways = {};
-        data.elements.forEach(e => { if (e.type === "node") nodes[e.id] = [e.lat, e.lon]; });
-        data.elements.forEach(e => { if (e.type === "way") ways[e.id] = e.nodes.map(nid => nodes[nid]).filter(n => n); });
-
-        data.elements.filter(e => e.type === "relation").forEach(rel => {
-            const sym = (rel.tags.osmc_symbol || rel.tags.color || "").toLowerCase();
-            let color = '#888';
-            if (sym.includes('red')) color = '#ef4444'; 
-            else if (sym.includes('blue')) color = '#3b82f6'; 
-            else if (sym.includes('green')) color = '#22c55e'; 
-            else if (sym.includes('yellow')) color = '#eab308'; 
-            else if (sym.includes('black')) color = '#000';
-            
-     rel.members.forEach(m => { 
-                if (m.type === "way" && ways[m.ref]) {
-                    // Zapisujemy szlak do logiki nawigacji
-                    const wayCoords = ways[m.ref].map(c => L.latLng(c[0], c[1]));
-                    globalTrails.push({ name: rel.tags.name || "Szlak turystyczny", coords: wayCoords });
-                    
-                    L.polyline(ways[m.ref], {color: color, weight: 4, opacity: 0.7, dashArray: '8, 8'})
-                     .bindTooltip(rel.tags.name || "Szlak")
-                     .addTo(hikingLayer); 
-                } 
-            });
-        });
-
-        data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
-    // 1. Stary filtr kategorii (jeśli go używasz)
-    if (typeof isBlacklistedOSM === 'function' && isBlacklistedOSM(e)) return;
-    
-    // 2. NOWY FILTR WARTOŚCI (np. parking=private)
-    if (isForbiddenOSM(e.tags)) return; 
-            let icon = '📍';
-            if (e.tags.amenity === 'shelter') icon = '🏠';
-            else if (e.tags.tourism === 'viewpoint') icon = '🔭';
-            else if (e.tags.amenity === 'parking') icon = '🅿️';
-            else if (e.tags.tourism === 'information') icon = 'ℹ️';
-            else if (e.tags.amenity === 'drinking_water' || e.tags.tourism === 'drinking_water') icon = '💧';
-            
-            const osmName = e.tags.name || translateOSM(e.tags.amenity || e.tags.tourism || 'Punkt');
-            globalOsmPois.push({ latlng: L.latLng(e.lat, e.lon), name: osmName });
-
-            const marker = L.marker([e.lat, e.lon], {
-                icon: L.divIcon({
-                    html: `<div style="font-size:18px">${icon}</div>`,
-                    className: 'poi-icon'
-                })
-            }).addTo(poiLayer);
-
-            marker.on('click', () => {
-                const osmData = {
-                    name: osmName,
-                    icon: icon,
-                    category: "Baza OpenStreetMap",
-                    description: formatOSMDescription(e.tags, e.id),
-                    photos: "" 
-                };
-                openCustomPoiModal(osmData);
-            });
-        });
-
-    } catch (err) {
-        console.error("Błąd ładowania OSM:", err);
-    }
-}
 
 
 
@@ -1844,150 +1672,8 @@ async function loadOSMData(externalData = null) {
     document.getElementById('pdfModal').style.display = 'flex';
     makeDraggable(document.getElementById('pdfModal'));
 }
-    function buildOSMPopup(e) {
-    const t = e.tags || {};
-    let html = '';
-
-    if (t.name) {
-        html += `<b>${t.name}</b><br>`;
-    } else if (t.amenity) {
-        html += `<b>${translateOSM(t.amenity)}</b><br>`;
-    } else if (t.tourism) {
-        html += `<b>${translateOSM(t.tourism)}</b><br>`;
-    } else if (t.historic) {
-        html += `<b>${translateOSM(t.historic)}</b><br>`;
-    } else if (t.natural) {
-        html += `<b>${translateOSM(t.natural)}</b><br>`;
-    } else {
-        html += `<b>Obiekt OSM</b><br>`;
-    }
-
-
-    html += `<hr style="margin:4px 0">`;
-    for (const k in t) {
-        html += `<small>${k}: ${t[k]}</small><br>`;
-    }
-
-    // Link do OSM
-    html += `<hr style="margin:4px 0">
-        <a href="https://www.openstreetmap.org/node/${e.id}" target="_blank">
-        🔗 Zobacz w OpenStreetMap
-        </a>`;
-
-    return html;
-}
-function translateOSM(val) {
-    const dict = {
-        shelter: 'Wiata',
-        parking: 'Parking',
-        bench: 'Ławka',
-        drinking_water: 'Poidełko',
-        viewpoint: 'Punkt widokowy',
-        information: 'Tablica informacyjna',
-        picnic_site: 'Miejsce piknikowe'
-    };
-    return dict[val] || val;
-}
-/* --- INTELIGENTNY TŁUMACZ OSM --- */
-const OSM_DICT = {
-    // KLUCZE (Prawa strona)
-    "amenity": "Udogodnienie",
-    "tourism": "Turystyka",
-    "historic": "Zabytek",
-    "natural": "Natura",
-    "information": "Informacja",
-    "board_type": "Typ tablicy",
-    "direction": "Kierunek",
-    "operator": "Operator/Właściciel",
-    "ref": "Numer referencyjny",
-    "height": "Wysokość",
-    "material": "Materiał",
-    "description": "Opis",
-    "map_type": "Typ mapy",
-    "map_size": "Rozmiar mapy",
-    "Name:de": "Nazwa w j. niemieckim",
-    "Bicycle": "Rowerowa",
-    "shelter_type": "Typ wiaty",
-    "fee": "Opłata",
-    "surface": "Nawierzchnia",
-    "image": "Zdjęcie",
-    "nature": "Natura",
-    "hiking": "Wędrowanie",
-    "picnic_site": "Miejsce piknikowe",
-    "public_transport": "Transport publiczny",
-    "access": "Dostępne",
-    "stele": "Stela",
-    "private": "Prywatny",
-    "underground": "Podziemny",
-    "picnic_shelter": "Wiata piknikowa",
-    "citymap": "Mapa miasta",
-    "history": "Historia",
-    "stela": "słupek przystankowy",
-    "gazebo": "altana/pawilon",
-    "fireplace": "miejsce na ognisko",
-    "street side": "wzdłuż ulicy",
-    "ground": "nawierzchnia",
-    "supervised": "nadzorowany",
-    "capacity": "pojedmność",
-    "Name:de:": "Po niemiecku:",
-    
-    
-    
-    
     
 
-    // WARTOŚCI (Lewa strona)
-    "shelter": "Wiata / Schronienie",
-    "bench": "Ławka",
-    "waste_basket": "Kosz na śmieci",
-    "drinking_water": "Poidełko",
-    "viewpoint": "Punkt widokowy",
-    "notice": "Ogłoszenie / Tablica informacyjna",
-    "board": "Tablica",
-    "guidepost": "Drogowskaz",
-    "map": "Mapa / Plan",
-    "wood": "Drewno",
-    "stone": "Kamień",
-    "yes": "Tak",
-    "no": "Nie",
-    "public": "Publiczny",
-    "forest": "Las",
-    "peak": "Szczyt",
-    "tree": "Drzewo",
-    "monument": "Pomnik",
-    "memorial": "Miejsce pamięci",
-    "weather_shelter": "Wiata przeciwdeszczowa",
-    "picnic_table": "Stół piknikowy",
-    "topo": "Topograficzna",
-    "bicycle_parking": "Parking rowerowy"
-};
-
-// Główna funkcja tłumacząca
-function smartTranslate(text) {
-    if (!text) return "";
-    const cleanText = text.toString().toLowerCase().trim();
-    
-    // 1. Sprawdź czy jest w słowniku
-    if (OSM_DICT[cleanText]) return OSM_DICT[cleanText];
-
-    // 2. Jeśli to "operator" lub nazwa własna (zaczyna się z dużej litery w oryginale) - nie tłumacz
-    if (text.toString().match(/[A-Z]/)) return text;
-
-    // 3. Jeśli nie ma w słowniku, upiększ tekst (usuń podkreślniki, powiększ pierwszą literę)
-    return cleanText
-        .replace(/_/g, ' ')
-        .replace(/^\w/, c => c.toUpperCase());
-}
-
-function isBlacklistedOSM(e) {
-    const t = e.tags || {};
-    for (const key in OSM_BLACKLIST) {
-        if (t[key] && OSM_BLACKLIST[key].includes(t[key])) {
-            return true;
-        }
-    }
-    return false;
-}
 
 // --- LOGIKA EDYTORA TEKSTU DO PDF ---
 function openCustomDescModal() {
@@ -4141,35 +3827,7 @@ function linkify(text) {
     return parsed;
 }
 
-function formatOSMDescription(tags, id) {
-    let html = `<div style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 8px;">`;
-    html += `<ul style="margin:0; padding-left:0; list-style:none; line-height: 1.8;">`;
 
-    for (const k in tags) {
-        // Ignorujemy tagi techniczne, których nie chcemy pokazywać
-        if (['name', 'source', 'id', 'created_by', 'wheelchair'].includes(k)) continue;
-
-        const polskiKlucz = smartTranslate(k);
-        const polskaWartosc = smartTranslate(tags[k]);
-
-        // Przepuszczenie wartości przez parser linków
-        const wartoscZLinkami = linkify(polskaWartosc);
-
-        html += `
-            <li style="display: flex; border-bottom: 1px solid rgba(255,255,255,0.1); padding: 4px 0; align-items: flex-start;">
-                <span style="color: var(--accent); font-weight: bold; width: 40%; font-size: 0.85rem; flex-shrink: 0; padding-right: 5px; box-sizing: border-box;">${polskiKlucz}:</span>
-                <span style="width: 60%; font-size: 0.85rem; color: var(--text); word-break: break-all; overflow-wrap: break-word; white-space: normal;">${wartoscZLinkami}</span>
-            </li>`;
-    }
-    
-    html += `</ul></div>`;
-    html += `
-        <div style="margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 10px; text-align: center;">
-            <a href="https://www.openstreetmap.org/node/${id}" target="_blank" class="custom-app-link">🔗 Szczegóły w OpenStreetMap</a>
-        </div>`;
-    
-    return html;
-}
 // Funkcja wypełniająca i otwierająca Modal
 function openCustomPoiModal(poiData) {
     document.getElementById('cpoiTitle').innerText = `${poiData.icon || '📍'} ${poiData.name}`;
