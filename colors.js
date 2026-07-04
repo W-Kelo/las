@@ -181,6 +181,7 @@ function selectPickerMode(mode) {
     updateCustomColorPickerUI();
 }
 
+/* --- OCZYSZCZONA I POPRAWNA AKTUALIZACJA UI MODALU WYBORU --- */
 function updateCustomColorPickerUI() {
     const singleColorSection = document.getElementById('singleColorPickerSection');
     const gradientPickerSection = document.getElementById('gradientPickerSection');
