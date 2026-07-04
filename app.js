@@ -23,7 +23,7 @@ const OSM_HIDE_RULES = {
     "abandoned": ["yes"],                                             // Ukryj obiekty opuszczone
     "construction": ["yes"]                                           // Ukryj obiekty w budowie
 };
-
+ 
 // Funkcja sprawdzająca, czy dany punkt powinien zostać ukryty
 function isForbiddenOSM(tags) {
     if (!tags) return false;
