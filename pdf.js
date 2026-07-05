@@ -1,7 +1,7 @@
 /* =========================================================
    pdf.js - MODUŁ ELEGANCKIEGO EKSPORTU PDF I BOGATEGO TEKSTU
 ========================================================= */
-
+let customPdfText = "";
 function openPdfModal() {
     const modal = document.getElementById('pdfModal');
     if (modal) {
