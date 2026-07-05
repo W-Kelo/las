@@ -52,9 +52,6 @@ let tempLegendClickLatLng = null;
 let selectedEmoji = "📍";
 let exportMapDark = dark; 
 let exportTileLayer = null;
-let userSavedPois = []; 
-let tempVisibleMarker = null; 
-let manualPointMode = false; 
 let isDrawMode = false;
 let elevAnimFrame;
 let elevPhase = 0;
@@ -80,9 +77,7 @@ let exportPointSettings = {
 };
 
 let tempPickerType = '';
-const userSavedLayer = L.layerGroup().addTo(map);
 
-const EMOJIS = ["📍","🌲","💧","🅿️","🔥","📸","🍔","🚴","🚷","⚠️","ℹ️", "🔭", "⛰️", "🏰", "🚑", "🚂", "⚓", "⛺", "🍄", "🐗", "🦌", "🦆", "⛪", "🏊", "🏠"];
 
 
 
@@ -102,7 +97,7 @@ document.body.className = "light";
 
    document.addEventListener('DOMContentLoaded', () => {
     // 1. Ładowanie danych
-    loadUserSavedPois();
+   
     
     
     // 2. Mobilna wyszukiwarka
@@ -149,7 +144,6 @@ const hikingLayer = L.layerGroup().addTo(map);
 const poiLayer = L.layerGroup().addTo(map);
 const customPoiLayer = L.layerGroup().addTo(map); 
     document.addEventListener('DOMContentLoaded', () => {
-    loadUserSavedPois();
 });
 
  
@@ -203,23 +197,7 @@ function showCustomConfirm(msg, onConfirm, onCancel = null) {
         if (onCancel) onCancel();
     };
 }
-function loadUserSavedPois() {
-    const saved = localStorage.getItem('gpx_user_pois');
-    if (saved) {
-        userSavedPois = JSON.parse(saved);
-        userSavedPois.forEach(poi => {
-            poi.storage = 'local'; // Wymuszamy status
-            renderUserSavedPoi(poi, false);
-        });
-    }
-}
-  
-    function enableManualPoiAdd() {
-    closeModal('myPointsModal');
-    manualPointMode = true;
-    map.getContainer().style.cursor = 'crosshair';
-    showCustomAlert("Kliknij w dowolne miejsce na mapie, aby dodać swój punkt.");
-}
+
 /* =========================================================================
  DYNAMICZNA WIDOCZNOŚĆ PRZYCISKU "WYCZYŚĆ TRASĘ"
    ========================================================================= */
@@ -2664,7 +2642,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // Inicjalizacja pobierania danych przy starcie strony
 // Podmień istniejący event DOMContentLoaded na ten:
 document.addEventListener('DOMContentLoaded', () => {
-    loadUserSavedPois();
    
     
     // Sprawienie, że wszystkie modale są pływające
@@ -2841,14 +2818,7 @@ function openCustomPoiModal(poiData) {
 
 
 
-// Funkcja pomocnicza: usuwanie markera wyszukiwania z mapy
-function removeSearchMarkerAndClose() {
-    if (searchMarker) {
-        map.removeLayer(searchMarker);
-        searchMarker = null;
-    }
-    closeModal('customPoiModal');
-}
+
 
 
 // Obsługa klawisza ESC do zamykania Lightboxa i innych modali
@@ -2861,122 +2831,9 @@ document.addEventListener('keydown', (e) => {
     }
 });
     // --- FUNKCJE OBSŁUGI KREATORA PUNKTÓW ---
-function selectMiniEmoji(e, btn) {
-    document.getElementById('searchEmojiGrid').dataset.selected = e;
-    document.querySelectorAll('.emoji-btn-mini').forEach(b => b.classList.remove('selected'));
-    btn.classList.add('selected');
-}
 
-function saveSearchPoi(lat, lng, storageType, existingId = null) {
-    const name = document.getElementById('savePoiName').value.trim() || "Własny punkt";
-    const desc = document.getElementById('savePoiDesc').value.trim();
-    const icon = document.getElementById('searchEmojiGrid').dataset.selected || "📍";
 
-    const isLocal = (storageType === 'local');
 
-    if (existingId) {
-        // --- EDYCJA ISTNIEJĄCEGO ---
-        const idx = userSavedPois.findIndex(p => p.id === existingId);
-        if(idx > -1) {
-            const p = userSavedPois[idx];
-            p.name = name; p.desc = desc; p.icon = icon; p.storage = storageType;
-            
-            // Re-render
-            if (p._markerRef) userSavedLayer.removeLayer(p._markerRef);
-            userSavedPois.splice(idx, 1);
-            // Usuń stary wpis z bazy globalnej
-            globalCustomPois = globalCustomPois.filter(gp => gp.id !== existingId);
-            
-            renderUserSavedPoi(p, true); // True wyzwoli zapis struktury
-        }
-    } else {
-        // --- TWORZENIE NOWEGO ---
-        const newPoiObj = {
-            id: 'usr_' + Date.now(), lat: lat, lng: lng, name: name, desc: desc, icon: icon, storage: storageType, rawTitle: name
-        };
-        renderUserSavedPoi(newPoiObj, true);
-    }
-    
-    if(searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
-    closeModal('customPoiModal');
-    if(document.getElementById('myPointsModal').style.display === 'flex') renderMyPointsList();
-}
-
-function renderUserSavedPoi(poi, triggerStorageSave) {
-    // Upewniamy się, że obiekt jest w tablicy (jeśli to nowy)
-    if (!userSavedPois.find(p => p.id === poi.id)) {
-        userSavedPois.push(poi);
-    }
-
-    // 1. Bezpieczny zapis do LocalStorage (Tylko czyste dane, bez obiektów Leaflet!)
-    if (triggerStorageSave) {
-        const safeLocals = userSavedPois
-            .filter(p => p.storage === 'local')
-            .map(p => ({
-                id: p.id, lat: p.lat, lng: p.lng, name: p.name,
-                desc: p.desc, icon: p.icon, storage: p.storage, rawTitle: p.rawTitle
-            }));
-        localStorage.setItem('gpx_user_pois', JSON.stringify(safeLocals));
-    }
-
-    // 2. Formatowanie dla głównej bazy systemu
-    const fullPoiObj = {
-        id: poi.id,
-        latlng: L.latLng(poi.lat, poi.lng),
-        name: poi.name,
-        icon: poi.icon,
-        category: poi.storage === 'local' ? "Zapisane w pamięci przeglądarki" : "Zapisane tylko na tę sesję",
-        description: poi.desc,
-        isUserSaved: true,
-        storage: poi.storage,
-        rawLat: poi.lat,
-        rawLng: poi.lng,
-        rawTitle: poi.rawTitle || poi.name
-    };
-
-    // Zabezpieczenie przed dublowaniem w bazie globalnej przy edycji
-    globalCustomPois = globalCustomPois.filter(p => p.id !== poi.id);
-    globalCustomPois.push(fullPoiObj);
-
-    // 3. Renderowanie Markera
-    const marker = L.marker([poi.lat, poi.lng], {
-        icon: L.divIcon({
-            html: `<div style="font-size:26px; filter: drop-shadow(0px 2px 4px rgba(236, 72, 153, 0.8)); transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.2)'" onmouseout="this.style.transform='scale(1)'">${poi.icon}</div>`,
-            className: 'poi-icon'
-        }),
-        zIndexOffset: 450
-    }).addTo(userSavedLayer);
-
-    // Dopisanie markerów TYLKO do działania w locie
-    fullPoiObj._markerRef = marker;
-    poi._markerRef = marker;
-
-    marker.on('click', () => { openCustomPoiModal(fullPoiObj); highlightAndShowMarker(fullPoiObj); });
-}
-
-function deleteUserSavedPoi(id) {
-    showCustomConfirm("Czy na pewno chcesz usunąć ten punkt?", () => {
-        const savedIndex = userSavedPois.findIndex(p => p.id === id);
-        if (savedIndex > -1) {
-            const poi = userSavedPois[savedIndex];
-            if (poi._markerRef) userSavedLayer.removeLayer(poi._markerRef);
-            userSavedPois.splice(savedIndex, 1);
-            
-            // Bezpieczny zapis do LocalStorage po usunięciu
-            const safeLocals = userSavedPois
-                .filter(p => p.storage === 'local')
-                .map(p => ({
-                    id: p.id, lat: p.lat, lng: p.lng, name: p.name,
-                    desc: p.desc, icon: p.icon, storage: p.storage, rawTitle: p.rawTitle
-                }));
-            localStorage.setItem('gpx_user_pois', JSON.stringify(safeLocals));
-        }
-
-        globalCustomPois = globalCustomPois.filter(p => p.id !== id);
-        closeModal('customPoiModal');
-        if(document.getElementById('myPointsModal').style.display === 'flex') renderMyPointsList();
-    });
-}
     async function searchLocation() {
     const val = document.getElementById('searchInput').value.trim();
     if(!val) return;
@@ -3030,112 +2887,7 @@ function deleteUserSavedPoi(id) {
         document.body.style.cursor = 'default';
     }
 }
-   function openMyPointsModal() {
-    document.getElementById('myPointsModal').style.display = 'flex';
-    document.getElementById('myPointsSearch').value = '';
-    document.getElementById('myPointsFilter').value = 'all';
-    renderMyPointsList();
-    makeDraggable(document.getElementById('myPointsModal'));
-}
-
-function renderMyPointsList() {
-    const query = document.getElementById('myPointsSearch').value.toLowerCase();
-    const filter = document.getElementById('myPointsFilter').value;
-    const container = document.getElementById('myPointsListContainer');
-    
-    container.innerHTML = '';
-    
-    // Złączamy userSavedPois i routeStops (dla widoku unifikacji)
-    const combined = [...userSavedPois, ...routeStops];
-    
-    const filtered = combined.filter(p => {
-        const matchText = p.name.toLowerCase().includes(query) || (p.desc && p.desc.toLowerCase().includes(query));
-        let matchFilter = false;
-        if(filter === 'all') matchFilter = true;
-        else if (filter === 'stop' && p.isStop) matchFilter = true;
-        else if (filter === 'local' && p.storage === 'local') matchFilter = true;
-        else if (filter === 'session' && p.storage === 'session' && !p.isStop) matchFilter = true;
-        
-        return matchText && matchFilter;
-    });
-
-    if (filtered.length === 0) {
-        container.innerHTML = `<p style="text-align:center; opacity:0.6; font-size:0.9rem;">Brak punktów spełniających kryteria.</p>`;
-        return;
-    }
-
-    // Eliminujemy duplikaty (jeśli z jakiegoś powodu ID się pokrywa, co nie powinno mieć miejsca, ale dla bezpieczeństwa)
-    const uniqueMap = new Map();
-    filtered.forEach(p => uniqueMap.set(p.id, p));
-
-    Array.from(uniqueMap.values()).forEach(p => {
-        const globalRef = globalCustomPois.find(gp => gp.id === p.id);
-        
-        let storageBadge = p.storage === 'local' ? `<span class="badge badge-local">💾 Na stałe</span>` : `<span class="badge badge-session">⏳ Sesja</span>`;
-        if (p.isStop) storageBadge = ''; // Dla postojów mamy osobny badge
-
-        const stopBadge = p.isStop ? `<span class="badge" style="background:#f59e0b; color:white;">☕ Postój Trasy</span>` : ``;
-        
-        const item = document.createElement('div');
-        item.className = 'my-point-list-item';
-        item.innerHTML = `
-            <div>
-                <span style="font-size:1.4rem; margin-right:5px;">${p.icon === 'dot' ? '☕' : p.icon}</span>
-                <div style="display:inline-block; vertical-align:middle;">
-                    <strong>${p.name}</strong><br>
-                    ${storageBadge} ${stopBadge} <small style="opacity:0.7">${p.desc ? p.desc.substring(0, 20)+'...' : ''}</small>
-                </div>
-            </div>
-            <div style="display:flex; gap:5px;">
-                ${p.isStop ? 
-                    `<button class="secondary icon-only" onclick="openStopsModal()">✏️</button>` : 
-                    `<button class="secondary icon-only" onclick="editPoiFromList('${p.id}')">✏️</button>`
-                }
-                <button class="danger icon-only" onclick="${p.isStop ? `deleteStop('${p.id}')` : `deleteUserSavedPoi('${p.id}')`}">🗑️</button>
-            </div>
-        `;
-        container.appendChild(item);
-    });
-}
-
-
-function editPoiFromList(id) {
-    // Najpierw szukamy w bieżącej sesji użytkownika
-    let poiRef = userSavedPois.find(p => p.id === id);
-    // Jeśli nie ma, szukamy w bazie globalnej (awaryjnie)
-    if(!poiRef) poiRef = globalCustomPois.find(gp => gp.id === id);
-    
-    if(poiRef) {
-        // Ujednolicenie struktury, jeśli punkt pochodzi z userSavedPois
-        const modalObj = {
-            id: poiRef.id,
-            name: poiRef.name,
-            icon: poiRef.icon,
-            category: poiRef.storage === 'local' ? "Zapisane w przeglądarce" : "Zapisane na sesję",
-            description: poiRef.desc,
-            isUserSaved: true,
-            storage: poiRef.storage,
-            rawLat: poiRef.lat || poiRef.latlng.lat,
-            rawLng: poiRef.lng || poiRef.latlng.lng,
-            rawTitle: poiRef.rawTitle || poiRef.name
-        };
-        const latlng = L.latLng(modalObj.rawLat, modalObj.rawLng);
-        map.setView(latlng, 15);
-        openCustomPoiModal(modalObj);
-    }
-}
-
-function deleteAllUserPois() {
-    showCustomConfirm("Uwaga! Czy na pewno chcesz usunąć WSZYSTKIE swoje punkty (z sesji i zapisane na stałe)?", () => {
-        userSavedPois.forEach(p => {
-            if(p._markerRef) userSavedLayer.removeLayer(p._markerRef);
-        });
-        userSavedPois = [];
-        localStorage.removeItem('gpx_user_pois');
-        globalCustomPois = globalCustomPois.filter(p => !p.isUserSaved);
-        renderMyPointsList();
-    });
-}
+   
   
 
 // Główny silnik synchronizujący punkty na mapie i w legendzie (POPRAWIONY)
