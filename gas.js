@@ -80,6 +80,7 @@ async function loadGoogleSheetsPOIs() {
         if (typeof initTrailsDatabase === 'function') {
             initTrailsDatabase();
         }
+       window.globalCustomPois = globalCustomPois;
     } catch (error) { // <-- Teraz catch prawidłowo łapie błędy z bloku try
         console.warn("Brak połączenia z Bazą Danych (Google Sheets) lub zły link. Punkty GS nie zostały wczytane.", error.message);
     } finally {
