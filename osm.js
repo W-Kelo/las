@@ -212,79 +212,96 @@ async function loadOSMData(externalData = null) {
         data.elements.forEach(e => { if (e.type === "way") ways[e.id] = e.nodes.map(nid => nodes[nid]).filter(n => n); });
 
         // Wyczyszczenie globalnej tablicy przed załadowaniem
-        window.processedTrails = [];
+      window.processedTrails = [];
         globalTrails = []; 
 
         data.elements.filter(e => e.type === "relation").forEach(rel => {
-            // Bezpieczne pobranie koloru z OSM
-            const sym = (rel.tags.osmc_symbol || "").toLowerCase();
+            // Bezpieczny odczyt kluczy z dwukropkiem bezpośrednio z tags
+            const sym = (rel.tags["osmc:symbol"] || rel.tags.osmc_symbol || "").toLowerCase();
             const tagColor = (rel.tags.color || "").toLowerCase();
-            let color = '#15803d'; // Bezpieczny domyślny kolor szlaku (zielony)
+            let color = '#22c55e'; // Domyślna bezpieczna zieleń
             
-            // Logika wyznaczania koloru linii szlaku na podstawie tagów i symbolu osmc
-            if (tagColor) {
-                if (tagColor.startsWith('#')) color = tagColor;
-                else if (['red', 'blue', 'green', 'yellow', 'black'].includes(tagColor)) {
-                    if (tagColor === 'red') color = '#ef4444';
-                    else if (tagColor === 'blue') color = '#3b82f6';
-                    else if (tagColor === 'green') color = '#22c55e';
-                    else if (tagColor === 'yellow') color = '#eab308';
-                    else if (tagColor === 'black') color = '#0f172a';
-                }
+            // Dokładne przypisywanie kolorów na podstawie OSM
+            const colorMap = {
+                'red': '#ef4444',
+                'blue': '#3b82f6',
+                'green': '#22c55e',
+                'yellow': '#eab308',
+                'black': '#0f172a',
+                'orange': '#f97316',
+                'brown': '#78350f',
+                'purple': '#a855f7',
+                'pink': '#ec4899'
+            };
+
+            if (tagColor && colorMap[tagColor]) {
+                color = colorMap[tagColor];
+            } else if (tagColor && tagColor.startsWith('#')) {
+                color = tagColor;
             } else if (sym) {
-                if (sym.includes('red')) color = '#ef4444'; 
-                else if (sym.includes('blue')) color = '#3b82f6'; 
-                else if (sym.includes('green')) color = '#22c55e'; 
-                else if (sym.includes('yellow')) color = '#eab308'; 
-                else if (sym.includes('black')) color = '#0f172a';
+                // Wyciąganie nazwy koloru z ciągu np. "red:white:red_stripe"
+                for (const name in colorMap) {
+                    if (sym.includes(name)) {
+                        color = colorMap[name];
+                        break;
+                    }
+                }
             }
 
-            const trailName = rel.tags.name || "Nienazwany szlak turystyczny";
-            const trailCoords = [];
-            const trailPolylines = [];
+            const trailName = rel.tags.name || "Szlak bez nazwy";
+            const memberWays = [];
 
-            // Iteracja po elementach członkowskich relacji (scalamy drogi w jedną listę współrzędnych)
             rel.members.forEach(m => { 
-                if (m.type === "way" && ways[m.ref] && typeof hikingLayer !== 'undefined') {
-                    const wayPoints = ways[m.ref];
-                    wayPoints.forEach(coord => {
-                        trailCoords.push(coord); // Zachowanie do obliczeń dystansu i profilu
-                    });
-
-                    // Tworzenie pojedynczych obiektów polilinii Leafleta odpowiadających kolorowi z OSM
-                    const pl = L.polyline(wayPoints, {
-                        color: color, 
-                        weight: 4, 
-                        opacity: 0.7, 
-                        dashArray: '8, 8'
-                    })
-                    .bindTooltip(`${trailName}`)
-                    .addTo(hikingLayer);
-
-                    trailPolylines.push(pl);
-                } 
+                if (m.type === "way" && ways[m.ref]) {
+                    memberWays.push(ways[m.ref]);
+                }
             });
 
-            // Rejestracja szlaku w nowej, zaawansowanej strukturze danych
-            if (trailCoords.length > 0) {
+            if (memberWays.length > 0) {
+                // Rzeczywiste, prawidłowe wyznaczenie długości (suma długości dróg składowych)
+                let actualLength = 0;
+                memberWays.forEach(way => {
+                    for (let i = 1; i < way.length; i++) {
+                        actualLength += L.latLng(way[i-1][0], way[i-1][1]).distanceTo(L.latLng(way[i][0], way[i][1]));
+                    }
+                });
+
+                // Scalanie i sortowanie dróg skrajnymi punktami (usuwa niewidzialne skoki na profilu)
+                const connectedCoords = connectWaySegments(memberWays);
+
+                const trailPolylines = [];
+                memberWays.forEach(way => {
+                    if (typeof hikingLayer !== 'undefined') {
+                        const pl = L.polyline(way, {
+                            color: color, 
+                            weight: 4, 
+                            opacity: 0.7, 
+                            dashArray: '8, 8'
+                        })
+                        .bindTooltip(`${trailName}`)
+                        .addTo(hikingLayer);
+
+                        trailPolylines.push(pl);
+                    }
+                });
+
                 const trailObject = {
                     id: rel.id ? String(rel.id) : `trail_${Math.random()}`,
                     name: trailName,
-                    coords: trailCoords,
+                    coords: connectedCoords,
                     polylines: trailPolylines,
                     color: color,
+                    calculatedLength: actualLength, // bez skoków geometrycznych
                     tags: rel.tags || {}
                 };
 
                 window.processedTrails.push(trailObject);
                 
-                // Zachowanie wstecznej kompatybilności dla starszych modułów (np. navigation.js)
-                const wayLatLngs = trailCoords.map(c => L.latLng(c[0], c[1]));
+                const wayLatLngs = connectedCoords.map(c => L.latLng(c[0], c[1]));
                 globalTrails.push({ name: trailName, coords: wayLatLngs });
             }
         });
 
-        // Wywołanie asynchronicznego przeliczenia bazy szlaków po załadowaniu danych
         if (typeof initTrailsDatabase === 'function') {
             initTrailsDatabase();
         }
@@ -367,3 +384,58 @@ document.addEventListener('DOMContentLoaded', () => {
         initOSM();
     }, 150); 
 });
+// Algorytm Greedy Path-Connector dla dróg OSM
+function connectWaySegments(waysList) {
+    if (waysList.length === 0) return [];
+    let segments = waysList.map(w => [...w]); 
+    let connected = [...segments.shift()];
+    
+    let limit = segments.length * 2;
+    while (segments.length > 0 && limit > 0) {
+        limit--;
+        let head = connected[0];
+        let tail = connected[connected.length - 1];
+        let headLL = L.latLng(head[0], head[1]);
+        let tailLL = L.latLng(tail[0], tail[1]);
+        
+        let bestIdx = -1;
+        let reverseNeeded = false;
+        let bestDist = Infinity;
+        let attachAt = 'tail'; 
+        
+        for (let i = 0; i < segments.length; i++) {
+            let seg = segments[i];
+            let segHead = seg[0];
+            let segTail = seg[seg.length - 1];
+            let segHeadLL = L.latLng(segHead[0], segHead[1]);
+            let segTailLL = L.latLng(segTail[0], segTail[1]);
+            
+            let d1 = tailLL.distanceTo(segHeadLL);
+            if (d1 < bestDist) { bestDist = d1; bestIdx = i; reverseNeeded = false; attachAt = 'tail'; }
+            
+            let d2 = tailLL.distanceTo(segTailLL);
+            if (d2 < bestDist) { bestDist = d2; bestIdx = i; reverseNeeded = true; attachAt = 'tail'; }
+
+            let d3 = headLL.distanceTo(segTailLL);
+            if (d3 < bestDist) { bestDist = d3; bestIdx = i; reverseNeeded = false; attachAt = 'head'; }
+
+            let d4 = headLL.distanceTo(segHeadLL);
+            if (d4 < bestDist) { bestDist = d4; bestIdx = i; reverseNeeded = true; attachAt = 'head'; }
+        }
+        
+        if (bestIdx !== -1 && bestDist < 300) { // Próg połączenia 300 m
+            let match = segments.splice(bestIdx, 1)[0];
+            if (reverseNeeded) match.reverse();
+            
+            if (attachAt === 'tail') {
+                connected = connected.concat(match.slice(1));
+            } else {
+                connected = match.concat(connected.slice(1));
+            }
+        } else {
+            connected = connected.concat(segments.shift());
+        }
+    }
+    return connected;
+}
+window.connectWaySegments = connectWaySegments;
