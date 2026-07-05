@@ -135,3 +135,8 @@ function playRouteAnimation() {
     }, 16);
 }
 window.playRouteAnimation = playRouteAnimation;
+// FUNKCJA 10: Główny Raporter Systemu Zabezpieczeń
+function f10_report(fid, msg) {
+    console.log(`[Strażnik Animacji i Legendy - F${fid}] ${msg}`);
+}
+
