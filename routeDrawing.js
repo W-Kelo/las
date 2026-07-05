@@ -6,6 +6,7 @@
 let routeGeometry = []; 
 let isRouting = false; 
 let brouterOutageNotified = false;
+let isDrawMode = false;
 
 // Funkcja komunikacji z serwerami nawigacyjnymi (BRouter z zapasowym silnikiem OSRM)
 async function getRouteSegment(start, end) {
