@@ -19,11 +19,8 @@ let isSatellite = false;
 let pois = [];
 let poiMode = false;
 
-let routePrefColor = localStorage.getItem('gpx_color') || '#22c55e';
-let routePrefWeight = parseInt(localStorage.getItem('gpx_weight')) || 6;
 
-let routePrefPointsEnabled = localStorage.getItem('gpx_points_enabled') === 'true';
-let routePrefPointsColor = localStorage.getItem('gpx_points_color') || '#22c55e';
+
 
 
 
@@ -729,92 +726,7 @@ function togglePanelTheme(isDark) {
 
 
     /* ================= STYLIZACJA TRASY ================= */
-function openStyleModal() {
-    document.getElementById('styleColor').value = routePrefColor;
-    document.getElementById('styleColorHex').innerText = routePrefColor;
-    document.getElementById('styleWeight').value = routePrefWeight;
-    document.getElementById('styleWeightVal').innerText = routePrefWeight;
-    document.getElementById('styleSpeed').value = routePrefSpeed;
-    document.getElementById('styleAnimPoints').value = routePrefAnimPoints; // NOWE
-    
-    document.getElementById('stylePointsToggle').checked = routePrefPointsEnabled;
-    document.getElementById('stylePointsColor').value = routePrefPointsColor;
-    document.getElementById('stylePointsColorHex').innerText = routePrefPointsColor;
-    // Dołącz do istniejącej funkcji openStyleModal()
-document.getElementById('styleGifHiking').checked = routePrefGifHiking;
-document.getElementById('styleGifOsm').checked = routePrefGifOsm;
-document.getElementById('styleGifGas').checked = routePrefGifGas;
-document.getElementById('styleGifUser').checked = routePrefGifUser;
-    togglePointsColorInput(routePrefPointsEnabled);
 
-    openCenteredModal('styleModal');
-    // Synchronizacja wizualna podglądu z ukrytych mostków danych przy otwarciu okna stylu
-const updatePreviewOnOpen = (inputId) => {
-    const input = document.getElementById(inputId);
-    const preview = document.getElementById(`${inputId}Preview`);
-    const hexSpan = document.getElementById(`${inputId}Hex`);
-    if (input && preview && hexSpan) {
-        preview.style.background = input.value;
-        hexSpan.innerText = input.value.startsWith('linear-gradient') ? "GRADIENT" : input.value.toUpperCase();
-    }
-};
-updatePreviewOnOpen('styleColor');
-updatePreviewOnOpen('stylePointsColor');
-
-const lineModeSpan = document.getElementById('styleLineMode');
-if (lineModeSpan) {
-    lineModeSpan.innerText = (routePrefColor || '').startsWith('linear-gradient') ? "(gradient)" : "(jednolity)";
-}
-}
-
-function saveStyle(saveToLocal) {
-    routePrefColor = document.getElementById('styleColor').value;
-    routePrefWeight = parseInt(document.getElementById('styleWeight').value);
-    routePrefSpeed = document.getElementById('styleSpeed').value;
-    routePrefAnimPoints = document.getElementById('styleAnimPoints').value;
-    
-    routePrefPointsEnabled = document.getElementById('stylePointsToggle').checked;
-    routePrefPointsColor = document.getElementById('stylePointsColor').value;
-
-    // POPRAWKA: Pobranie aktualnego stanu checkboxów z modalu do zmiennych sesyjnych
-    routePrefGifHiking = document.getElementById('styleGifHiking').checked;
-    routePrefGifOsm = document.getElementById('styleGifOsm').checked;
-    routePrefGifGas = document.getElementById('styleGifGas').checked;
-    routePrefGifUser = document.getElementById('styleGifUser').checked;
-
-    if (saveToLocal) {
-        localStorage.setItem('gpx_color', routePrefColor);
-        localStorage.setItem('gpx_weight', routePrefWeight);
-        localStorage.setItem('gpx_speed', routePrefSpeed);
-        localStorage.setItem('gpx_anim_points', routePrefAnimPoints);
-        localStorage.setItem('gpx_points_enabled', routePrefPointsEnabled);
-        localStorage.setItem('gpx_points_color', routePrefPointsColor);
-        
-        // Zapis zaktualizowanych wartości do pamięci trwałej przeglądarki
-        localStorage.setItem('gpx_gif_hiking', routePrefGifHiking);
-        localStorage.setItem('gpx_gif_osm', routePrefGifOsm);
-        localStorage.setItem('gpx_gif_gas', routePrefGifGas);
-        localStorage.setItem('gpx_gif_user', routePrefGifUser);
-    }
-
-    // Pobranie danych z mostów danych
-routePrefColor = document.getElementById('styleColor').value;
-routePrefWeight = parseInt(document.getElementById('styleWeight').value);
-routePrefPointsColor = document.getElementById('stylePointsColor').value;
-
-if (typeof renderRouteLineWithStyle === 'function') {
-    renderRouteLineWithStyle();
-} else {
-    polyline.setStyle({ color: routePrefColor, weight: routePrefWeight });
-}
-    if (typeof renderPointsWithStyle === 'function') {
-    renderPointsWithStyle();
-}
-}
-
-function togglePointsColorInput(isChecked) {
-    document.getElementById('stylePointsColorWrap').style.display = isChecked ? 'flex' : 'none';
-}
 
 
 
