@@ -306,3 +306,29 @@ document.addEventListener('DOMContentLoaded', () => {
         loadUserSavedPois(); 
     }, 100);
 });
+function highlightAndShowMarker(poiData) {
+    if (!poiData || !poiData._markerRef) return;
+    const marker = poiData._markerRef;
+    
+    // Ustalanie warstwy domyślnej
+    let layerGroup = null;
+    if (poiData.isGas) layerGroup = customPoiLayer;
+    else if (poiData.isUserSaved) layerGroup = userSavedLayer;
+
+    // Jeżeli warstwa jest wyłączona z panelu bocznego, wymuszamy dodanie markera do mapy
+    if (layerGroup && !map.hasLayer(layerGroup)) {
+        marker.addTo(map);
+        tempVisibleMarker = { marker: marker, originalLayer: layerGroup };
+    }
+
+    // Dodanie klasy CSS do animacji
+    const iconDiv = marker.getElement();
+    if (iconDiv) {
+        iconDiv.classList.remove('blink-icon'); // Reset
+        void iconDiv.offsetWidth; // Trigger reflow
+        iconDiv.classList.add('blink-icon');
+        
+        // Zdejmowanie klasy po zakończeniu animacji (3 * 0.6s = 1.8s)
+        setTimeout(() => { if (iconDiv) iconDiv.classList.remove('blink-icon'); }, 1800);
+    }
+}
