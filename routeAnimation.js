@@ -1,5 +1,5 @@
 /* =========================================================
-   routeAnimation.js - SYSTEM ANIMACJI TRASY I KROPKI W LOCIE
+   routeAnimation.js - SYSTEM ANIMACJI TRASY I KROPKI W LOCIE 
 ========================================================= */
 
 let animLineLayer = null; // Może być obiektem L.polyline (dla kolorów) lub L.layerGroup (dla gradientu)
