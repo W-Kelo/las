@@ -1182,3 +1182,15 @@ window.addEventListener('resize', centerExportModal);
 if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', centerExportModal);
 }
+document.getElementById('emojiGridList').innerHTML = EMOJIS.map(e => 
+    `<div class="emoji-btn ${e==='📍'?'selected':''}" onclick="selectEmoji('${e}', this)">${e}</div>`
+).join('');
+
+function selectEmoji(e, btn) {
+    selectedEmoji = e;
+    document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+    // Zabezpieczenie! Dodaje klasę TYLKO jeśli element 'btn' istnieje.
+    if (btn) {
+        btn.classList.add('selected');
+    }
+}
