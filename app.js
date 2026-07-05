@@ -402,7 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.onmousemove = document.ontouchmove = null;
         document.onmouseup = document.ontouchend = null;
     }
-}
+
 function openMobileStatsModal() {
     openCenteredModal('mobileStatsModal');
     // Wymuszone przerysowanie wykresu na canvasie w modalu po jego otwarciu
