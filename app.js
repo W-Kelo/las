@@ -1,4 +1,4 @@
-/* ================= KONFIGURACJA MAPY ================= */
+/* ================= KONFIGURACJA MAPY ================= */ 
 const map = L.map('map', { 
     zoomControl: false,
     preferCanvas: true 
