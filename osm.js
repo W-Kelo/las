@@ -194,6 +194,9 @@ async function fetchFromAnyOverpass(query) {
 }
 window.fetchFromAnyOverpass = fetchFromAnyOverpass;
 
+/* =========================================================
+   ZAKTUALIZOWANA FUNKCJA PARSOWANIA OSM W osm.js
+========================================================= */
 async function loadOSMData(externalData = null) {
     const query = `[out:json][timeout:25];(relation["route"="hiking"](53.4,14.3,53.6,14.7);node["amenity"~"shelter|drinking_water|parking"](53.4,14.3,53.6,14.7);node["tourism"~"viewpoint|picnic_site|information"](53.4,14.3,53.6,14.7););out body;>;out skel qt;`;
     
@@ -211,28 +214,28 @@ async function loadOSMData(externalData = null) {
         data.elements.forEach(e => { if (e.type === "node") nodes[e.id] = [e.lat, e.lon]; });
         data.elements.forEach(e => { if (e.type === "way") ways[e.id] = e.nodes.map(nid => nodes[nid]).filter(n => n); });
 
-        // Wyczyszczenie globalnej tablicy przed załadowaniem
-     window.processedTrails = [];
+        window.processedTrails = [];
         globalTrails = []; 
+        globalOsmPois = []; // Czyszczenie przed załadowaniem
 
-        // Lista szlaków do całkowitego odrzucenia
         const FORBIDDEN_TRAILS = [
             "Zachodniopomorska Droga św. Jakuba",
             "Jakobsweg Via Imperii SzczecinPL- BerlinDE"
         ];
 
+        // 1. PARSOWANIE RELACJI (Szlaki turystyczne)
         data.elements.filter(e => e.type === "relation").forEach(rel => {
             const trailName = rel.tags.name || "Szlak bez nazwy";
 
-            // Twardy filtr - jeśli nazwa szlaku zawiera zakazaną frazę, ignorujemy go całkowicie
+            // Filtracja szlaków tranzytowych
             if (FORBIDDEN_TRAILS.some(forbidden => trailName.includes(forbidden))) {
                 return; 
             }
 
-            // Bezpieczny odczyt kluczy z tags
+            // Odczyt koloru
             const sym = (rel.tags["osmc:symbol"] || rel.tags.osmc_symbol || "").toLowerCase();
             const tagColor = (rel.tags.color || "").toLowerCase();
-            let color = '#22c55e'; // Domyślna bezpieczna zieleń
+            let color = '#22c55e'; // Domyślny zielony
             
             const colorMap = {
                 'red': '#ef4444',
@@ -260,9 +263,14 @@ async function loadOSMData(externalData = null) {
             }
 
             const memberWays = [];
+            const highResLatLngs = []; // Do wysokiej rozdzielczości globalTrails dla nawigacji
+
             rel.members.forEach(m => { 
                 if (m.type === "way" && ways[m.ref]) {
                     memberWays.push(ways[m.ref]);
+                    ways[m.ref].forEach(coord => {
+                        highResLatLngs.push(L.latLng(coord[0], coord[1]));
+                    });
                 }
             });
 
@@ -283,7 +291,7 @@ async function loadOSMData(externalData = null) {
                     }
                 });
 
-                // Przekazujemy surowe dane do bazy szlaków, która bezpiecznie nimi zarządzi
+                // Przekazujemy surowe drogi do odroczenia obliczeń
                 const trailObject = {
                     id: rel.id ? String(rel.id) : `trail_${Math.random()}`,
                     name: trailName,
@@ -294,16 +302,16 @@ async function loadOSMData(externalData = null) {
                 };
 
                 window.processedTrails.push(trailObject);
+                
+                // REJESTRACJA WYSOKIEJ ROZDZIELCZOŚCI dla systemu nawigacyjnego w getNearbyFeatures()
+                globalTrails.push({ name: trailName, coords: highResLatLngs });
             }
         });
 
-        if (typeof initTrailsDatabase === 'function') {
-            initTrailsDatabase();
-        }
-
+        // 2. PARSOWANIE WĘZŁÓW (Punkty POI z OpenStreetMap)
         data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
-            if (isBlacklistedOSM(e)) return;
-            if (isForbiddenOSM(e.tags)) return; 
+            if (typeof isBlacklistedOSM === 'function' && isBlacklistedOSM(e)) return;
+            if (typeof isForbiddenOSM === 'function' && isForbiddenOSM(e.tags)) return; 
             
             let icon = '📍';
             if (e.tags.amenity === 'shelter') icon = '🏠';
@@ -337,6 +345,11 @@ async function loadOSMData(externalData = null) {
                 });
             }
         });
+
+        // 3. INICJALIZACJA BAZY SZLAKÓW
+        if (typeof initTrailsDatabase === 'function') {
+            initTrailsDatabase();
+        }
 
     } catch (err) {
         console.error("Błąd ładowania OSM:", err);
