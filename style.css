@@ -1423,26 +1423,29 @@ select.style-select {
 /* ===================================
    23. SZLAKI TURYSTYCZNE
 =================================== */   
-/* --- STYLE DLA MODUŁU SZLAKÓW TURYSTYCZNYCH --- */
+/* --- ZAKTUALIZOWANE STYLE DLA SZLAKÓW --- */
 .trail-card {
-    background: rgba(0, 0, 0, 0.15);
+    background: rgba(30, 41, 59, 0.8);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     padding: 12px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
     cursor: default;
 }
 .light .trail-card {
     background: #ffffff;
-    border-color: rgba(0, 0, 0, 0.1);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 .trail-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+.light .trail-card:hover {
+    border-color: rgba(0, 0, 0, 0.3);
 }
 .trail-header {
     display: flex;
@@ -1467,62 +1470,66 @@ select.style-select {
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     font-size: 0.8rem;
-    background: rgba(0, 0, 0, 0.1);
+    background: rgba(0, 0, 0, 0.2);
     padding: 8px;
     border-radius: 6px;
 }
 .light .trail-info-grid {
-    background: #f8fafc;
+    background: #f1f5f9;
 }
 .trail-tag-list {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 4px;
-    font-size: 0.7rem;
-    max-height: 80px;
-    overflow-y: auto;
-    padding: 4px;
-    background: rgba(0,0,0,0.05);
-    border-radius: 4px;
+    font-size: 0.8rem;
+    padding: 8px;
+    background: rgba(0,0,0,0.15);
+    border-radius: 6px;
+}
+.light .trail-tag-list {
+    background: #f8fafc;
 }
 .trail-tag-item {
-    background: rgba(255,255,255,0.08);
-    padding: 2px 6px;
-    border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.05);
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px dashed rgba(255,255,255,0.05);
+    padding-bottom: 2px;
 }
 .light .trail-tag-item {
-    background: #e2e8f0;
-    color: #334155;
+    border-bottom-color: rgba(0,0,0,0.05);
 }
+
+/* JASKRAWE, KONTRASTOWE KAFELKI DLA ATRAKCJI GS */
 .trail-pois-container {
-    border-top: 1px dashed rgba(255, 255, 255, 0.1);
+    border-top: 1px dashed rgba(255, 255, 255, 0.15);
     padding-top: 8px;
 }
 .light .trail-pois-container {
-    border-top-color: rgba(0,0,0,0.1);
+    border-top-color: rgba(0,0,0,0.15);
 }
 .trail-poi-mini-list {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 4px;
+    margin-top: 6px;
 }
 .trail-poi-mini-chip {
     display: flex;
     align-items: center;
-    gap: 4px;
-    background: rgba(34, 197, 94, 0.12);
-    border: 1px solid rgba(34, 197, 94, 0.2);
-    color: var(--accent);
-    padding: 3px 8px;
-    border-radius: 12px;
-    font-size: 0.75rem;
+    gap: 6px;
+    background: #16a34a; /* Jaskrawa zieleń */
+    color: #ffffff !important;
+    font-weight: bold;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
     cursor: pointer;
-    transition: 0.15s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    transition: background 0.15s, transform 0.15s;
+    border: none;
 }
 .trail-poi-mini-chip:hover {
-    background: rgba(34, 197, 94, 0.25);
+    background: #15803d;
     transform: scale(1.05);
 }
 
