@@ -6,10 +6,6 @@ let animLineLayer = null; // Może być obiektem L.polyline (dla kolorów) lub L
 let animDotMarker = null;
 let animInterval = null;
 
-// Pobranie zapisanych preferencji animacji z pamięci lokalnej
-let routePrefSpeed = localStorage.getItem('gpx_speed') || 'medium';
-let routePrefAnimPoints = localStorage.getItem('gpx_anim_points') || 'all';
-
 function playRouteAnimation() {
     if (routeGeometry.length < 2) {
         return showCustomAlert("Brak wytyczonej trasy do przeprowadzenia animacji.");
