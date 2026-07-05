@@ -504,58 +504,7 @@ function handlePanelWheelZoom(e) {
 }
 window.handlePanelWheelZoom = handlePanelWheelZoom;
 
-/* --- SKALOWANIE MODALI DWOMA PALCAMI (PINCH-TO-ZOOM) --- */
-function makePinchZoomable(el) {
-    let initialDistance = null;
-    let currentScale = 1;
-    const MIN_SCALE = 0.3;  
-    const MAX_SCALE = 1.4;  
 
-    el.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 2) {
-            e.stopPropagation();
-            
-            initialDistance = Math.hypot(
-                e.touches[0].pageX - e.touches[1].pageX,
-                e.touches[0].pageY - e.touches[1].pageY
-            );
-            
-            currentScale = el.dataset.scale ? parseFloat(el.dataset.scale) : 1;
-            el.style.transition = 'none';
-        }
-    }, { passive: false });
-
-    el.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2 && initialDistance !== null) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const currentDistance = Math.hypot(
-                e.touches[0].pageX - e.touches[1].pageX,
-                e.touches[0].pageY - e.touches[1].pageY
-            );
-
-            const distanceRatio = currentDistance / initialDistance;
-            let newScale = currentScale * distanceRatio;
-
-            newScale = Math.max(MIN_SCALE, Math.min(newScale, MAX_SCALE));
-
-            el.style.scale = newScale;
-            el.dataset.tempScale = newScale; 
-        }
-    }, { passive: false });
-
-    el.addEventListener('touchend', (e) => {
-        if (e.touches.length < 2 && initialDistance !== null) {
-            initialDistance = null;
-            if (el.dataset.tempScale) {
-                el.dataset.scale = el.dataset.tempScale;
-            }
-            el.style.transition = 'scale 0.2s ease-out';
-        }
-    });
-}
-window.makePinchZoomable = makePinchZoomable;
 
 /* --- SYSTEM USUWANIA PANELI CZTEROKROTNYM KLIKNIĘCIEM --- */
 function setupQuadTapDelete(panel) {
