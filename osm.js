@@ -211,26 +211,83 @@ async function loadOSMData(externalData = null) {
         data.elements.forEach(e => { if (e.type === "node") nodes[e.id] = [e.lat, e.lon]; });
         data.elements.forEach(e => { if (e.type === "way") ways[e.id] = e.nodes.map(nid => nodes[nid]).filter(n => n); });
 
+        // Wyczyszczenie globalnej tablicy przed załadowaniem
+        window.processedTrails = [];
+        globalTrails = []; 
+
         data.elements.filter(e => e.type === "relation").forEach(rel => {
-            const sym = (rel.tags.osmc_symbol || rel.tags.color || "").toLowerCase();
-            let color = '#888';
-            if (sym.includes('red')) color = '#ef4444'; 
-            else if (sym.includes('blue')) color = '#3b82f6'; 
-            else if (sym.includes('green')) color = '#22c55e'; 
-            else if (sym.includes('yellow')) color = '#eab308'; 
-            else if (sym.includes('black')) color = '#000';
+            // Bezpieczne pobranie koloru z OSM
+            const sym = (rel.tags.osmc_symbol || "").toLowerCase();
+            const tagColor = (rel.tags.color || "").toLowerCase();
+            let color = '#15803d'; // Bezpieczny domyślny kolor szlaku (zielony)
             
+            // Logika wyznaczania koloru linii szlaku na podstawie tagów i symbolu osmc
+            if (tagColor) {
+                if (tagColor.startsWith('#')) color = tagColor;
+                else if (['red', 'blue', 'green', 'yellow', 'black'].includes(tagColor)) {
+                    if (tagColor === 'red') color = '#ef4444';
+                    else if (tagColor === 'blue') color = '#3b82f6';
+                    else if (tagColor === 'green') color = '#22c55e';
+                    else if (tagColor === 'yellow') color = '#eab308';
+                    else if (tagColor === 'black') color = '#0f172a';
+                }
+            } else if (sym) {
+                if (sym.includes('red')) color = '#ef4444'; 
+                else if (sym.includes('blue')) color = '#3b82f6'; 
+                else if (sym.includes('green')) color = '#22c55e'; 
+                else if (sym.includes('yellow')) color = '#eab308'; 
+                else if (sym.includes('black')) color = '#0f172a';
+            }
+
+            const trailName = rel.tags.name || "Nienazwany szlak turystyczny";
+            const trailCoords = [];
+            const trailPolylines = [];
+
+            // Iteracja po elementach członkowskich relacji (scalamy drogi w jedną listę współrzędnych)
             rel.members.forEach(m => { 
                 if (m.type === "way" && ways[m.ref] && typeof hikingLayer !== 'undefined') {
-                    const wayCoords = ways[m.ref].map(c => L.latLng(c[0], c[1]));
-                    globalTrails.push({ name: rel.tags.name || "Szlak turystyczny", coords: wayCoords });
-                    
-                    L.polyline(ways[m.ref], {color: color, weight: 4, opacity: 0.7, dashArray: '8, 8'})
-                     .bindTooltip(rel.tags.name || "Szlak")
-                     .addTo(hikingLayer); 
+                    const wayPoints = ways[m.ref];
+                    wayPoints.forEach(coord => {
+                        trailCoords.push(coord); // Zachowanie do obliczeń dystansu i profilu
+                    });
+
+                    // Tworzenie pojedynczych obiektów polilinii Leafleta odpowiadających kolorowi z OSM
+                    const pl = L.polyline(wayPoints, {
+                        color: color, 
+                        weight: 4, 
+                        opacity: 0.7, 
+                        dashArray: '8, 8'
+                    })
+                    .bindTooltip(`${trailName}`)
+                    .addTo(hikingLayer);
+
+                    trailPolylines.push(pl);
                 } 
             });
+
+            // Rejestracja szlaku w nowej, zaawansowanej strukturze danych
+            if (trailCoords.length > 0) {
+                const trailObject = {
+                    id: rel.id ? String(rel.id) : `trail_${Math.random()}`,
+                    name: trailName,
+                    coords: trailCoords,
+                    polylines: trailPolylines,
+                    color: color,
+                    tags: rel.tags || {}
+                };
+
+                window.processedTrails.push(trailObject);
+                
+                // Zachowanie wstecznej kompatybilności dla starszych modułów (np. navigation.js)
+                const wayLatLngs = trailCoords.map(c => L.latLng(c[0], c[1]));
+                globalTrails.push({ name: trailName, coords: wayLatLngs });
+            }
         });
+
+        // Wywołanie asynchronicznego przeliczenia bazy szlaków po załadowaniu danych
+        if (typeof initTrailsDatabase === 'function') {
+            initTrailsDatabase();
+        }
 
         data.elements.filter(e => e.type === "node" && e.tags).forEach(e => {
             if (isBlacklistedOSM(e)) return;
