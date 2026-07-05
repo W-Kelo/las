@@ -298,3 +298,37 @@ document.addEventListener('DOMContentLoaded', () => {
         expStyleColorInput.addEventListener('input', () => applyLineStyle());
     }
 });
+function loadStylesForTarget(targetId) {
+    const el = document.getElementById(targetId);
+    if(!el) return;
+
+    // Próbujemy wyciągnąć style (najpierw inline, potem computed)
+    const compStyle = window.getComputedStyle(el);
+    const bgColor = el.style.backgroundColor || compStyle.backgroundColor;
+    const txtColor = el.style.color || compStyle.color;
+    
+    // Konwersja rgb/rgba na HEX i Opacity dla inputów
+    const rgbaMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+    if (rgbaMatch) {
+        const r = parseInt(rgbaMatch[1]);
+        const g = parseInt(rgbaMatch[2]);
+        const b = parseInt(rgbaMatch[3]);
+        const a = rgbaMatch[4] ? parseFloat(rgbaMatch[4]) : 1;
+        
+        document.getElementById('expPanelBg').value = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        document.getElementById('expPanelOpacity').value = Math.round(a * 100);
+        document.getElementById('expPanelOpacityVal').innerText = Math.round(a * 100);
+    }
+    
+    const rgbTxtMatch = txtColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (rgbTxtMatch) {
+        const r = parseInt(rgbTxtMatch[1]);
+        const g = parseInt(rgbTxtMatch[2]);
+        const b = parseInt(rgbTxtMatch[3]);
+        document.getElementById('expPanelText').value = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+
+    const radius = parseInt(el.style.borderRadius || compStyle.borderRadius) || 0;
+    document.getElementById('expPanelRadius').value = radius;
+    document.getElementById('expPanelRadiusVal').innerText = radius;
+}
