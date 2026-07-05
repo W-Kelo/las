@@ -201,6 +201,7 @@ function openExportPicker(type) {
 }
 window.openExportPicker = openExportPicker;
 
+/* --- BEZBŁĘDNE FILTROWANIE PUNKTÓW DLA KAŻDEGO Z MODALI OSOBNO (POPRZEDNIE NAPRAWIONE) --- */
 function filterPickerList() {
     const queryEl = document.getElementById('pickerSearch');
     const query = queryEl ? queryEl.value.toLowerCase() : '';
@@ -209,42 +210,63 @@ function filterPickerList() {
     
     container.innerHTML = '';
     
-    const formattedStops = (typeof routeStops !== 'undefined' ? routeStops : []).map(s => ({
-        id: s.id, latlng: s.latlng, name: s.name, 
-        icon: s.icon, isUserSaved: true, isStop: true
-    }));
-    
-    const formattedUserPois = (typeof userSavedPois !== 'undefined' ? userSavedPois : []).map(p => ({
-        id: p.id, latlng: L.latLng(p.lat, p.lng), name: p.name, 
-        icon: p.icon, isUserSaved: true, isStop: false
-    }));
+    let filteredPois = [];
 
-    const combinedPois = [
-        ...(typeof globalCustomPois !== 'undefined' ? globalCustomPois.filter(p => p.isGas) : []), 
-        ...formattedUserPois,
-        ...formattedStops
-    ];
-
-    const filtered = combinedPois.filter(p => p.name.toLowerCase().includes(query));
-
-    filtered.forEach(poi => {
-        const isGas = poi.isGas;
-        const isChecked = isGas ? exportPointSettings.gas.ids.has(poi.id) : exportPointSettings.user.ids.has(poi.id);
+    if (tempPickerType === 'gas') {
+        // WIDOK BAZY GS: Filtrujemy i wyświetlamy WYŁĄCZNIE punkty z bazy zewnętrznej GS (bez etykiet [Baza GS])
+        const gsPois = typeof globalCustomPois !== 'undefined' ? globalCustomPois.filter(p => p.isGas) : [];
+        filteredPois = gsPois.filter(p => p.name.toLowerCase().includes(query));
         
-        const div = document.createElement('div');
-        div.className = 'picker-item-styled';
-        div.innerHTML = `
-            <label style="display:flex; align-items:center; gap:10px; width:100%; cursor:pointer;">
-                <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleExportPointSelection('${poi.id}', this.checked)">
-                <span style="font-size:1.3rem;">${poi.icon}</span>
-                <div style="display:flex; flex-direction:column;">
-                    <strong>${poi.name}</strong>
-                    <small style="opacity:0.6; font-size:0.75rem;">${poi.isStop ? '[Postój trasy]' : (isGas ? '[Baza GS]' : '[Mój Punkt]')}</small>
-                </div>
-            </label>
-        `;
-        container.appendChild(div);
-    });
+        filteredPois.forEach(poi => {
+            const isChecked = exportPointSettings.gas.ids.has(poi.id);
+            const div = document.createElement('div');
+            div.className = 'picker-item-styled';
+            div.innerHTML = `
+                <label style="display:flex; align-items:center; gap:10px; width:100%; cursor:pointer;">
+                    <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleExportPointSelection('${poi.id}', this.checked)">
+                    <span style="font-size:1.3rem;">${poi.icon}</span>
+                    <div style="display:flex; flex-direction:column;">
+                        <strong>${poi.name}</strong>
+                    </div>
+                </label>
+            `;
+            container.appendChild(div);
+        });
+    } else {
+        // WIDOK MOICH PUNKTÓW: Filtrujemy i wyświetlamy WYŁĄCZNIE postoje oraz własne zapisane punkty (całkowity brak punktów GS)
+        const formattedStops = (typeof routeStops !== 'undefined' ? routeStops : []).map(s => ({
+            id: s.id, latlng: s.latlng, name: s.name, 
+            icon: s.icon, isUserSaved: true, isStop: true
+        }));
+        
+        const formattedUserPois = (typeof userSavedPois !== 'undefined' ? userSavedPois : []).map(p => ({
+            id: p.id, latlng: L.latLng(p.lat, p.lng), name: p.name, 
+            icon: p.icon, isUserSaved: true, isStop: false, storage: p.storage
+        }));
+
+        const combinedUserPois = [...formattedUserPois, ...formattedStops];
+        filteredPois = combinedUserPois.filter(p => p.name.toLowerCase().includes(query));
+
+        filteredPois.forEach(poi => {
+            const isChecked = exportPointSettings.user.ids.has(poi.id);
+            // Tworzenie estetycznego opisu pochodzenia punktu dla Moich Punktów
+            const badgeText = poi.isStop ? '[Postój trasy]' : (poi.storage === 'local' ? '[Mój Punkt - Na stałe]' : '[Mój Punkt - Sesja]');
+            
+            const div = document.createElement('div');
+            div.className = 'picker-item-styled';
+            div.innerHTML = `
+                <label style="display:flex; align-items:center; gap:10px; width:100%; cursor:pointer;">
+                    <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleExportPointSelection('${poi.id}', this.checked)">
+                    <span style="font-size:1.3rem;">${poi.icon}</span>
+                    <div style="display:flex; flex-direction:column;">
+                        <strong>${poi.name}</strong>
+                        <small style="opacity:0.6; font-size:0.75rem;">${badgeText}</small>
+                    </div>
+                </label>
+            `;
+            container.appendChild(div);
+        });
+    }
 }
 window.filterPickerList = filterPickerList;
 
