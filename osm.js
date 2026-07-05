@@ -212,16 +212,14 @@ async function loadOSMData(externalData = null) {
         data.elements.forEach(e => { if (e.type === "way") ways[e.id] = e.nodes.map(nid => nodes[nid]).filter(n => n); });
 
         // Wyczyszczenie globalnej tablicy przed załadowaniem
-      window.processedTrails = [];
+     window.processedTrails = [];
         globalTrails = []; 
 
         data.elements.filter(e => e.type === "relation").forEach(rel => {
-            // Bezpieczny odczyt kluczy z dwukropkiem bezpośrednio z tags
             const sym = (rel.tags["osmc:symbol"] || rel.tags.osmc_symbol || "").toLowerCase();
             const tagColor = (rel.tags.color || "").toLowerCase();
-            let color = '#22c55e'; // Domyślna bezpieczna zieleń
+            let color = '#22c55e'; // Bezpieczna zieleń domyślna
             
-            // Dokładne przypisywanie kolorów na podstawie OSM
             const colorMap = {
                 'red': '#ef4444',
                 'blue': '#3b82f6',
@@ -239,7 +237,6 @@ async function loadOSMData(externalData = null) {
             } else if (tagColor && tagColor.startsWith('#')) {
                 color = tagColor;
             } else if (sym) {
-                // Wyciąganie nazwy koloru z ciągu np. "red:white:red_stripe"
                 for (const name in colorMap) {
                     if (sym.includes(name)) {
                         color = colorMap[name];
@@ -258,17 +255,6 @@ async function loadOSMData(externalData = null) {
             });
 
             if (memberWays.length > 0) {
-                // Rzeczywiste, prawidłowe wyznaczenie długości (suma długości dróg składowych)
-                let actualLength = 0;
-                memberWays.forEach(way => {
-                    for (let i = 1; i < way.length; i++) {
-                        actualLength += L.latLng(way[i-1][0], way[i-1][1]).distanceTo(L.latLng(way[i][0], way[i][1]));
-                    }
-                });
-
-                // Scalanie i sortowanie dróg skrajnymi punktami (usuwa niewidzialne skoki na profilu)
-                const connectedCoords = connectWaySegments(memberWays);
-
                 const trailPolylines = [];
                 memberWays.forEach(way => {
                     if (typeof hikingLayer !== 'undefined') {
@@ -285,20 +271,17 @@ async function loadOSMData(externalData = null) {
                     }
                 });
 
+                // Odraczamy kosztowne obliczenia do trailsManager.js, który sprawdzi najpierw pamięć podręczną
                 const trailObject = {
                     id: rel.id ? String(rel.id) : `trail_${Math.random()}`,
                     name: trailName,
-                    coords: connectedCoords,
+                    memberWays: memberWays, // Surowe drogi
                     polylines: trailPolylines,
                     color: color,
-                    calculatedLength: actualLength, // bez skoków geometrycznych
                     tags: rel.tags || {}
                 };
 
                 window.processedTrails.push(trailObject);
-                
-                const wayLatLngs = connectedCoords.map(c => L.latLng(c[0], c[1]));
-                globalTrails.push({ name: trailName, coords: wayLatLngs });
             }
         });
 
