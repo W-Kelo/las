@@ -25,7 +25,7 @@ let routePrefSpeed = localStorage.getItem('gpx_speed') || 'medium';
 let routePrefPointsEnabled = localStorage.getItem('gpx_points_enabled') === 'true';
 let routePrefPointsColor = localStorage.getItem('gpx_points_color') || '#22c55e';
 
-let chartHoverMarker = null;
+
 let exportLineColor = routePrefColor;
 let exportLineWeight = routePrefWeight;   
 
