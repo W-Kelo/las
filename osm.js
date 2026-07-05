@@ -215,10 +215,24 @@ async function loadOSMData(externalData = null) {
      window.processedTrails = [];
         globalTrails = []; 
 
+        // Lista szlaków do całkowitego odrzucenia
+        const FORBIDDEN_TRAILS = [
+            "Zachodniopomorska Droga św. Jakuba",
+            "Jakobsweg Via Imperii SzczecinPL- BerlinDE"
+        ];
+
         data.elements.filter(e => e.type === "relation").forEach(rel => {
+            const trailName = rel.tags.name || "Szlak bez nazwy";
+
+            // Twardy filtr - jeśli nazwa szlaku zawiera zakazaną frazę, ignorujemy go całkowicie
+            if (FORBIDDEN_TRAILS.some(forbidden => trailName.includes(forbidden))) {
+                return; 
+            }
+
+            // Bezpieczny odczyt kluczy z tags
             const sym = (rel.tags["osmc:symbol"] || rel.tags.osmc_symbol || "").toLowerCase();
             const tagColor = (rel.tags.color || "").toLowerCase();
-            let color = '#22c55e'; // Bezpieczna zieleń domyślna
+            let color = '#22c55e'; // Domyślna bezpieczna zieleń
             
             const colorMap = {
                 'red': '#ef4444',
@@ -245,9 +259,7 @@ async function loadOSMData(externalData = null) {
                 }
             }
 
-            const trailName = rel.tags.name || "Szlak bez nazwy";
             const memberWays = [];
-
             rel.members.forEach(m => { 
                 if (m.type === "way" && ways[m.ref]) {
                     memberWays.push(ways[m.ref]);
@@ -271,11 +283,11 @@ async function loadOSMData(externalData = null) {
                     }
                 });
 
-                // Odraczamy kosztowne obliczenia do trailsManager.js, który sprawdzi najpierw pamięć podręczną
+                // Przekazujemy surowe dane do bazy szlaków, która bezpiecznie nimi zarządzi
                 const trailObject = {
                     id: rel.id ? String(rel.id) : `trail_${Math.random()}`,
                     name: trailName,
-                    memberWays: memberWays, // Surowe drogi
+                    memberWays: memberWays, 
                     polylines: trailPolylines,
                     color: color,
                     tags: rel.tags || {}
