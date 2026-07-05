@@ -337,3 +337,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Uruchomienie domyślnej animacji fali przy pierwszym wejściu na stronę
     drawEmptyElevationAnimation();
 });
+function openMobileStatsModal() {
+    openCenteredModal('mobileStatsModal');
+    // Wymuszone przerysowanie wykresu na canvasie w modalu po jego otwarciu
+    if (routeGeometry.length > 1) {
+        drawElevation(-1); 
+    } else {
+        drawEmptyElevationAnimation();
+    }
+}
