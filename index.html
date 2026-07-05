@@ -365,8 +365,11 @@
     </div>
 </div>
     
-<!-- UKRYTY KONTENER DO GENEROWANIA PDF -->
-<div id="pdfRenderContainer"></div>
+
+<!-- UKRYTY KONTENER DO GENEROWANIA PDF (Ukrywanie na poziomie rodzica) -->
+<div style="position: absolute !important; left: -9999px !important; top: 0 !important; width: 794px !important; height: 0 !important; overflow: hidden !important; z-index: -1000 !important;">
+    <div id="pdfRenderContainer"></div>
+</div>
 <!-- MODAL EDYCJI PUNKTÓW TRASY -->
 <div id="pointsModal" class="floating-modal" style="width: 420px;">
     <div class="modal-header">
