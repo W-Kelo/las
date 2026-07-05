@@ -758,3 +758,27 @@ function getLuminance(r, g, b) {
     });
     return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
 }
+function checkContrastRatio(hex1, hex2, opacity1) {
+    const formatHex = (val) => (val && val.startsWith('#') && val.length >= 7) ? val : '#ffffff';
+    const cleanHex1 = formatHex(hex1);
+    const cleanHex2 = formatHex(hex2);
+    const op = isNaN(parseFloat(opacity1)) ? 100 : parseFloat(opacity1);
+
+    const r1 = parseInt(cleanHex1.slice(1, 3), 16) || 0;
+    const g1 = parseInt(cleanHex1.slice(3, 5), 16) || 0;
+    const b1 = parseInt(cleanHex1.slice(5, 7), 16) || 0;
+
+    const r2 = parseInt(cleanHex2.slice(1, 3), 16) || 0;
+    const g2 = parseInt(cleanHex2.slice(3, 5), 16) || 0;
+    const b2 = parseInt(cleanHex2.slice(5, 7), 16) || 0;
+
+    const lum1 = getLuminance(r1, g1, b1) * (op / 100) + getLuminance(255, 255, 255) * (1 - op / 100); 
+    const lum2 = getLuminance(r2, g2, b2);
+
+    if (isNaN(lum1) || isNaN(lum2)) return 21; // Zabezpieczenie przed NaN (zwraca bezpieczną wartość kontrastu)
+
+    const brightest = Math.max(lum1, lum2);
+    const darkest = Math.min(lum1, lum2);
+    return (brightest + 0.05) / (darkest + 0.05); 
+}
+
