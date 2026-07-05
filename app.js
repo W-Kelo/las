@@ -28,7 +28,7 @@ let routePrefPointsColor = localStorage.getItem('gpx_points_color') || '#22c55e'
 
 
 
-let searchMarker = null;
+
 let globalOsmPois = [];  
 let globalTrails = [];
 let scaleFrameId = null;
@@ -78,12 +78,7 @@ document.body.className = "light";
     
     
     // 2. Mobilna wyszukiwarka
-    if (window.innerWidth <= 768 && sessionStorage.getItem('hideMobileSearch') === 'true') {
-        const mobSearch = document.getElementById('mobileTopSearch');
-        const mobRestore = document.getElementById('mobileRestoreSearch');
-        if(mobSearch) mobSearch.style.display = 'none';
-        if(mobRestore) mobRestore.style.display = 'flex';
-    }
+
 
     // 3. Sprawienie, że modale są draggable
     const modals = [
@@ -219,24 +214,7 @@ map.on('click', async e => {
 // Zmodyfikowany clearAll - żeby na starcie nie rysowało samo
 
 // Pływająca wyszukiwarka
-function hideMobileSearch() {
-    document.getElementById('mobileTopSearch').style.display = 'none';
-    document.getElementById('mobileRestoreSearch').style.display = 'flex';
-    sessionStorage.setItem('hideMobileSearch', 'true');
-    showCustomAlert("Pasek ukryty. Możesz go przywrócić klikając lupę w lewym górnym rogu.");
-}
 
-function showMobileSearch() {
-    document.getElementById('mobileTopSearch').style.display = 'flex';
-    document.getElementById('mobileRestoreSearch').style.display = 'none';
-    sessionStorage.setItem('hideMobileSearch', 'false');
-}
-
-function triggerMobileSearch() {
-    const val = document.getElementById('mobileSearchInput').value;
-    document.getElementById('searchInput').value = val; // Synchronizacja z głównym polem
-    searchLocation(); // Wywołanie istniejącej funkcji
-}
 
 // Dolny pasek nawigacyjny
 
@@ -867,132 +845,7 @@ async function printExportMap() {
 
 /// Główna wyszukiwarka mapy (NIEZAWODNA HIERARCHIA - WERSJA BRUTE-FORCE)
 // WYSZUKIWARKA: BEZPOŚREDNI ODCZYT LOCALSTORAGE
-async function searchLocation() {
-    const val = document.getElementById('searchInput').value.trim();
-    if(!val) return;
-    const valLower = val.toLowerCase();
-    const isCoords = val.match(/^([-+]?\d{1,2}(?:\.\d+)?)[,\s]+([-+]?\d{1,3}(?:\.\d+)?)$/);
 
-    let found = null;
-
-    // 1. SZUKAMY W BAZIE GS
-    found = globalCustomPois.find(p => p.isGas && (
-        (p.id && p.id.toLowerCase() === valLower) || p.name.toLowerCase().includes(valLower) ||
-        (isCoords && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
-    ));
-
-    // 2. BEZPOŚREDNIE SZUKANIE W LOCALSTORAGE (Pamięć trwała)
-    if (!found) {
-        const lsRaw = localStorage.getItem('gpx_user_pois');
-        if (lsRaw) {
-            try {
-                const lsData = JSON.parse(lsRaw);
-                const match = lsData.find(p => 
-                    (p.name && p.name.toLowerCase().includes(valLower)) || 
-                    (p.rawTitle && p.rawTitle.toLowerCase().includes(valLower)) ||
-                    (isCoords && p.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
-                );
-
-                if (match) {
-                    found = {
-                        id: match.id,
-                        latlng: L.latLng(match.lat, match.lng),
-                        name: match.name,
-                        icon: match.icon || '📍',
-                        category: "Zapisane na stałe",
-                        description: match.desc || '',
-                        isUserSaved: true,
-                        storage: 'local',
-                        rawLat: match.lat,
-                        rawLng: match.lng,
-                        rawTitle: match.rawTitle || match.name
-                    };
-                }
-            } catch (e) { console.error("Błąd parsowania LocalStorage", e); }
-        }
-    }
-
-    // 3. SZUKANIE W SESJI I POSTOJACH (Pamięć ulotna)
-    if (!found) {
-        const tempPoints = [...userSavedPois.filter(p => p.storage === 'session'), ...routeStops];
-        const match = tempPoints.find(p => 
-            (p.name && p.name.toLowerCase().includes(valLower)) || 
-            (isCoords && p.latlng && p.latlng.lat.toFixed(4) === parseFloat(isCoords[1]).toFixed(4))
-        );
-
-        if (match) {
-            found = {
-                id: match.id,
-                latlng: match.latlng || L.latLng(match.lat, match.lng),
-                name: match.name,
-                icon: match.visualType === 'dot' ? '☕' : (match.icon || '📍'),
-                category: match.isStop ? "Postój trasy" : "Zapisane w tej sesji",
-                description: match.desc || '',
-                isUserSaved: true,
-                storage: 'session',
-                rawLat: match.latlng ? match.latlng.lat : match.lat,
-                rawLng: match.latlng ? match.latlng.lng : match.lng,
-                rawTitle: match.name
-            };
-        }
-    }
-
-    // WYKONANIE (Otwarcie modalu i skok mapy)
-    if (found) {
-        map.setView(found.latlng, 15);
-        openCustomPoiModal(found);
-        highlightAndShowMarker(found); 
-        return; 
-    }
-
-    // 4. OSM KOORDYNATY
-    if(isCoords) {
-        placeSearchMarker(parseFloat(isCoords[1]), parseFloat(isCoords[2]), "Wyszukane współrzędne: " + val);
-        return;
-    }
-
-    // 5. OSM NOMINATIM API
-    document.body.style.cursor = 'wait';
-    try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=1`);
-        const data = await res.json();
-        if(data && data.length > 0) {
-            placeSearchMarker(data[0].lat, data[0].lon, data[0].display_name);
-        } else {
-            showCustomAlert("Nie znaleziono miejsca w bazie, Twoich punktach ani w OpenStreetMap.");
-        }
-    } catch(e) {
-        console.error(e);
-        showCustomAlert("Wystąpił błąd sieci podczas wyszukiwania.");
-    } finally {
-        document.body.style.cursor = 'default';
-    }
-}
-function placeSearchMarker(lat, lon, title) {
-    const numericLat = parseFloat(lat);
-    const numericLon = parseFloat(lon);
-
-    const ll = L.latLng(numericLat, numericLon);
-    map.setView(ll, 14);
-    if(searchMarker) map.removeLayer(searchMarker);
-    searchMarker = L.marker(ll).addTo(map);
-
-    // Wyciągnięcie pierwszej części nazwy z długiego stringa OSM
-    const shortName = title.split(',')[0];
-
-    const searchObj = {
-        name: "Kreator własnego punktu",
-        icon: "✏️",
-        category: "Wynik wyszukiwania",
-        description: `<strong>Oryginalna nazwa:</strong><br><small>${title}</small><br>Współrzędne: <code>${numericLat.toFixed(5)}, ${numericLon.toFixed(5)}</code>`,
-        isSearchMarker: true,
-        rawLat: numericLat,
-        rawLng: numericLon,
-        rawTitle: shortName
-    };
-
-    openCustomPoiModal(searchObj);
-}
 
 
 document.getElementById('emojiGridList').innerHTML = EMOJIS.map(e => 
