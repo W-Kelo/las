@@ -240,3 +240,10 @@ function updateClearRouteButtonVisibility() {
     if (btnMob) btnMob.style.display = hasRoute ? 'flex' : 'none';
 }
 window.updateClearRouteButtonVisibility = updateClearRouteButtonVisibility;
+function calculateTotalDist() {
+    let d = 0;
+    for (let i = 1; i < routeGeometry.length; i++) {
+        d += L.latLng(routeGeometry[i-1]).distanceTo(L.latLng(routeGeometry[i]));
+    }
+    return d;
+}
