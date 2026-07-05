@@ -21,7 +21,7 @@ let poiMode = false;
 
 let routePrefColor = localStorage.getItem('gpx_color') || '#22c55e';
 let routePrefWeight = parseInt(localStorage.getItem('gpx_weight')) || 6;
-let routePrefSpeed = localStorage.getItem('gpx_speed') || 'medium';
+
 let routePrefPointsEnabled = localStorage.getItem('gpx_points_enabled') === 'true';
 let routePrefPointsColor = localStorage.getItem('gpx_points_color') || '#22c55e';
 
@@ -36,9 +36,7 @@ let scaleFrameId = null;
 let customScaleEl = null;
 let scaleUpdateTimeout = null;
 
-let animLineLayer = null;
-let animDotMarker = null;
-let animInterval = null;
+
 
 
 let isDrawMode = false;
@@ -1237,50 +1235,7 @@ function f10_report(fid, msg) {
 
 
 
-function playRouteAnimation() {
-    if (routeGeometry.length < 2) return showCustomAlert("Brak trasy.");
-    if (animInterval) clearInterval(animInterval);
-    if (animLineLayer) map.removeLayer(animLineLayer);
-    if (animDotMarker) map.removeLayer(animDotMarker);
 
-    map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
-    polyline.setStyle({ opacity: 0 });
-
-    f1_scanAnimation(routePrefAnimPoints); // APLIKACJA TRYBU NA CZAS ANIMACJI
-
-    animLineLayer = L.polyline([routeGeometry[0]], { 
-        color: routePrefColor, weight: routePrefWeight, opacity: 0.9, lineJoin: 'round' 
-    }).addTo(map);
-
-    animDotMarker = L.circleMarker(routeGeometry[0], {
-        radius: routePrefWeight + 2, color: '#fff', weight: 2, fillColor: routePrefColor, fillOpacity: 1
-    }).addTo(map);
-
-    const totalDist = calculateTotalDist();
-    let speedMetersPerFrame = totalDist / (routePrefSpeed === 'slow' ? 400 : (routePrefSpeed === 'fast' ? 40 : 100));
-    let currentAnimDist = 0;
-
-    animInterval = setInterval(() => {
-        currentAnimDist += speedMetersPerFrame;
-        if (currentAnimDist >= totalDist) {
-            currentAnimDist = totalDist;
-            clearInterval(animInterval);
-            animInterval = null;
-            setTimeout(() => {
-                if (animLineLayer) map.removeLayer(animLineLayer);
-                if (animDotMarker) map.removeLayer(animDotMarker);
-                polyline.setStyle({ opacity: 0.9 });
-                f1_scanAnimation('all'); // BEZWZGLĘDNY POWRÓT KROPEK DO WIDOKU MAPY PO ZAKOŃCZENIU
-            }, 2000);
-        }
-
-        const posData = getPointAtDistance(routeGeometry, currentAnimDist);
-        const currentLineCoords = routeGeometry.slice(0, posData.segmentIndex);
-        currentLineCoords.push(posData.latLng);
-        animLineLayer.setLatLngs(currentLineCoords);
-        animDotMarker.setLatLng(posData.latLng);
-    }, 16);
-}
 
 
 /* --- INTEGRACJA COLORIS: ROZWIĄZANIE PROBLEMU BLOKOWANIA OKIEN --- */
