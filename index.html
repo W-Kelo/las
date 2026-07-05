@@ -1280,15 +1280,20 @@
         </div>
     </div>
 </div>
-<!-- MODAL: BAZA SZLAKÓW TURYSTYCZNYCH -->
+<!-- MODAL: BAZA SZLAKÓW TURYSTYCZNYCH (OSM) -->
 <div id="trailsModal" class="floating-modal" style="width: 580px; max-width: 95vw; z-index: 2500; display: none;">
     <div class="modal-header" style="background: rgba(21, 128, 61, 0.2);">
-        <span style="color: #16a34a; font-weight: bold;">🥾 Baza Szlaków Turystycznych</span>
+        <span style="color: #16a34a; font-weight: bold;">🥾 Szlaki Turystyczne (OSM)</span>
         <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('trailsModal')">X</button>
     </div>
     <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px; padding: 15px;">
+        <!-- Informacja o źródle danych -->
+        <div style="background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; padding: 8px 12px; font-size: 0.8rem; border-radius: 4px; display: flex; align-items: center; gap: 6px;">
+            🗺️ <strong>Źródło danych:</strong> Oficjalne relacje turystyczne z bazy OpenStreetMap
+        </div>
+
         <div class="my-points-toolbar" style="margin-bottom: 5px;">
-            <input type="text" id="trailsSearchInput" placeholder="Szukaj szlaku po nazwie lub tagu..." oninput="handleTrailsSearchAndSort()">
+            <input type="text" id="trailsSearchInput" placeholder="Szukaj szlaku po nazwie..." oninput="handleTrailsSearchAndSort()">
             <select id="trailsSortSelect" onchange="handleTrailsSearchAndSort()" style="max-width: 180px;">
                 <option value="length-asc">Długość: od najkrótszych</option>
                 <option value="length-desc">Długość: od najdłuższych</option>
@@ -1297,9 +1302,9 @@
             </select>
         </div>
         
-        <!-- Kontener z przewijaną listą szlaków -->
-        <div id="trailsListContainer" style="flex-grow: 1; overflow-y: auto; max-height: 50vh; display: flex; flex-direction: column; gap: 10px; padding-right: 5px;">
-            <!-- Wypełniane dynamicznie przez JS -->
+        <!-- Przewijana lista szlaków -->
+        <div id="trailsListContainer" style="flex-grow: 1; overflow-y: auto; max-height: 45vh; display: flex; flex-direction: column; gap: 10px; padding-right: 5px;">
+            <!-- Wypychane przez JS -->
         </div>
 
         <!-- Paginacja -->
@@ -1317,7 +1322,7 @@
     </div>
     <div class="modal-body" style="padding: 15px; display: flex; flex-direction: column; gap: 10px;">
         <div style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 8px; font-size: 0.85rem; line-height: 1.5;" id="trailElevationMeta">
-            <!-- Statystyki wysokościowe szlaku -->
+            <!-- Statystyki wysokościowe -->
         </div>
         <canvas id="trailElevationChart" style="width: 100%; height: 130px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);"></canvas>
         <div style="text-align: center; font-size: 0.75rem; color: #94a3b8; margin-top: -5px;">
