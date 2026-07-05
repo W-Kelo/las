@@ -35,7 +35,8 @@ async function loadGoogleSheetsPOIs() {
         
         if (data.error) throw new Error(data.error);
 
-        globalCustomPois = []; 
+        // Poprawione: bezpieczne czyszczenie tablicy bez zrywania referencji window
+        globalCustomPois.length = 0; 
         
         data.forEach((item, index) => {
             const cleanCoordsStr = item.coords.replace(/[^0-9.,-]/g, '');
@@ -77,11 +78,14 @@ async function loadGoogleSheetsPOIs() {
             }
         });
 
+        // Upewniamy się, że referencja globalna jest w pełni zsynchronizowana
+        window.globalCustomPois = globalCustomPois;
+
+        // Inicjalizacja bazy szlaków z kompletną listą atrakcji w pamięci
         if (typeof initTrailsDatabase === 'function') {
             initTrailsDatabase();
         }
-       window.globalCustomPois = globalCustomPois;
-    } catch (error) { // <-- Teraz catch prawidłowo łapie błędy z bloku try
+    } catch (error) { 
         console.warn("Brak połączenia z Bazą Danych (Google Sheets) lub zły link. Punkty GS nie zostały wczytane.", error.message);
     } finally {
         if(searchInput && searchBtn) {
