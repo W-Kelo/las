@@ -9,33 +9,42 @@ let isPanelScaleMode = false;
 let isPanelsSplitMode = false;
 let isScissorsMode = false;
 
-/* --- INTELIGENTNE ZARZĄDZANIE WIDOCZNOŚCIĄ I PRZYCISKAMI --- */
 function updatePanelVisibility() {
     const panel = document.getElementById('mapInfoPanel');
     if (!panel) return;
 
+    const miMetaBlock = document.getElementById('miMetaBlock');
     const miTitle = document.getElementById('miTitle');
     const miDate = document.getElementById('miDate');
     const miDesc = document.getElementById('miDesc');
     const miStats = document.getElementById('miStats');
     const miLegendContainer = document.getElementById('miLegendContainer');
-    const exportLegendList = document.getElementById('exportLegendList');
 
-    const hasTitle = miTitle && miTitle.style.display === 'block' && miTitle.innerHTML.trim() !== '';
-    const hasDate = miDate && miDate.style.display === 'block' && miDate.innerHTML.trim() !== '';
-    const hasDesc = miDesc && miDesc.style.display === 'block' && miDesc.innerHTML.trim() !== '';
+    const hasTitle = miTitle && miTitle.style.display !== 'none' && miTitle.innerHTML.trim() !== '';
+    const hasDate = miDate && miDate.style.display !== 'none' && miDate.innerHTML.trim() !== '';
+    const hasDesc = miDesc && miDesc.style.display !== 'none' && miDesc.innerHTML.trim() !== '';
     const hasStats = miStats && miStats.style.display === 'flex' && miStats.innerHTML.trim() !== '';
     
-    const hasText = hasTitle || hasDate || hasDesc || hasStats;
+    const hasText = hasTitle || hasDate || hasDesc;
+
+    // Sterowanie widocznością złączonego Bloku Tekstowego
+    if (miMetaBlock) {
+        miMetaBlock.style.display = hasText ? 'block' : 'none';
+    }
 
     const hasLegend = miLegendContainer && 
-                      miLegendContainer.style.display === 'block' && 
-                      exportLegendList && 
-                      exportLegendList.children.length > 0 && 
-                      (!document.getElementById('temp_empty_leg') || exportLegendList.children.length > 1);
+                      miLegendContainer.style.display !== 'none' && 
+                      document.getElementById('exportLegendList') && 
+                      document.getElementById('exportLegendList').children.length > 0;
 
     const detachedCount = document.querySelectorAll('.detached-panel').length;
-    const hasAnyPanel = hasText || hasLegend || (detachedCount > 0);
+    const hasAnyPanel = hasText || hasStats || hasLegend || (detachedCount > 0);
+
+    if (hasText || hasStats || hasLegend) {
+        panel.style.display = 'block';
+    } else {
+        panel.style.display = 'none';
+    }
 
     const btnDrag = document.getElementById('btnDragPanel');
     const btnResize = document.getElementById('btnResizePanel');
@@ -43,30 +52,14 @@ function updatePanelVisibility() {
     const btnScissors = document.getElementById('btnScissors');
     const btnMerge = document.getElementById('btnMerge');
 
-    if (hasText || hasLegend) {
-        panel.style.display = 'block';
-    } else {
-        panel.style.display = 'none';
-    }
-
     if (hasAnyPanel) {
         if (btnDrag) btnDrag.style.display = 'inline-block';
         if (btnResize) btnResize.style.display = 'inline-block';
         if (btnScale) btnScale.style.display = 'inline-block';
-    } else {
-        if (btnDrag) btnDrag.style.display = 'none';
-        if (btnResize) btnResize.style.display = 'none';
-        if (btnScale) btnScale.style.display = 'none';
-        
-        if (isPanelDraggable) togglePanelDrag();
-        if (isPanelResizable) togglePanelResize();
-        if (isPanelScaleMode) togglePanelScale();
     }
 
     let activeChildrenCount = 0;
-    if (hasTitle) activeChildrenCount++;
-    if (hasDate) activeChildrenCount++;
-    if (hasDesc) activeChildrenCount++;
+    if (hasText) activeChildrenCount++;
     if (hasStats) activeChildrenCount++;
     if (hasLegend) activeChildrenCount++;
 
@@ -83,7 +76,6 @@ function updatePanelVisibility() {
 }
 window.updatePanelVisibility = updatePanelVisibility;
 
-/* --- PRZESUWANIE PANELU (DRAG) --- */
 function togglePanelDrag() {
     isPanelDraggable = !isPanelDraggable;
     const btn = document.getElementById('btnDragPanel');
@@ -279,8 +271,9 @@ function activateScissorsMode() {
         }
         if (parentPanel) parentPanel.style.border = "2px dashed #eab308";
         
+        // Zunifikowane dzieci do cięcia: miMetaBlock, miStats, miLegendContainer
         const children = Array.from(parentPanel.children).filter(el => 
-            el && el.style && el.style.display !== 'none' && el.id && el.id !== '' && el.innerHTML.trim() !== '' && !el.classList.contains('premium-resize-overlay')
+            el && el.style && el.style.display !== 'none' && el.id !== '' && !el.classList.contains('premium-resize-overlay')
         );
         
         if (children.length <= 1) {
@@ -301,13 +294,12 @@ function activateScissorsMode() {
             });
             parentPanel.insertBefore(divider, children[i]);
         }
-        showCustomAlert("✂️ Naciśnij przerywaną żółtą linię między sekcjami, aby oderwać panel.");
     } else {
         if (btn) {
             btn.style.boxShadow = "none";
             btn.innerText = "✂️ Rozłącz panele";
         }
-        if (parentPanel) parentPanel.style.border = parentPanel.style.backgroundColor !== 'transparent' ? "1px solid rgba(0,0,0,0.1)" : "none";
+        if (parentPanel) parentPanel.style.border = 'none';
     }
 }
 window.activateScissorsMode = activateScissorsMode;
@@ -332,17 +324,6 @@ function detachPanel(targetId, dividerEl) {
     el.style.width = Math.max(rect.width, 150) + 'px';
     el.style.height = 'auto'; 
     
-    const currentBg = el.style.backgroundColor;
-    if (!currentBg || currentBg === 'transparent' || currentBg === 'rgba(0, 0, 0, 0)') {
-        const parentBg = window.getComputedStyle(parentPanel).backgroundColor;
-        el.style.backgroundColor = parentBg !== 'rgba(0, 0, 0, 0)' ? parentBg : 'rgba(255,255,255,0.95)';
-        el.style.padding = "10px 15px"; 
-        el.style.borderRadius = "8px";
-    }
-
-    const mergeBtn = document.getElementById('btnMerge');
-    if(mergeBtn) mergeBtn.style.display = 'inline-block';
-    
     forceEnableDragAndResize(el);
     setupQuadTapDelete(el);
     
@@ -350,6 +331,7 @@ function detachPanel(targetId, dividerEl) {
         isPanelResizable = false;
         togglePanelResize();
     }
+    updatePanelVisibility();
 }
 window.detachPanel = detachPanel;
 
@@ -421,12 +403,11 @@ function forceEnableDragAndResize(el) {
 }
 window.forceEnableDragAndResize = forceEnableDragAndResize;
 
-/* --- SCALANIE I ŁĄCZENIE (MERGE) --- */
 function resetSplitPanels() {
     const parentPanel = document.getElementById('mapInfoPanel');
     if (!parentPanel) return;
 
-    const order = ['miTitle', 'miDate', 'miDesc', 'miStats', 'miLegendContainer'];
+    const order = ['miMetaBlock', 'miStats', 'miLegendContainer'];
     
     order.forEach(id => {
         const el = document.getElementById(id);
@@ -448,9 +429,9 @@ function resetSplitPanels() {
     if(mergeBtn) mergeBtn.style.display = 'none';
     
     if(isScissorsMode) activateScissorsMode(); 
+    updatePanelVisibility();
 }
 window.resetSplitPanels = resetSplitPanels;
-
 /* --- SKALOWANIE PANELU (SCALE / ZOOM) --- */
 function togglePanelScale() {
     isPanelScaleMode = !isPanelScaleMode;
