@@ -1,80 +1,84 @@
 /* =========================================================
-   trailsManager.js - SYSTEM ZARZĄDZANIA BAZĄ SZLAKÓW (V1)
+   trailsManager.js - POPRAWIONY SYSTEM ZARZĄDZANIA SZLAKAMI (V2)
 ========================================================= */
 
 let currentTrailsPage = 1;
 const TRAILS_PER_PAGE = 5;
 let filteredTrails = [];
 let trailHoverMarker = null;
+let activePulseIntervals = {};
 
-// Słownik tłumaczeń tagów OSM oraz ich wartości na j. polski
-const TRAILS_OSM_DICT = {
-    "name": "Nazwa szlaku",
+// Słownik tłumaczeń tagów OSM
+const TRAILS_TRANSLATIONS = {
     "operator": "Zarządca",
     "ref": "Oznaczenie",
-    "osmc:symbol": "Symbol graficzny",
-    "color": "Kolor",
-    "symbol": "Opis symbolu",
-    "distance": "Długość deklarowana",
     "website": "Strona WWW",
-    "wikipedia": "Wikipedia",
-    "wikidata": "Baza Wikidata",
     "network": "Ranga sieci",
-    "difficulty": "Trudność",
+    "difficulty": "Stopień trudności",
     "state": "Status szlaku",
+    "colour": "Kolor szlaku",
+    "note": "Uwagi",
+    "description": "Opis szlaku",
+    "red": "Czerwony",
+    "green": "Zielony",
+    "yellow": "Żółty",
+    "white": "Biały",
+    "blue": "Niebieski",
+    "black": "Czarny",
+    "roundtrip": "Pętla",
     "yes": "Tak",
     "no": "Nie",
     "hiking": "Pieszy",
-    "rwn": "Regionalna sieć szlaków",
-    "lwn": "Lokalna sieć szlaków",
+    "rwn": "Regionalna sieć",
+    "lwn": "Lokalna sieć",
     "connection": "Łącznikowy",
     "proposed": "Planowany"
 };
 
-function translateTrailTag(key) {
-    return TRAILS_OSM_DICT[key] || key.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+const TAG_BLACKLIST = ["type", "route", "osmc:symbol", "osmc_symbol", "wikidata", "wikipedia", "name", "color", "name:de", "name:pl"];
+
+function translateKey(key) {
+    const cleanKey = key.toLowerCase().trim();
+    return TRAILS_TRANSLATIONS[cleanKey] || key;
 }
 
-function translateTrailValue(val) {
+function translateValue(val) {
     if (!val) return "";
-    const clean = val.toString().toLowerCase().trim();
-    return TRAILS_OSM_DICT[clean] || val;
+    const cleanVal = val.toString().toLowerCase().trim();
+    return TRAILS_TRANSLATIONS[cleanVal] || val;
 }
 
-// Inicjalizacja bazy szlaków po załadowaniu OSM
+// Inicjalizacja bazy szlaków
 function initTrailsDatabase() {
     if (!window.processedTrails || window.processedTrails.length === 0) return;
 
     window.processedTrails.forEach(trail => {
-        // 1. Obliczenie całkowitej długości szlaku z geometrii
-        let totalDist = 0;
-        for (let i = 1; i < trail.coords.length; i++) {
-            totalDist += L.latLng(trail.coords[i-1]).distanceTo(L.latLng(trail.coords[i]));
-        }
-        trail.calculatedLength = totalDist; // w metrach
-
-        // 2. Proceduralna symulacja profilu wysokościowego szlaku
-        let elevResult = generateTrailElevation(trail.coords, totalDist);
+        // Generowanie profilu wysokościowego ze scalonej geometrii
+        let elevResult = generateTrailElevation(trail.coords, trail.calculatedLength);
         trail.elevationData = elevResult.elevData;
         trail.minElev = elevResult.minElev;
         trail.maxElev = elevResult.maxElev;
         trail.totalAscent = elevResult.totalAscent;
 
-        // 3. Obliczenie przewidywanego czasu przejścia (4.2 km/h + 10 min na każde 100m podejść)
-        const km = totalDist / 1000;
+        // Czas przejścia (4.2 km/h + 10 min na każde 100m przewyższeń)
+        const km = trail.calculatedLength / 1000;
         const totalMinutes = (km / 4.2) * 60 + (trail.totalAscent / 100 * 10);
         trail.estimatedTimeMins = Math.round(totalMinutes);
 
-        // 4. Analiza bliskości punktów z Bazy GS (do 50 m od szlaku)
+        // Wyznaczenie atrakcji z bazy danych
         trail.nearbyGSPois = findGSPoisNearTrail(trail.coords, 50);
     });
 
     filteredTrails = [...window.processedTrails];
-    handleTrailsSearchAndSort();
+    
+    // Wymuszenie Draggable na dynamicznych modalach
+    if (typeof makeDraggable === 'function') {
+        makeDraggable(document.getElementById('trailsModal'));
+        makeDraggable(document.getElementById('trailElevationModal'));
+    }
 }
 window.initTrailsDatabase = initTrailsDatabase;
 
-// Proceduralny generator profilu wysokościowego szlaku
 function generateTrailElevation(coords, totalDist) {
     let elevData = [];
     let currentDist = 0;
@@ -82,12 +86,12 @@ function generateTrailElevation(coords, totalDist) {
 
     for (let i = 0; i < coords.length; i++) {
         if (i > 0) {
-            currentDist += L.latLng(coords[i-1]).distanceTo(L.latLng(coords[i]));
+            currentDist += L.latLng(coords[i-1][0], coords[i-1][1]).distanceTo(L.latLng(coords[i][0], coords[i][1]));
         }
         const lat = coords[i][0];
         const lng = coords[i][1];
         
-        // Stabilny generator falowy na bazie współrzędnych gwarantujący powtarzalność profilu
+        // Proceduralny profil wysokościowy
         let elev = 45 + Math.sin(lat * 600) * 20 + Math.cos(lng * 600) * 12 + Math.sin((lat + lng) * 1200) * 4;
         elev = Math.max(12, Math.round(elev));
 
@@ -107,47 +111,43 @@ function generateTrailElevation(coords, totalDist) {
     return { elevData, minElev, maxElev, totalAscent: Math.round(totalAscent) };
 }
 
-// Wyszukiwanie punktów GS w buforze 50 m od szlaku
 function findGSPoisNearTrail(coords, maxDistMeters = 50) {
     if (!window.globalCustomPois || window.globalCustomPois.length === 0) return [];
-    
     let nearby = [];
+    
     window.globalCustomPois.forEach(poi => {
-        let minDist = Infinity;
-        for (let i = 0; i < coords.length; i += 3) { // Próbkowanie co 3 punkty dla przyspieszenia obliczeń
+        let found = false;
+        // Sprawdzamy co 3 punkty ze względu na wydajność
+        for (let i = 0; i < coords.length; i += 3) {
             const d = poi.latlng.distanceTo(L.latLng(coords[i][0], coords[i][1]));
-            if (d < minDist) minDist = d;
-            if (minDist < maxDistMeters) break; 
+            if (d <= maxDistMeters) {
+                found = true;
+                break;
+            }
         }
-        if (minDist <= maxDistMeters) {
-            nearby.push(poi);
-        }
+        if (found) nearby.push(poi);
     });
     return nearby;
 }
 
-// Otwieranie głównego modalu szlaków
 function openTrailsModal() {
     openCenteredModal('trailsModal');
     handleTrailsSearchAndSort();
 }
 window.openTrailsModal = openTrailsModal;
 
-// Wyszukiwanie i sortowanie szlaków w locie
 function handleTrailsSearchAndSort() {
     const searchVal = document.getElementById('trailsSearchInput').value.toLowerCase().trim();
     const sortVal = document.getElementById('trailsSortSelect').value;
 
-    // Filtrowanie szlaków
     filteredTrails = window.processedTrails.filter(t => {
         const nameMatch = t.name.toLowerCase().includes(searchVal);
         const tagMatch = Object.entries(t.tags).some(([k, v]) => 
-            k.toLowerCase().includes(searchVal) || String(v).toLowerCase().includes(searchVal)
+            !TAG_BLACKLIST.includes(k) && (k.toLowerCase().includes(searchVal) || String(v).toLowerCase().includes(searchVal))
         );
         return nameMatch || tagMatch;
     });
 
-    // Sortowanie szlaków
     filteredTrails.sort((a, b) => {
         if (sortVal === 'length-asc') return a.calculatedLength - b.calculatedLength;
         if (sortVal === 'length-desc') return b.calculatedLength - a.calculatedLength;
@@ -161,14 +161,13 @@ function handleTrailsSearchAndSort() {
 }
 window.handleTrailsSearchAndSort = handleTrailsSearchAndSort;
 
-// Renderowanie wybranej strony szlaków
 function renderTrailsPage() {
     const listContainer = document.getElementById('trailsListContainer');
     if (!listContainer) return;
     listContainer.innerHTML = '';
 
     if (filteredTrails.length === 0) {
-        listContainer.innerHTML = `<p style="text-align:center; opacity:0.6; padding: 20px;">Brak szlaków spełniających kryteria wyszukiwania.</p>`;
+        listContainer.innerHTML = `<p style="text-align:center; opacity:0.6; padding: 20px;">Brak szlaków spełniających kryteria.</p>`;
         document.getElementById('trailsPaginationContainer').innerHTML = '';
         return;
     }
@@ -183,14 +182,45 @@ function renderTrailsPage() {
         const mins = trail.estimatedTimeMins % 60;
         const timeText = hours > 0 ? `${hours}h ${mins}m` : `${mins} min`;
 
-        // Generowanie tagów szlaku w j. polskim
+        // Generowanie tagów oraz sprawdzanie Wikipedia i Website
         let tagsHtml = '';
         Object.entries(trail.tags).forEach(([k, v]) => {
-            if (['name', 'type', 'route', 'color'].includes(k)) return;
-            tagsHtml += `<div class="trail-tag-item"><b>${translateTrailTag(k)}:</b> ${translateTrailValue(v)}</div>`;
+            if (TAG_BLACKLIST.includes(k)) return;
+            tagsHtml += `
+                <div class="trail-tag-item">
+                    <span style="color:#94a3b8;">${translateKey(k)}:</span>
+                    <strong>${translateValue(v)}</strong>
+                </div>`;
         });
 
-        // Mini kafelki atrakcji GS
+        // Obsługa klikalnych linków Wikipedii
+        const wikiTag = trail.tags.wikipedia;
+        if (wikiTag) {
+            let wikiUrl = "";
+            if (wikiTag.includes(':')) {
+                const parts = wikiTag.split(':');
+                wikiUrl = `https://${parts[0]}.wikipedia.org/wiki/${encodeURIComponent(parts[1])}`;
+            } else {
+                wikiUrl = `https://pl.wikipedia.org/wiki/${encodeURIComponent(wikiTag)}`;
+            }
+            tagsHtml += `
+                <div class="trail-tag-item">
+                    <span style="color:#94a3b8;">Wikipedia:</span>
+                    <strong><a href="${wikiUrl}" target="_blank" class="custom-app-link" style="font-weight:bold;">Otwórz artykuł 🔗</a></strong>
+                </div>`;
+        }
+
+        // Obsługa klikalnych linków zewnętrznych witryn
+        const webTag = trail.tags.website;
+        if (webTag) {
+            tagsHtml += `
+                <div class="trail-tag-item">
+                    <span style="color:#94a3b8;">Strona www:</span>
+                    <strong><a href="${webTag}" target="_blank" class="custom-app-link" style="font-weight:bold;">Otwórz witrynę 🔗</a></strong>
+                </div>`;
+        }
+
+        // Atrakcje GS
         let poisHtml = '';
         if (trail.nearbyGSPois.length > 0) {
             poisHtml = `
@@ -198,9 +228,9 @@ function renderTrailsPage() {
                     <div style="font-weight:bold; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Atrakcje GS wzdłuż szlaku (do 50 m):</div>
                     <div class="trail-poi-mini-list">
                         ${trail.nearbyGSPois.map(p => `
-                            <div class="trail-poi-mini-chip" onclick="event.stopPropagation(); openPoiFromTrail('${p.id}')">
+                            <button class="trail-poi-mini-chip" onclick="event.stopPropagation(); openPoiFromTrail('${p.id}')">
                                 <span>${p.icon}</span> <span>${p.name}</span>
-                            </div>
+                            </button>
                         `).join('')}
                     </div>
                 </div>`;
@@ -222,17 +252,20 @@ function renderTrailsPage() {
             <div class="trail-info-grid">
                 <div>📏 Dystans: <strong>${km} km</strong></div>
                 <div>⏱️ Czas przejścia: <strong>${timeText}</strong></div>
-                <div>⛰️ Podejścia: <strong>⬆️ ${trail.totalAscent}m</strong></div>
-                <div>🧭 Profil: <strong>${trail.minElev}-${trail.maxElev} m n.p.m.</strong></div>
+                <div>⛰️ Przewyższenia: <strong>⬆️ ${trail.totalAscent}m</strong></div>
+                <div>🧭 Zakres: <strong>${trail.minElev}-${trail.maxElev} m</strong></div>
             </div>
 
-            <div class="trail-tag-list">${tagsHtml || '<div class="trail-tag-item">Brak dodatkowych tagów w OSM.</div>'}</div>
+            <div class="trail-tag-list">
+                ${tagsHtml || '<div style="opacity:0.5;">Brak dodatkowych tagów.</div>'}
+            </div>
 
             ${poisHtml}
 
-            <div style="display:flex; justify-content:flex-end; margin-top:5px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:5px; border-top:1px solid rgba(255,255,255,0.05); padding-top:8px;">
+                <span style="font-size:0.75rem; color:#64748b;">🗺️ Dane: OSM</span>
                 <button onclick="openTrailElevationChart('${trail.id}')" style="background:${trail.color}; font-size:0.8rem; padding:6px 12px; margin:0;">
-                    📊 Pokaż profil wysokościowy
+                    📊 Wykres wysokościowy
                 </button>
             </div>
         `;
@@ -242,12 +275,11 @@ function renderTrailsPage() {
     renderTrailsPagination();
 }
 
-// Otwieranie szczegółów punktu GS bez zamykania bazy szlaków
 function openPoiFromTrail(poiId) {
     if (!window.globalCustomPois) return;
     const poi = window.globalCustomPois.find(p => p.id === poiId);
     if (poi) {
-        // Wymuszamy wyższy z-index dla customPoiModal, by ukazał się nad szlakami (z-index 2500)
+        // Wymuszenie z-index nad modalem szlaków
         const pm = document.getElementById('customPoiModal');
         if (pm) pm.style.zIndex = '3500';
         openCustomPoiModal(poi);
@@ -255,7 +287,6 @@ function openPoiFromTrail(poiId) {
 }
 window.openPoiFromTrail = openPoiFromTrail;
 
-// Paginacja szlaków wg wzoru: pierwsza [ostatnie 2 karty] aktualna [następne 2] ostatnia
 function renderTrailsPagination() {
     const container = document.getElementById('trailsPaginationContainer');
     if (!container) return;
@@ -264,7 +295,6 @@ function renderTrailsPagination() {
     const totalPages = Math.ceil(filteredTrails.length / TRAILS_PER_PAGE);
     if (totalPages <= 1) return;
 
-    // Tworzenie unikalnego zbioru stron do wyświetlenia na bazie matematycznego okna
     const pagesSet = new Set();
     pagesSet.add(1);
     
@@ -277,9 +307,7 @@ function renderTrailsPagination() {
 
     const pagesArray = Array.from(pagesSet).sort((a, b) => a - b);
 
-    // Renderowanie przycisków
     pagesArray.forEach((p, idx) => {
-        // Dodanie wizualnych wielokropków w przypadku przerw numerycznych
         if (idx > 0 && p - pagesArray[idx - 1] > 1) {
             const dots = document.createElement('span');
             dots.innerText = '...';
@@ -299,25 +327,44 @@ function renderTrailsPagination() {
     });
 }
 
-// Podświetlanie i pulsowanie szlaku na mapie głównej
+// Poprawiony, płynny i bezpieczny dla Canvas system pulsowania linii szlaku
 function hoverTrailOnMap(trailId, isHover) {
     if (!window.processedTrails) return;
     const trail = window.processedTrails.find(t => t.id === trailId);
     if (!trail) return;
 
-    trail.polylines.forEach(pl => {
-        const pathEl = pl.getElement();
-        if (pathEl) {
-            if (isHover) {
-                pathEl.classList.add('trail-pulsing-glow');
-                pl.setStyle({ weight: 8, opacity: 1.0 });
-                pl.bringToFront();
+    if (isHover) {
+        if (activePulseIntervals[trailId]) clearInterval(activePulseIntervals[trailId]);
+        
+        let growing = true;
+        let currentWeight = 4;
+        
+        // Zaczynamy cykl modulacji grubości
+        activePulseIntervals[trailId] = setInterval(() => {
+            if (growing) {
+                currentWeight += 0.5;
+                if (currentWeight >= 9) growing = false;
             } else {
-                pathEl.classList.remove('trail-pulsing-glow');
-                pl.setStyle({ weight: 4, opacity: 0.7 });
+                currentWeight -= 0.5;
+                if (currentWeight <= 4) growing = true;
             }
+            
+            trail.polylines.forEach(pl => {
+                pl.setStyle({ weight: currentWeight, opacity: 1.0 });
+            });
+        }, 50);
+
+        trail.polylines.forEach(pl => pl.bringToFront());
+    } else {
+        // Przywrócenie stałych stylów
+        if (activePulseIntervals[trailId]) {
+            clearInterval(activePulseIntervals[trailId]);
+            delete activePulseIntervals[trailId];
         }
-    });
+        trail.polylines.forEach(pl => {
+            pl.setStyle({ weight: 4, opacity: 0.7 });
+        });
+    }
 }
 window.hoverTrailOnMap = hoverTrailOnMap;
 
@@ -333,9 +380,9 @@ function openTrailElevationChart(trailId) {
     const km = (trail.calculatedLength / 1000).toFixed(2);
     document.getElementById('trailElevationMeta').innerHTML = `
         Suma podejść: <strong>⬆️ ${trail.totalAscent} m</strong> | 
-        Punkt najwyższy: <strong>${trail.maxElev} m n.p.m.</strong> | 
-        Najniższy: <strong>${trail.minElev} m n.p.m.</strong> | 
-        Długość szlaku: <strong>${km} km</strong>
+        Najwyższy punkt: <strong>${trail.maxElev} m n.p.m.</strong> | 
+        Najniższy punkt: <strong>${trail.minElev} m n.p.m.</strong> | 
+        Dystans: <strong>${km} km</strong>
     `;
 
     openCenteredModal('trailElevationModal');
@@ -361,7 +408,7 @@ function drawTrailElevationCanvas(trail) {
     const padL = 35;
     const padR = 10;
     const padT = 15;
-    const padB = 20; // Większy dolny margines na opisy kilometrowe
+    const padB = 20; 
     const innerW = w - padL - padR;
     const innerH = h - padT - padB;
 
@@ -372,7 +419,7 @@ function drawTrailElevationCanvas(trail) {
 
     ctx.clearRect(0, 0, w, h);
 
-    // 1. Rysowanie poziomych linii siatki pomocniczej Y
+    // Osie Y
     ctx.fillStyle = document.body.classList.contains('light') ? '#64748b' : '#94a3b8';
     ctx.font = '8px sans-serif';
     ctx.textAlign = 'right';
@@ -388,9 +435,9 @@ function drawTrailElevationCanvas(trail) {
         ctx.fillText(`${Math.round(val)}m`, padL - 4, y);
     }
 
-    // 2. Rysowanie pionowych znaczników podziału drogi (X)
+    // Znaczniki kilometrowe
     const kmTotal = trail.calculatedLength / 1000;
-    const intervalKm = kmTotal >= 10 ? 5 : 1; // Podział co 5 km dla długich szlaków, co 1 km dla krótkich
+    const intervalKm = kmTotal >= 10 ? 5 : 1; 
     
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
@@ -406,7 +453,7 @@ function drawTrailElevationCanvas(trail) {
         ctx.fillText(`${km} km`, x, h - padB + 4);
     }
 
-    // 3. Wypełnienie obszaru wykresu gradientem opartym o kolor szlaku
+    // Wypełnienie wykresu
     const grad = ctx.createLinearGradient(0, padT, 0, h - padB);
     grad.addColorStop(0, `${trail.color}55`);
     grad.addColorStop(1, `${trail.color}00`);
@@ -422,7 +469,7 @@ function drawTrailElevationCanvas(trail) {
     ctx.fillStyle = grad;
     ctx.fill();
 
-    // 4. Linia główna wykresu (Stroke)
+    // Linia obrysu
     ctx.beginPath();
     trail.elevationData.forEach((d, i) => {
         const x = padL + (i / (trail.elevationData.length - 1)) * innerW;
@@ -433,7 +480,6 @@ function drawTrailElevationCanvas(trail) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 5. Obsługa interaktywnego wodzenia kursorem (Pan & Tracking Marker na mapie)
     const handleMove = (clientX) => {
         const rect = canvas.getBoundingClientRect();
         const x = clientX - rect.left;
@@ -443,9 +489,8 @@ function drawTrailElevationCanvas(trail) {
         const idx = Math.round(ratio * (trail.elevationData.length - 1));
         const pt = trail.elevationData[idx];
 
-        drawTrailElevationCanvas(trail); // Przerysowanie podkładu
+        drawTrailElevationCanvas(trail); 
 
-        // Pionowa linia śledząca
         const drawX = padL + ratio * innerW;
         ctx.beginPath();
         ctx.moveTo(drawX, padT);
@@ -455,7 +500,6 @@ function drawTrailElevationCanvas(trail) {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Kropka śledząca na wykresie
         const drawY = padT + innerH - ((pt.elevation - min) / range) * innerH;
         ctx.beginPath();
         ctx.arc(drawX, drawY, 4, 0, Math.PI * 2);
@@ -465,7 +509,6 @@ function drawTrailElevationCanvas(trail) {
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Etykieta tooltip nad punktem
         const textDist = `${(pt.dist / 1000).toFixed(2)} km`;
         const textElev = `${pt.elevation} m n.p.m.`;
         ctx.fillStyle = document.body.classList.contains('light') ? '#0f172a' : '#fff';
@@ -478,7 +521,6 @@ function drawTrailElevationCanvas(trail) {
         ctx.fillStyle = trail.color;
         ctx.fillText(textDist, tooltipX, drawY + 6);
 
-        // Wyświetlenie markera śledzącego na mapie głównej w locie
         if (typeof map !== 'undefined' && map) {
             if (!trailHoverMarker) {
                 trailHoverMarker = L.circleMarker(pt.latlng, {
