@@ -1177,3 +1177,8 @@ document.addEventListener('DOMContentLoaded', () => {
         legendNumberStyles = JSON.parse(savedStyles);
     }
 });
+// Nasłuchiwanie zmian rozmiaru (i obrotu ekranu)
+window.addEventListener('resize', centerExportModal);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', centerExportModal);
+}
