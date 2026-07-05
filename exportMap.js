@@ -14,6 +14,8 @@ let tempLegendClickLatLng = null;
 let exportMapDark = false; 
 let exportTileLayer = null;
 let draggedLegendItem = null;
+let isExportSatellite = false;
+let exportSatelliteLayer = null;
 
 let selectedEmoji = "📍";
 let wasExportEmpty = false;
