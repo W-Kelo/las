@@ -266,3 +266,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+function openCustomDescModal() {
+    openCenteredModal('customDescModal');
+}
