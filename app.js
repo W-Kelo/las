@@ -130,13 +130,6 @@ document.body.className = "light";
         'timeSummaryModal', 'customDescModal', 'stopsModal', 'numberStyleModal', 'measureSmallModal', 'measureAnalysisModal'
     ];
     
-    modals.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            makeDraggable(el);
-            if(typeof makePinchZoomable === 'function') makePinchZoomable(el); 
-        }
-    });
 
     // 4. Inicjalizacja animacji
     drawEmptyElevationAnimation(); 
@@ -377,42 +370,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
     
 /* ================= OBSŁUGA MODALI (Floating) ================= */
-function makeDraggable(el) {
-    const header = el.querySelector('.modal-header');
-    if (!header) return;
-    
-    let isDragging = false;
-    let startX, startY, initialLeft, initialTop;
-
-    header.onmousedown = header.ontouchstart = function(e) {
-        // ZABEZPIECZENIE: Nie blokuj dotyku, jeśli użytkownik klika w X lub suwak!
-        const tag = e.target.tagName.toLowerCase();
-        if (tag === 'button' || tag === 'input' || e.target.closest('button') || e.target.closest('.opacity-control')) {
-            return; // Pozwól przeglądarce normalnie kliknąć/przesunąć suwak
-        }
-
-        isDragging = true;
-        
-        // Zatrzymujemy domyślne przewijanie strony TYLKO dla przeciągania tła nagłówka
-        if (e.type === 'touchstart') e.preventDefault(); 
-
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        
-        startX = clientX;
-        startY = clientY;
-        
-        const rect = el.getBoundingClientRect();
-        initialLeft = rect.left;
-        initialTop = rect.top;
-        
-        el.style.transform = "none";
-        el.style.left = initialLeft + "px";
-        el.style.top = initialTop + "px";
-        
-        document.onmousemove = document.ontouchmove = onMouseMove;
-        document.onmouseup = document.ontouchend = stopDrag;
-    };
 
     function onMouseMove(e) {
         if (!isDragging) return;
@@ -465,25 +422,6 @@ makeDraggable(document.getElementById('stopsModal'));
 makeDraggable(document.getElementById('fullGalleryModal'));
 makeDraggable(document.getElementById('stopsWarningModal'));
 
-// Otwieranie dowolnego pływającego modalu - wymusza centrowanie!
-function openCenteredModal(id) {
-    const modal = document.getElementById(id);
-    modal.style.display = 'flex';
-    
-    // Wymuszamy wycentrowanie od nowa za każdym razem gdy otwieramy
-    modal.style.left = '50%';
-    modal.style.top = '50%';
-    modal.style.transform = 'translate(-50%, -50%)';
-
-    // Ochrona wysokości na małych ekranach:
-    setTimeout(() => {
-        const rect = modal.getBoundingClientRect();
-        if (rect.height > window.innerHeight) {
-            modal.style.top = '0px';
-            modal.style.transform = 'translate(-50%, 0)';
-        }
-    }, 10); // Czekamy chwilę aż przeglądarka ustali wymiary z Flexboxem
-}
 
 
 function openDescModal() {
@@ -519,36 +457,8 @@ function highlightAndShowMarker(poiData) {
     }
 }
 
-// Zmodyfikowana funkcja zamykania modalu (aby sprzątała markery wymuszone)
-function closeModal(id) {
-    document.getElementById(id).style.display = 'none';
-    
-    // Jeśli zamykamy modal punktu i mieliśmy tymczasowo widoczny marker
-    if (id === 'customPoiModal' && tempVisibleMarker) {
-        if (!map.hasLayer(tempVisibleMarker.originalLayer)) {
-            map.removeLayer(tempVisibleMarker.marker);
-        }
-        tempVisibleMarker = null;
-    }
-    // --- Rozszerzenie funkcji closeModal (aby zamknąć również picker koloru) ---
-const originalCloseModal = closeModal;
-closeModal = function(id) {
-    // Wywołanie oryginalnej funkcji
-    originalCloseModal(id);
 
-    // Jeśli zamykamy modal, który mógł otworzyć picker koloru
-    if (id === 'styleModal' || id === 'gradientConfigModal') { // Dodatkowo, jeśli zamykamy modal gradientu
-        if (activeColorPickerTarget) {
-            closeCustomColorPicker(false); // Zamknij picker bez zatwierdzania
-        }
-    }
-};
-}
-function setOpacity(input) {
-    const val = input.value / 100;
-    const modal = input.closest('.floating-modal');
-    modal.style.backgroundColor = `rgba(var(--modal-bg-color), ${val})`;
-}
+
 
 /* ================= LOKALIZACJA GPS ================= */
 function locateUser() {
