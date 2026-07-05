@@ -451,3 +451,44 @@ function showTopBannerWarning(msg) {
     }, 4000);
 }
 window.showTopBannerWarning = showTopBannerWarning;
+// Podpięcie eventu click do #time
+document.getElementById('time').onclick = openTimeSummaryModal;
+
+function openTimeSummaryModal() {
+    if(!window._timeStats) return;
+    
+    let html = `
+        <div style="font-size: 1.1rem; text-align: center; margin-bottom: 15px;">
+            Całkowity czas: <strong>${Math.floor(window._timeStats.totalMins/60)}h ${window._timeStats.totalMins%60}m</strong>
+        </div>
+        <div class="time-summary-item">
+            <span>🥾 Czysty marsz (i przewyższenia):</span>
+            <strong>${Math.floor(window._timeStats.walkMins/60)}h ${window._timeStats.walkMins%60}m</strong>
+        </div>
+        <div class="time-summary-item">
+            <span>☕ Czas na postojach:</span>
+            <strong>${Math.floor(window._timeStats.stopsMins/60)}h ${window._timeStats.stopsMins%60}m</strong>
+        </div>
+    `;
+
+    if (routeStops.length > 0) {
+        html += `<div style="margin-top: 15px; font-weight: bold; font-size: 0.9rem; color: var(--accent);">Rozpiska postojów:</div>`;
+        routeStops.sort((a,b) => a.snappedDist - b.snappedDist).forEach(s => {
+            let timeInfo = `${s.duration} min`;
+            if(!isTimeSkipped && s.startTime) {
+                const h = s.startTime.getHours().toString().padStart(2,'0');
+                const m = s.startTime.getMinutes().toString().padStart(2,'0');
+                timeInfo = `${h}:${m} (${s.duration} min)`;
+            }
+            html += `
+                <div style="display:flex; justify-content:space-between; font-size:0.85rem; padding: 4px 0; border-bottom: 1px dashed rgba(255,255,255,0.1);">
+                    <span>${s.icon === 'dot' ? '☕' : s.icon} ${s.name}</span>
+                    <span style="color: #94a3b8;">${timeInfo}</span>
+                </div>
+            `;
+        });
+    }
+
+    document.getElementById('timeSummaryContent').innerHTML = html;
+    openCenteredModal('timeSummaryModal');
+}
