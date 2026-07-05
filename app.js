@@ -48,7 +48,7 @@ let customPdfText = "";
 let isExportSatellite = false;
 let exportSatelliteLayer = null;
 
-let routePrefAnimPoints = localStorage.getItem('gpx_anim_points') || 'all';
+
 
 
 
