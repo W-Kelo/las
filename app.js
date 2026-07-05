@@ -19,7 +19,6 @@ let isSatellite = false;
 let pois = [];
 let poiMode = false;
 let totalAscent = 0;
-let userMarker = null;
 let routePrefColor = localStorage.getItem('gpx_color') || '#22c55e';
 let routePrefWeight = parseInt(localStorage.getItem('gpx_weight')) || 6;
 let routePrefSpeed = localStorage.getItem('gpx_speed') || 'medium';
@@ -460,30 +459,7 @@ function highlightAndShowMarker(poiData) {
 
 
 
-/* ================= LOKALIZACJA GPS ================= */
-function locateUser() {
-    map.locate({setView: true, maxZoom: 15});
-}
-map.on('locationfound', function(e) {
-    if (userMarker) map.removeLayer(userMarker);
-    userMarker = L.circleMarker(e.latlng, {
-        radius: 8, fillColor: "#3b82f6", color: "#fff", weight: 3, opacity: 1, fillOpacity: 1
-    }).addTo(map);
 
-    // Szukamy punktów z GAS w promieniu 1 minuty geograficznej (~1852 metry)
-    const nearby = globalCustomPois.filter(p => e.latlng.distanceTo(p.latlng) <= 1852);
-
-    const gpsObj = {
-        name: "Twoja aktualna lokalizacja",
-        icon: "🎯",
-        category: "Sygnał GPS",
-        description: `Znaleziono Twoją pozycję na mapie.<br>Współrzędne: <code>${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}</code>`,
-        nearbyPois: nearby,
-        userLatLng: e.latlng
-    };
-
-    openCustomPoiModal(gpsObj);
-});
 
 
 
@@ -2870,14 +2846,7 @@ function openCustomPoiModal(poiData) {
     openCenteredModal('customPoiModal');
 }
 
-// Funkcja pomocnicza: otwieranie atrakcji z listy "W pobliżu"
-function openNearbyPoi(index) {
-    const poi = window._currentNearbyPois[index];
-    if (poi) {
-        map.setView(poi.latlng, 15);
-        openCustomPoiModal(poi);
-    }
-}
+
 
 // Funkcja pomocnicza: usuwanie markera wyszukiwania z mapy
 function removeSearchMarkerAndClose() {
