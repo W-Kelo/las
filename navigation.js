@@ -366,3 +366,7 @@ function unhighlightStep() {
     }
 }
 window.unhighlightStep = unhighlightStep;
+function openDescModal() {
+    generateRouteDescription(); // Wymusza przeliczenie na najświeższych danych!
+    openCenteredModal('descModal');
+}
