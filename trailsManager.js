@@ -77,10 +77,9 @@ function simplifyElevationData(rawElevData, maxPoints = 100) {
 function initTrailsDatabase() {
     if (!window.processedTrails || window.processedTrails.length === 0) return;
 
-    // Próba bezpiecznego pobrania bazy GS z kontekstu window lub lokalnego
+    // Próba pobrania bazy GS z kontekstu window lub lokalnego
     const activeGSPois = window.globalCustomPois || (typeof globalCustomPois !== 'undefined' ? globalCustomPois : []);
 
-    // Klucz nowej wersji cache (poprzedni przepełniony jest automatycznie czyszczony)
     const CACHE_KEY = 'gpx_trails_cache_v5';
     let trailsCache = {};
     try {
@@ -96,27 +95,21 @@ function initTrailsDatabase() {
         const cacheEntry = trailsCache[trail.id];
 
         if (cacheEntry) {
-            // SZYBKI I LEKKI ODCZYT Z CACHE
+            // SZYBKI ODCZYT GŁÓWNYCH METRYK Z CACHE
             trail.calculatedLength = cacheEntry.calculatedLength;
             trail.minElev = cacheEntry.minElev;
             trail.maxElev = cacheEntry.maxElev;
             trail.totalAscent = cacheEntry.totalAscent;
             trail.estimatedTimeMins = cacheEntry.estimatedTimeMins;
             
-            // Odtworzenie obiektów współrzędnych L.LatLng dla skompresowanego wykresu
+            // Rekonstrukcja obiektów L.LatLng dla skompresowanego wykresu
             trail.elevationData = cacheEntry.elevationData.map(d => ({
                 latlng: L.latLng(d.lat, d.lng),
                 elevation: d.elevation,
                 dist: d.dist
             }));
-
-            // Mapowanie identyfikatorów atrakcji na żywe obiekty GS w pamięci podręcznej
-            trail.nearbyGSPois = [];
-            if (cacheEntry.nearbyGSPoiIds && activeGSPois.length > 0) {
-                trail.nearbyGSPois = activeGSPois.filter(p => cacheEntry.nearbyGSPoiIds.includes(p.id));
-            }
         } else {
-            // PIERWSZE URUCHOMIENIE: Jednorazowe kosztowne obliczenia geometryczne
+            // PIERWSZE URUCHOMIENIE: Ciężkie obliczenia geometryczne (tylko raz na przeglądarkę)
             if (typeof connectWaySegments === 'function') {
                 trail.coords = connectWaySegments(trail.memberWays);
             } else {
@@ -131,27 +124,33 @@ function initTrailsDatabase() {
             }
             trail.calculatedLength = totalDist;
 
-            // Profil wysokościowy
+            // Wygenerowanie surowego profilu wysokościowego
             let elevResult = generateTrailElevation(trail.coords, totalDist);
             
-            // Kompresja danych profilu (maksymalnie 100 punktów) przed zapisem
+            // Kompresja danych profilu (maksymalnie 100 punktów)
             const simplifiedElev = simplifyElevationData(elevResult.elevData, 100);
 
             trail.elevationData = simplifiedElev;
             trail.minElev = elevResult.minElev;
             trail.maxElev = elevResult.maxElev;
-            trail.totalAscent = elevResult.totalAscent;
+
+            // OBLICZANIE PRZEWYŻSZEŃ: Wykonywane na wygładzonym, skompresowanym profilu
+            // z ignorowaniem mikro-szumów terenu poniżej 1.5 metra (zapobiega sztucznej akumulacji wzniesień)
+            let calculatedAscent = 0;
+            for (let i = 1; i < simplifiedElev.length; i++) {
+                let diff = simplifiedElev[i].elevation - simplifiedElev[i-1].elevation;
+                if (diff > 1.5) { 
+                    calculatedAscent += diff;
+                }
+            }
+            trail.totalAscent = Math.round(calculatedAscent);
 
             // Przewidywany czas
             const km = totalDist / 1000;
             const totalMinutes = (km / 4.2) * 60 + (trail.totalAscent / 100 * 10);
             trail.estimatedTimeMins = Math.round(totalMinutes);
 
-            // Analiza atrakcji przy pierwszym ładowaniu
-            trail.nearbyGSPois = findGSPoisNearTrail(trail.coords, activeGSPois, 100);
-            const nearbyGSPoiIds = trail.nearbyGSPois.map(p => p.id);
-
-            // Redukcja rozmiaru współrzędnych do zapisu (porzucamy zbędne dane pomocnicze Leafleta)
+            // Zrzucenie nadmiarowych danych przed zapisem
             const compactElevation = simplifiedElev.map(d => ({
                 lat: d.latlng.lat,
                 lng: d.latlng.lng,
@@ -159,20 +158,23 @@ function initTrailsDatabase() {
                 dist: d.dist
             }));
 
-            // Zapis do cache bez przechowywania ogromnej i surowej tablicy trail.coords
+            // Zapis do cache bez przechowywania ogromnej tablicy surowych współrzędnych i bez ID atrakcji
             trailsCache[trail.id] = {
                 calculatedLength: trail.calculatedLength,
                 minElev: trail.minElev,
                 maxElev: trail.maxElev,
                 totalAscent: trail.totalAscent,
                 estimatedTimeMins: trail.estimatedTimeMins,
-                elevationData: compactElevation,
-                nearbyGSPoiIds: nearbyGSPoiIds
+                elevationData: compactElevation
             };
             cacheUpdated = true;
         }
 
-        // Kompatybilność dla innych modułów
+        // DYNAMICZNA ANALIZA ATRAKCJI: Wykonywana w locie przy każdym załadowaniu bazy
+        // na bazie 100 punktów profilu. Rozwiązuje to problem asynchronicznego ładowania GAS.
+        trail.nearbyGSPois = findGSPoisNearTrail(trail.elevationData, activeGSPois, 100);
+
+        // Kompatybilność wsteczna
         const wayLatLngs = trail.coords ? trail.coords.map(c => L.latLng(c[0], c[1])) : trail.elevationData.map(d => d.latlng);
         if (window.globalTrails) {
             const exists = window.globalTrails.some(gt => gt.name === trail.name);
@@ -183,7 +185,6 @@ function initTrailsDatabase() {
     if (cacheUpdated) {
         try {
             localStorage.setItem(CACHE_KEY, JSON.stringify(trailsCache));
-            // Czyszczenie starego, zbyt dużego klucza w celu zwolnienia pamięci przeglądarki
             localStorage.removeItem('gpx_trails_cache_v4');
         } catch(e) {
             console.warn("[Cache] Błąd zapisu pamięci podręcznej szlaków:", e);
@@ -191,8 +192,6 @@ function initTrailsDatabase() {
     }
 
     filteredTrails = [...window.processedTrails];
-    
-    // Nadanie draggable dynamicznym modalom
     bindTrailsDraggable();
 }
 window.initTrailsDatabase = initTrailsDatabase;
@@ -209,7 +208,7 @@ function bindTrailsDraggable() {
 function generateTrailElevation(coords, totalDist) {
     let elevData = [];
     let currentDist = 0;
-    let minElev = 1000, maxElev = 0, totalAscent = 0;
+    let minElev = 1000, maxElev = 0;
 
     for (let i = 0; i < coords.length; i++) {
         if (i > 0) {
@@ -218,15 +217,12 @@ function generateTrailElevation(coords, totalDist) {
         const lat = coords[i][0];
         const lng = coords[i][1];
         
-        let elev = 45 + Math.sin(lat * 600) * 20 + Math.cos(lng * 600) * 12 + Math.sin((lat + lng) * 1200) * 4;
+        // Łagodne, wygładzone fale terenu odpowiadające fizycznemu krajobrazowi (wysokość od 12 do ok. 100 m)
+        let elev = 40 + Math.sin(lat * 120) * 22 + Math.cos(lng * 120) * 14 + Math.sin((lat + lng) * 240) * 4;
         elev = Math.max(12, Math.round(elev));
 
         if (elev < minElev) minElev = elev;
         if (elev > maxElev) maxElev = elev;
-
-        if (i > 0 && elev > elevData[i-1].elevation) {
-            totalAscent += (elev - elevData[i-1].elevation);
-        }
 
         elevData.push({
             latlng: L.latLng(lat, lng),
@@ -234,17 +230,26 @@ function generateTrailElevation(coords, totalDist) {
             dist: currentDist
         });
     }
-    return { elevData, minElev, maxElev, totalAscent: Math.round(totalAscent) };
+    return { elevData, minElev, maxElev };
 }
 
-function findGSPoisNearTrail(coords, activeGSPois, maxDistMeters = 100) {
-    if (!activeGSPois || activeGSPois.length === 0) return [];
+
+function findGSPoisNearTrail(points, activeGSPois, maxDistMeters = 100) {
+    if (!activeGSPois || activeGSPois.length === 0 || !points || points.length === 0) return [];
     let nearby = [];
     
     activeGSPois.forEach(poi => {
         let found = false;
-        for (let i = 0; i < coords.length; i += 2) { 
-            const d = poi.latlng.distanceTo(L.latLng(coords[i][0], coords[i][1]));
+        for (let i = 0; i < points.length; i++) {
+            const pt = points[i];
+            
+            // Bezpieczna obsługa struktur: surowych koordynatów [lat, lng] oraz punktów profilu d.latlng
+            const lat = Array.isArray(pt) ? pt[0] : (pt.latlng ? pt.latlng.lat : pt.lat);
+            const lng = Array.isArray(pt) ? pt[1] : (pt.latlng ? pt.latlng.lng : pt.lng);
+            
+            if (lat === undefined || lng === undefined) continue;
+            
+            const d = poi.latlng.distanceTo(L.latLng(lat, lng));
             if (d <= maxDistMeters) {
                 found = true;
                 break;
@@ -416,17 +421,17 @@ function openPoiFromTrail(poiId) {
     const activeGSPois = window.globalCustomPois || (typeof globalCustomPois !== 'undefined' ? globalCustomPois : []);
     const poi = activeGSPois.find(p => p.id === poiId);
     if (poi) {
-        // 1. Centrowanie i zbliżenie mapy na wybranym obiekcie
+        // Centrowanie mapy na wybranej atrakcji ze zbliżeniem zoom 16
         if (typeof map !== 'undefined' && map) {
             map.setView(poi.latlng, 16); 
         }
         
-        // 2. Podświetlenie mrugającego markera na mapie głównej
+        // Wywołanie mrugania i podświetlenia markera na mapie głównej
         if (typeof highlightAndShowMarker === 'function') {
             highlightAndShowMarker(poi);
         }
 
-        // 3. Pozycjonowanie i otwarcie modalu szczegółów
+        // Otwarcie modalu szczegółów ze zwiększonym poziomem warstwy
         const pm = document.getElementById('customPoiModal');
         if (pm) pm.style.zIndex = '3500';
         openCustomPoiModal(poi);
