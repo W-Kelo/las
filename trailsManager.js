@@ -1,5 +1,5 @@
 /* =========================================================
-   trailsManager.js - SYSTEM ZARZĄDZANIA SZLAKAMI (V3)
+   trailsManager.js - ZOPTYMALIZOWANY SYSTEM SZLAKÓW (V4)
 ========================================================= */
 
 let currentTrailsPage = 1;
@@ -8,7 +8,7 @@ let filteredTrails = [];
 let trailHoverMarker = null;
 let activePulseIntervals = {};
 
-// Pełny słownik tłumaczeń tagów i wartości OSM
+// Słownik tłumaczeń tagów OSM
 const TRAILS_TRANSLATIONS = {
     "operator": "Zarządca",
     "ref": "Oznaczenie",
@@ -40,7 +40,7 @@ const TRAILS_TRANSLATIONS = {
     "proposed": "Planowany"
 };
 
-// Twarda czarna lista tagów do odrzucenia (nie będą pokazywane na liście parametrów)
+// Czarna lista tagów do odrzucenia (wykluczone z listy parametrów)
 const TAG_BLACKLIST = [
     "type", "route", "osmc:symbol", "osmc_symbol", "wikidata", "wikipedia", 
     "name", "color", "name:de", "name:pl", "network", "network:type", 
@@ -58,33 +58,107 @@ function translateValue(val) {
     return TRAILS_TRANSLATIONS[cleanVal] || val;
 }
 
-// Inicjalizacja bazy szlaków
+// Inicjalizacja bazy szlaków z obsługą pamięci podręcznej (Local Storage)
 function initTrailsDatabase() {
     if (!window.processedTrails || window.processedTrails.length === 0) return;
 
-    // Próba odczytu bazy GS z różnych możliwych kontekstów zmiennych
+    // Próba odczytu bazy GS
     const activeGSPois = window.globalCustomPois || (typeof globalCustomPois !== 'undefined' ? globalCustomPois : []);
 
+    // Pobranie cache z pamięci podręcznej przeglądarki
+    const CACHE_KEY = 'gpx_trails_cache_v4';
+    let trailsCache = {};
+    try {
+        const rawCache = localStorage.getItem(CACHE_KEY);
+        if (rawCache) trailsCache = JSON.parse(rawCache);
+    } catch(e) {
+        console.warn("[Cache] Błąd odczytu pamięci podręcznej szlaków:", e);
+    }
+
+    let cacheUpdated = false;
+
     window.processedTrails.forEach(trail => {
-        // Generowanie profilu wysokościowego
-        let elevResult = generateTrailElevation(trail.coords, trail.calculatedLength);
-        trail.elevationData = elevResult.elevData;
-        trail.minElev = elevResult.minElev;
-        trail.maxElev = elevResult.maxElev;
-        trail.totalAscent = elevResult.totalAscent;
+        const cacheEntry = trailsCache[trail.id];
 
-        // Czas przejścia
-        const km = trail.calculatedLength / 1000;
-        const totalMinutes = (km / 4.2) * 60 + (trail.totalAscent / 100 * 10);
-        trail.estimatedTimeMins = Math.round(totalMinutes);
+        if (cacheEntry) {
+            // ODCZYT Z CACHE (Błyskawiczny, bez obciążania procesora)
+            trail.coords = cacheEntry.coords;
+            trail.calculatedLength = cacheEntry.calculatedLength;
+            trail.minElev = cacheEntry.minElev;
+            trail.maxElev = cacheEntry.maxElev;
+            trail.totalAscent = cacheEntry.totalAscent;
+            trail.estimatedTimeMins = cacheEntry.estimatedTimeMins;
+            
+            // Rekonstrukcja obiektów L.LatLng, które zostały zserializowane do zwykłych obiektów JSON
+            trail.elevationData = cacheEntry.elevationData.map(d => ({
+                latlng: L.latLng(d.latlng.lat, d.latlng.lng),
+                elevation: d.elevation,
+                dist: d.dist
+            }));
+        } else {
+            // PIERWSZE URUCHOMIENIE: Ciężkie obliczenia (tylko raz dla nowego szlaku)
+            if (typeof connectWaySegments === 'function') {
+                trail.coords = connectWaySegments(trail.memberWays);
+            } else {
+                trail.coords = [];
+                trail.memberWays.forEach(way => { trail.coords = trail.coords.concat(way); });
+            }
 
-        // Wyznaczenie atrakcji z bazy danych w buforze 100 m
+            // Wyznaczenie rzeczywistego dystansu
+            let totalDist = 0;
+            for (let i = 1; i < trail.coords.length; i++) {
+                totalDist += L.latLng(trail.coords[i-1][0], trail.coords[i-1][1]).distanceTo(L.latLng(trail.coords[i][0], coords = trail.coords[i][1]));
+            }
+            trail.calculatedLength = totalDist;
+
+            // Profil wysokościowy
+            let elevResult = generateTrailElevation(trail.coords, totalDist);
+            trail.elevationData = elevResult.elevData;
+            trail.minElev = elevResult.minElev;
+            trail.maxElev = elevResult.maxElev;
+            trail.totalAscent = elevResult.totalAscent;
+
+            // Czas przejścia
+            const km = totalDist / 1000;
+            const totalMinutes = (km / 4.2) * 60 + (trail.totalAscent / 100 * 10);
+            trail.estimatedTimeMins = Math.round(totalMinutes);
+
+            // Zapis do cache
+            trailsCache[trail.id] = {
+                coords: trail.coords,
+                calculatedLength: trail.calculatedLength,
+                minElev: trail.minElev,
+                maxElev: trail.maxElev,
+                totalAscent: trail.totalAscent,
+                estimatedTimeMins: trail.estimatedTimeMins,
+                elevationData: trail.elevationData
+            };
+            cacheUpdated = true;
+        }
+
+        // Analiza odległości atrakcji GS (wykonywana asynchronicznie)
         trail.nearbyGSPois = findGSPoisNearTrail(trail.coords, activeGSPois, 100);
+
+        // Uzupełnienie danych wstecznych dla starszych modułów
+        const wayLatLngs = trail.coords.map(c => L.latLng(c[0], c[1]));
+        if (window.globalTrails) {
+            const exists = window.globalTrails.some(gt => gt.name === trail.name);
+            if (!exists) window.globalTrails.push({ name: trail.name, coords: wayLatLngs });
+        }
     });
+
+    // Zapis zaktualizowanego cache do pamięci trwałej
+    if (cacheUpdated) {
+        try {
+            localStorage.setItem(CACHE_KEY, JSON.stringify(trailsCache));
+        } catch(e) {
+            console.warn("[Cache] Błąd zapisu pamięci podręcznej szlaków:", e);
+        }
+    }
 
     filteredTrails = [...window.processedTrails];
     
-    // Zapewnienie draggable przy inicjalizacji
+    // Nadanie draggable dynamicznym modalom
     bindTrailsDraggable();
 }
 window.initTrailsDatabase = initTrailsDatabase;
@@ -135,7 +209,7 @@ function findGSPoisNearTrail(coords, activeGSPois, maxDistMeters = 100) {
     
     activeGSPois.forEach(poi => {
         let found = false;
-        for (let i = 0; i < coords.length; i += 2) { // Próbkowanie co drugi punkt
+        for (let i = 0; i < coords.length; i += 2) { 
             const d = poi.latlng.distanceTo(L.latLng(coords[i][0], coords[i][1]));
             if (d <= maxDistMeters) {
                 found = true;
@@ -248,7 +322,7 @@ function renderTrailsPage() {
                 </div>`;
         }
 
-        // Atrakcje GS (teraz poprawnie podpięte i widoczne)
+        // Atrakcje GS (teraz poprawnie zsynchronizowane z window)
         let poisHtml = '';
         if (trail.nearbyGSPois && trail.nearbyGSPois.length > 0) {
             poisHtml = `
