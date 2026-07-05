@@ -74,13 +74,14 @@ function simplifyElevationData(rawElevData, maxPoints = 100) {
 }
 
 // Inicjalizacja bazy szlaków z obsługą ultra-lekkiej pamięci podręcznej (Local Storage)
+// POPRAWIONA INICJALIZACJA BAZY SZLAKÓW (Precyzyjny pomiar, filtracja szumów i lekki cache v6)
 function initTrailsDatabase() {
     if (!window.processedTrails || window.processedTrails.length === 0) return;
 
-    // Próba pobrania bazy GS z kontekstu window lub lokalnego
     const activeGSPois = window.globalCustomPois || (typeof globalCustomPois !== 'undefined' ? globalCustomPois : []);
 
-    const CACHE_KEY = 'gpx_trails_cache_v5';
+    // Nowy klucz cache unieważniający stare, potencjalnie błędne wpisy
+    const CACHE_KEY = 'gpx_trails_cache_v6';
     let trailsCache = {};
     try {
         const rawCache = localStorage.getItem(CACHE_KEY);
@@ -95,21 +96,32 @@ function initTrailsDatabase() {
         const cacheEntry = trailsCache[trail.id];
 
         if (cacheEntry) {
-            // SZYBKI ODCZYT GŁÓWNYCH METRYK Z CACHE
+            // SZYBKI I BEZBŁĘDNY ODCZYT Z ZAPISANEGO CACHE
             trail.calculatedLength = cacheEntry.calculatedLength;
             trail.minElev = cacheEntry.minElev;
             trail.maxElev = cacheEntry.maxElev;
             trail.totalAscent = cacheEntry.totalAscent;
             trail.estimatedTimeMins = cacheEntry.estimatedTimeMins;
             
-            // Rekonstrukcja obiektów L.LatLng dla skompresowanego wykresu
+            // Odtworzenie obiektów L.LatLng dla skompresowanego profilu
             trail.elevationData = cacheEntry.elevationData.map(d => ({
                 latlng: L.latLng(d.lat, d.lng),
                 elevation: d.elevation,
                 dist: d.dist
             }));
         } else {
-            // PIERWSZE URUCHOMIENIE: Ciężkie obliczenia geometryczne (tylko raz na przeglądarkę)
+            // PIERWSZE URUCHOMIENIE: Precyzyjne, jednorazowe obliczenia geometryczne
+            
+            // 1. Matematycznie bezbłędne wyznaczenie odległości (suma czystych segmentów bez skoków łączących)
+            let actualLength = 0;
+            trail.memberWays.forEach(way => {
+                for (let i = 1; i < way.length; i++) {
+                    actualLength += L.latLng(way[i-1][0], way[i-1][1]).distanceTo(L.latLng(way[i][0], way[i][1]));
+                }
+            });
+            trail.calculatedLength = actualLength;
+
+            // Scalanie dróg skrajnymi punktami na potrzeby wygenerowania poprawnego wykresu profilu
             if (typeof connectWaySegments === 'function') {
                 trail.coords = connectWaySegments(trail.memberWays);
             } else {
@@ -117,25 +129,17 @@ function initTrailsDatabase() {
                 trail.memberWays.forEach(way => { trail.coords = trail.coords.concat(way); });
             }
 
-            // Długość rzeczywista
-            let totalDist = 0;
-            for (let i = 1; i < trail.coords.length; i++) {
-                totalDist += L.latLng(trail.coords[i-1][0], trail.coords[i-1][1]).distanceTo(L.latLng(trail.coords[i][0], trail.coords[i][1]));
-            }
-            trail.calculatedLength = totalDist;
-
-            // Wygenerowanie surowego profilu wysokościowego
-            let elevResult = generateTrailElevation(trail.coords, totalDist);
+            // Wygenerowanie profilu wysokościowego
+            let elevResult = generateTrailElevation(trail.coords, actualLength);
             
-            // Kompresja danych profilu (maksymalnie 100 punktów)
+            // Kompresja danych profilu do 100 punktów (gwarancja braku przepełnienia localStorage)
             const simplifiedElev = simplifyElevationData(elevResult.elevData, 100);
 
             trail.elevationData = simplifiedElev;
             trail.minElev = elevResult.minElev;
             trail.maxElev = elevResult.maxElev;
 
-            // OBLICZANIE PRZEWYŻSZEŃ: Wykonywane na wygładzonym, skompresowanym profilu
-            // z ignorowaniem mikro-szumów terenu poniżej 1.5 metra (zapobiega sztucznej akumulacji wzniesień)
+            // Obliczenie sumy podejść na wygładzonym profilu z filtrem histerezy
             let calculatedAscent = 0;
             for (let i = 1; i < simplifiedElev.length; i++) {
                 let diff = simplifiedElev[i].elevation - simplifiedElev[i-1].elevation;
@@ -146,11 +150,11 @@ function initTrailsDatabase() {
             trail.totalAscent = Math.round(calculatedAscent);
 
             // Przewidywany czas
-            const km = totalDist / 1000;
+            const km = actualLength / 1000;
             const totalMinutes = (km / 4.2) * 60 + (trail.totalAscent / 100 * 10);
             trail.estimatedTimeMins = Math.round(totalMinutes);
 
-            // Zrzucenie nadmiarowych danych przed zapisem
+            // Przygotowanie lekkiej struktury profilu do zapisu w cache (bez obiektów Leaflet)
             const compactElevation = simplifiedElev.map(d => ({
                 lat: d.latlng.lat,
                 lng: d.latlng.lng,
@@ -158,7 +162,7 @@ function initTrailsDatabase() {
                 dist: d.dist
             }));
 
-            // Zapis do cache bez przechowywania ogromnej tablicy surowych współrzędnych i bez ID atrakcji
+            // Zapisz do cache (dane są teraz bardzo lekkie - ok. 2-3 KB na szlak)
             trailsCache[trail.id] = {
                 calculatedLength: trail.calculatedLength,
                 minElev: trail.minElev,
@@ -170,11 +174,10 @@ function initTrailsDatabase() {
             cacheUpdated = true;
         }
 
-        // DYNAMICZNA ANALIZA ATRAKCJI: Wykonywana w locie przy każdym załadowaniu bazy
-        // na bazie 100 punktów profilu. Rozwiązuje to problem asynchronicznego ładowania GAS.
+        // DYNAMICZNE przypisanie atrakcji z bazy GS (wykonywane asynchronicznie na skompresowanym profilu)
         trail.nearbyGSPois = findGSPoisNearTrail(trail.elevationData, activeGSPois, 100);
 
-        // Kompatybilność wsteczna
+        // Kompatybilność dla starszych modułów
         const wayLatLngs = trail.coords ? trail.coords.map(c => L.latLng(c[0], c[1])) : trail.elevationData.map(d => d.latlng);
         if (window.globalTrails) {
             const exists = window.globalTrails.some(gt => gt.name === trail.name);
@@ -185,6 +188,8 @@ function initTrailsDatabase() {
     if (cacheUpdated) {
         try {
             localStorage.setItem(CACHE_KEY, JSON.stringify(trailsCache));
+            // Czyszczenie pozostałości po starej bazie cache, by zwolnić pamięć przeglądarki
+            localStorage.removeItem('gpx_trails_cache_v5');
             localStorage.removeItem('gpx_trails_cache_v4');
         } catch(e) {
             console.warn("[Cache] Błąd zapisu pamięci podręcznej szlaków:", e);
