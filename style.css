@@ -970,12 +970,8 @@ canvas#elevation {
    15. PDF
 =================================== */
 #pdfRenderContainer {
-    /* KLUCZ: Wyrzucenie kontenera daleko poza obszar ekranu, 
-       aby użytkownik go nie widział, ale przeglądarka mogła go wyrenderować */
-    position: absolute !important;
-    left: -9999px !important; 
-    top: 0 !important;
-    
+    /* Zmieniamy na pozycjonowanie relatywne, by zachować naturalny przepływ i wysokość blokową */
+    position: relative !important; 
     margin: 0 !important;
     padding: 20px !important;  
     width: 794px !important;   
@@ -983,8 +979,6 @@ canvas#elevation {
     box-sizing: border-box !important;
     background: #ffffff !important;
     color: #000000 !important;
-    overflow: hidden !important; 
-    z-index: -1000 !important; /* Spycha element pod wszystkie warstwy aplikacji */
 }
 
 /* Dodatkowe zabezpieczenie tabel przed rozpychaniem */
