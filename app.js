@@ -26,51 +26,35 @@ let routePrefPointsEnabled = localStorage.getItem('gpx_points_enabled') === 'tru
 let routePrefPointsColor = localStorage.getItem('gpx_points_color') || '#22c55e';
 
 
-let exportLineColor = routePrefColor;
-let exportLineWeight = routePrefWeight;   
+
 
 let searchMarker = null;
 let globalOsmPois = [];  
 let globalTrails = [];
 let scaleFrameId = null;
-let exportMap = null;
-let exportPolyline = null;
-let scaleControl = null;
-let scaleVisible = false;
+
 let customScaleEl = null;
 let scaleUpdateTimeout = null;
 
 let animLineLayer = null;
 let animDotMarker = null;
 let animInterval = null;
-let exportLegendMode = false;
-let exportLegendItems = {}; 
-let editingLegendId = null;
-let tempLegendClickLatLng = null;
-let selectedEmoji = "📍";
-let exportMapDark = dark; 
-let exportTileLayer = null;
+
+
 let isDrawMode = false;
-let wasExportEmpty = false;
+
  
 let customPdfText = "";
 
 
 let isExportSatellite = false;
 let exportSatelliteLayer = null;
-let draggedLegendItem = null;
-let routePrefAnimPoints = localStorage.getItem('gpx_anim_points') || 'all';
-let legendNumberStyles = JSON.parse(localStorage.getItem('gpx_number_styles')) || {
-    global: { color: '#0f172a', bg: 'rgba(241, 245, 249, 0.95)', dotSize: 24, numSize: 12, dist: 4, pos: 'right', fontStyle: 'bold' },
-    perEmoji: {}
-};
-let currentEditEmoji = 'global';
-let userReorderedLegend = false;
 
-let exportPointSettings = {
-    gas: { ids: new Set() },
-    user: { ids: new Set() }
-};
+let routePrefAnimPoints = localStorage.getItem('gpx_anim_points') || 'all';
+
+
+
+
 
 let tempPickerType = '';
 
@@ -535,41 +519,7 @@ function openCustomDescModal() {
 // Niezawodna funkcja pozycjonująca okno (w miejsce CSS transform)
 // Niezawodna funkcja pozycjonująca okno eksportu
 // Niezawodna funkcja pozycjonująca okno eksportu (Uniwersalna na KAŻDY ekran)
-function centerExportModal() {
-    const modal = document.getElementById('mapExportModal');
-    if (modal.style.display !== 'flex') return;
 
-    // Pobieramy prawdziwe wymiary okna (visualViewport to najdokładniejsza metoda na telefony)
-    const winW = window.visualViewport ? window.visualViewport.width : window.innerWidth;
-    const winH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-
-    const isMobile = winW <= 768;
-    
-    // Ustawiamy bezpieczny margines (np. 10px na komórce, 30px na PC z każdej strony)
-    const margin = isMobile ? 5 : 30;
-
-    // Ustalamy sztywne wartości w pikselach
-    const targetW = winW - (margin * 2);
-    const targetH = winH - (margin * 2);
-
-    modal.style.width = targetW + 'px';
-    modal.style.height = targetH + 'px';
-    modal.style.maxWidth = 'none';
-    modal.style.maxHeight = 'none';
-
-    // Uniwersalne centrowanie absolutne (nie polega na lewej krawędzi, samo znajduje środek)
-    modal.style.position = 'fixed';
-    modal.style.top = '50%';
-    modal.style.left = '50%';
-    modal.style.transform = 'translate(-50%, -50%)';
-    modal.style.margin = '0';
-    modal.style.borderRadius = isMobile ? '8px' : '12px';
-
-    if (exportMap) {
-        // Opóźnienie by przeglądarka zdążyła narysować okno przed przeskalowaniem mapy
-        setTimeout(() => exportMap.invalidateSize(true), 50);
-    }
-}
 
 // Nasłuchiwanie zmian rozmiaru (i obrotu ekranu)
 window.addEventListener('resize', centerExportModal);
@@ -578,75 +528,7 @@ if (window.visualViewport) {
 }
 
 
-function openMapExportModal() {
-    const modal = document.getElementById('mapExportModal');
-    modal.style.display = 'flex';
-    
-    // Uruchomienie matematycznego pozycjonowania od razu
-    centerExportModal();
 
-    const emptyState = document.getElementById('exportEmptyState');
-    const toolbar = document.getElementById('exportToolbar');
-
-    if (routeGeometry.length < 2) {
-        emptyState.style.display = 'flex';
-        if (toolbar) { toolbar.style.opacity = '0.3'; toolbar.style.pointerEvents = 'none'; }
-        wasExportEmpty = true;
-    } else {
-        emptyState.style.display = 'none';
-        if (toolbar) { toolbar.style.opacity = '1'; toolbar.style.pointerEvents = 'auto'; }
-
-        // Odśwież widok jeśli wcześniej był szary ekran
-        setTimeout(() => {
-            initExportMap();
-            if (wasExportEmpty) {
-                executeRefreshRoute();
-                wasExportEmpty = false;
-            }
-            window.initAlwaysOnCopyright();
-        }, 50);
-    }
-}
-function initExportMap() {
-    const container = document.getElementById('mapExport');
-    if (!container) return;
-
-    if (!exportMap) {
-        // Pierwsze utworzenie mapy
-        exportMap = L.map(container, { zoomControl: false, attributionControl: false, preferCanvas: true });
-        
-        // ZŁOTY ŚRODEK NA BŁĄD "Set map center and zoom first": 
-        // Wymuszamy domyślne współrzędne, by Leaflet "ożył" zanim cokolwiek do niego dodamy.
-        exportMap.setView([53.54, 14.55], 13);
-        
-        getExportTileLayer().addTo(exportMap);
-        L.control.zoom({ position: 'topright' }).addTo(exportMap);
-        scaleControl = L.control.scale({ imperial: false, position: 'bottomleft' });
-
-        // Nasłuchiwacze odświeżające legendę po przesunięciu mapy
-        exportMap.on('moveend', syncExportPoints);
-        exportMap.on('zoomend', syncExportPoints);
-    } else {
-        exportMap.invalidateSize(true);
-    }
-
-    // Dodanie linii
-    if (exportPolyline) exportMap.removeLayer(exportPolyline);
-    exportPolyline = L.polyline(routeGeometry, { 
-        color: exportLineColor || '#22c55e', 
-        weight: exportLineWeight || 6 
-    }).addTo(exportMap);
-
-    // Dopasowanie do trasy
-    if (routeGeometry.length > 1) {
-        exportMap.fitBounds(exportPolyline.getBounds(), { padding: [60, 60] });
-    }
-
-    setTimeout(() => {
-        exportMap.invalidateSize(true);
-        syncExportPoints(); // Odpalenie legendy
-    }, 200);
-}
 // Funkcja pomocnicza: Obliczanie luminancji i kontrastu wg WCAG
 function getLuminance(r, g, b) {
     let [rs, gs, bs] = [r, g, b].map(c => {
@@ -980,19 +862,7 @@ async function printExportMap() {
         alert("Wystąpił problem przy przygotowaniu do druku.");
     }
 }
-    function getExportTileLayer() {
-    console.log('[EXPORT] Creating tile layer, dark =', dark);
-
-    const url = dark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-    return L.tileLayer(url, {
-        maxZoom: 19,
-        crossOrigin: true, 
-        attribution: ''
-    });
-}
+    
 
 /* ================= WYSZUKIWARKA MIEJSC ================= */
 
@@ -1198,132 +1068,12 @@ function getExportTileLayer() {
     return L.tileLayer(url, { maxZoom: 19, crossOrigin: true, attribution: '' });
 }
 
-function toggleExportTheme() {
-    if(!exportMap) return;
-    exportMapDark = !exportMapDark;
-    if(exportTileLayer) exportMap.removeLayer(exportTileLayer);
-    exportTileLayer = getExportTileLayer();
-    exportTileLayer.addTo(exportMap);
-}
-
-// Zewnętrzne przyciski ZOOMA w nagłówku okna
-function exportZoomIn() { if (exportMap) exportMap.zoomIn(); }
-function exportZoomOut() { if (exportMap) exportMap.zoomOut(); }
-
-/* --- OBSŁUGA WEWNĘTRZNEGO MODALA INFORMACJI --- */
-function openExportDataModal() {
-    document.getElementById('exportDataModal').style.display = 'flex';
-    document.getElementById('exportDataModal').style.transform = 'translate(-50%, -50%)';
-}
-function openExportMetaModal() { 
-    const modal = document.getElementById('exportMetaModal');
-    modal.style.display = 'flex'; 
-    modal.style.left = '50%';
-    modal.style.top = '50%';
-    modal.style.transform = 'translate(-50%, -50%)';
-}
-function openExportPicker(type) {
-    tempPickerType = type;
-    document.getElementById('pickerTitle').innerText = type === 'gas' ? "Wybierz punkty GS" : "Wybierz swoje punkty";
-    document.getElementById('pickerSearch').value = '';
-    
-    document.getElementById('exportPickerModal').style.display = 'flex';
-    document.getElementById('exportPickerModal').style.transform = 'translate(-50%, -50%)';
-    
-    filterPickerList(); // Odśwież listę po otwarciu
-}
-// Zastąp funkcję filterPickerList aby ZAWIERAŁA POSTOJE w modalu bazy punktów eksportu
-// Zastąp starą funkcję filterPickerList
-function filterPickerList() {
-    const query = document.getElementById('pickerSearch').value.toLowerCase();
-    const container = document.getElementById('pickerListContainer');
-    container.innerHTML = '';
-    
-    let dataSource = [];
-    if (tempPickerType === 'gas') {
-        dataSource = globalCustomPois.filter(p => p.isGas);
-    } else {
-        const formattedStops = routeStops.map(s => ({
-            id: s.id, latlng: s.latlng, name: s.name, 
-            icon: s.visualType === 'dot' ? '☕' : s.icon, 
-            storage: 'session', isStop: true
-        }));
-        dataSource = [...userSavedPois, ...formattedStops]; 
-    }
-
-    if (dataSource.length === 0) {
-        container.innerHTML = `<p style="text-align:center; padding: 10px; color:#94a3b8;">Brak punktów.</p>`;
-        return;
-    }
-
-    // Bezpośrednie odczytanie pamięci Set
-    const selectedSet = exportPointSettings[tempPickerType].ids;
-
-    dataSource.forEach(p => {
-        if (!p.name.toLowerCase().includes(query)) return;
-        
-        const isChecked = selectedSet.has(p.id) ? 'checked' : '';
-        let badge = (tempPickerType === 'user') ? (p.storage === 'local' ? `[Na stałe]` : `[Sesja]`) : '';
-        if (p.isStop) badge = `<span style="color:#f59e0b; font-weight:bold;">[POSTÓJ]</span>`;
-        
-        container.innerHTML += `
-            <label class="picker-item-styled" style="display:flex; align-items:center; gap:10px; padding:8px; border-bottom:1px solid rgba(255,255,255,0.1); cursor:pointer;">
-                <!-- ZMIANA: Wywołanie nowej funkcji live na zdarzeniu onchange -->
-                <input type="checkbox" onchange="toggleExportPointSelection('${p.id}', this.checked)" ${isChecked}>
-                <span style="font-size:1.2rem;">${p.icon}</span> 
-                <div style="display:flex; flex-direction:column; line-height: 1.2;">
-                    <span style="font-weight:bold; font-size:0.9rem;">${p.name}</span>
-                    <small style="font-size:0.75rem; opacity:0.7;">${badge}</small>
-                </div>
-            </label>
-        `;
-    });
-}
-
-// NOWA FUNKCJA - Działa w tle natychmiast przy kliknięciu checkboxa
-function toggleExportPointSelection(id, isChecked) {
-    if (isChecked) {
-        exportPointSettings[tempPickerType].ids.add(id);
-    } else {
-        exportPointSettings[tempPickerType].ids.delete(id);
-    }
-}
-
-// Zastąp stare selectAllPicker
-function selectAllPicker(state) {
-    let dataSource = [];
-    if (tempPickerType === 'gas') dataSource = globalCustomPois.filter(p => p.isGas);
-    else dataSource = [...userSavedPois, ...routeStops];
-    
-    const query = document.getElementById('pickerSearch').value.toLowerCase();
-    
-    // Zaznaczamy/Odznaczamy w pamięci (tylko te, które odpowiadają filtrowi!)
-    dataSource.forEach(p => {
-        if (p.name.toLowerCase().includes(query)) {
-            toggleExportPointSelection(p.id, state);
-        }
-    });
-    
-    filterPickerList(); // Przeładowanie widoku
-}
-
-// Zastąp stare savePickerSelection (Teraz jest o wiele prostsze)
-function savePickerSelection() {
-    // Stan jest już zapisany w zmiennej Set. Zamykamy tylko okno i aktualizujemy mapę.
-    document.getElementById('exportPickerModal').style.display = 'none';
-    syncExportPoints(); 
-}
 
 
 
 
-function openStatsModal() {
-    const modal = document.getElementById('statsSelectionModal');
-    modal.style.display = 'flex';
-    modal.style.left = '50%';
-    modal.style.top = '50%';
-    modal.style.transform = 'translate(-50%, -50%)';
-}
+
+
 
 function togglePanelTheme(isDark) {
     const panel = document.getElementById('mapInfoPanel');
@@ -1331,335 +1081,31 @@ function togglePanelTheme(isDark) {
     else panel.classList.remove('dark-theme');
 }
 
-function saveExportMeta() {
-    const tTitle = document.getElementById('metaInputTitle').value.trim();
-    const tDate = document.getElementById('metaInputDate').value.trim();
-    const tDesc = document.getElementById('metaInputDesc').value.trim();
-    
-    const panel = document.getElementById('mapInfoPanel');
-    const elTitle = document.getElementById('miTitle');
-    const elDate = document.getElementById('miDate');
-    const elDesc = document.getElementById('miDesc');
-
-    if(tTitle) { elTitle.innerHTML = tTitle; elTitle.style.display = 'block'; } else elTitle.style.display = 'none';
-    if(tDate) { elDate.innerHTML = tDate; elDate.style.display = 'block'; } else elDate.style.display = 'none';
-    if(tDesc) { elDesc.innerHTML = tDesc.replace(/\n/g, '<br>'); elDesc.style.display = 'block'; } else elDesc.style.display = 'none';
-
-    updatePanelVisibility();
-    document.getElementById('exportMetaModal').style.display = 'none';
-}
 
 
 
-/* --- OBSŁUGA LEGENDY --- */
-function toggleLegendMode() {
-    exportLegendMode = !exportLegendMode;
-    const btn = document.getElementById('btnLegend');
-    
-    if(exportLegendMode) {
-        btn.style.boxShadow = "0 0 10px white";
-        document.getElementById('mapExport').style.cursor = 'crosshair';
-        // Alert usunięty zgodnie z życzeniem!
-    } else {
-        btn.style.boxShadow = "none";
-        document.getElementById('mapExport').style.cursor = '';
-        closeEmojiPicker();
-    }
-}
 
-function closeEmojiPicker() {
-    document.getElementById('emojiPickerUI').style.display = 'none';
-    tempLegendClickLatLng = null;
-    editingLegendId = null;
-}
 
-function saveLegendItem() {
-    const text = document.getElementById('emojiLabelText').value.trim() || "Ważny punkt";
-    
-    if (editingLegendId && exportLegendItems[editingLegendId]) {
-        const item = exportLegendItems[editingLegendId];
-        item.text = text;
-        item.emoji = selectedEmoji;
-        item.marker.setIcon(L.divIcon({ 
-            html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));" title="Przeciągnij by przenieść">${selectedEmoji}</div>`, 
-            className: 'poi-icon' 
-        }));
-        
-        const li = document.getElementById(editingLegendId);
-        li.querySelector('.leg-icon').innerHTML = selectedEmoji;
-        li.querySelector('.leg-text').innerText = text;
-    } else if (tempLegendClickLatLng) {
-        const id = 'leg_' + Date.now();
-        const marker = L.marker(tempLegendClickLatLng, {
-            draggable: true, 
-            icon: L.divIcon({ 
-                html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));" title="Przeciągnij by przenieść">${selectedEmoji}</div>`, 
-                className: 'poi-icon' 
-            })
-        }).addTo(exportMap);
 
-        marker.on('click', function(e) { L.DomEvent.stopPropagation(e); });
-        exportLegendItems[id] = { marker, emoji: selectedEmoji, text };
 
-        document.getElementById('miLegendContainer').style.display = 'block';
-        const list = document.getElementById('exportLegendList');
-        const li = document.createElement('li');
-        li.id = id;
-        li.draggable = true; // Zezwól na przesuwanie
-        setupLegendDragAndDrop(li); // Przypnij nasłuchiwacze
-
-        li.innerHTML = `
-            <span class="leg-icon" style="font-size:20px;">${selectedEmoji}</span> 
-            <span class="leg-text">${text}</span>
-            <div class="leg-actions" data-html2canvas-ignore>
-                <button onclick="editLegendItem('${id}')" title="Edytuj">✏️</button>
-                <button onclick="deleteLegendItem('${id}')" title="Usuń">🗑️</button>
-            </div>
-        `;
-        list.appendChild(li);
-    }
-    updatePanelVisibility();
-    closeEmojiPicker();
-    checkDuplicateEmojis();
-}
 /* =========================================================
    ZAAWANSOWANY SYSTEM LEGENDY I NUMERACJI
 ========================================================= */
 
 // POMOCNICZA: Czyste generowanie HTML numerka bazujące na stylach z konfiguracji
-function generateStyledNumberHtml(baseEmoji, number, conf) {
-    let flexDir = 'row';
-    let txtMargin = '';
-    let isOverlap = false;
 
-    if(conf.pos === 'overlap') { isOverlap = true; }
-    else if(conf.pos === 'top') { flexDir = 'column'; txtMargin = `margin-bottom: ${conf.dist}px;`; }
-    else if(conf.pos === 'bottom') { flexDir = 'column-reverse'; txtMargin = `margin-top: ${conf.dist}px;`; }
-    else if(conf.pos === 'left') { flexDir = 'row'; txtMargin = `margin-right: ${conf.dist}px;`; }
-    else if(conf.pos === 'right') { flexDir = 'row-reverse'; txtMargin = `margin-left: ${conf.dist}px;`; }
-
-    const numHtml = `<span style="
-        font-size: ${conf.numSize}px; 
-        color: ${conf.color}; 
-        font-style: ${conf.fontStyle.includes('italic') ? 'italic' : 'normal'};
-        font-weight: ${conf.fontStyle.includes('bold') ? 'bold' : 'normal'};
-        ${txtMargin}
-        ${isOverlap ? `position: absolute; transform: translate(${conf.dist}px, ${conf.dist}px); z-index: 5;` : `z-index: 5;`}
-    ">${number}</span>`;
-
-    const dotHtml = `
-        <div style="
-            background: ${conf.bg};
-            width: ${conf.dotSize}px;
-            height: ${conf.dotSize}px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            border: 1px solid rgba(0,0,0,0.1);
-            z-index: 1;
-        ">
-            <span style="font-size: ${conf.dotSize * 0.6}px; z-index: 2;">${baseEmoji}</span>
-            ${isOverlap ? numHtml : ''}
-        </div>
-    `;
-
-    // KLUCZOWE: width: 65px i flex-shrink: 0 gwarantują, że tekst obok zawsze zacznie się w tym samym miejscu!
- return `
-        <div style="width: 100%; flex-shrink: 0; display: flex; flex-direction: ${flexDir}; align-items: center; justify-content: center;">
-            ${!isOverlap && (conf.pos === 'left' || conf.pos === 'top') ? numHtml : ''}
-            ${dotHtml}
-            ${!isOverlap && (conf.pos === 'right' || conf.pos === 'bottom') ? numHtml : ''}
-        </div>
-    `;
-}
 
 // FUNKCJA 5 & 6: Skaner i Korektor Legendy (Wykrywa błędy natychmiast)
 // PODMIEŃ FUNKCJĘ F5:
 // PODMIEŃ CAŁĄ TĘ FUNKCJĘ W JS
-function f5_scanLegend() {
-    try {
-        const list = document.getElementById('exportLegendList');
-        if(!list) return;
-
-        const frequencies = {};
-        let needsPrompt = false;
-        let needsCleanup = false;
-
-        // 1. BEZPIECZNE ZLICZANIE (Odporne na błędy undefined)
-        Object.values(exportLegendItems).forEach(item => {
-            if (!item) return;
-            
-            if (!item.baseEmoji) {
-                let raw = item.emoji || "📍";
-                item.baseEmoji = String(raw).replace(/<[^>]*>/g, '').replace(/\d+/g, '').trim();
-                if(!item.baseEmoji) item.baseEmoji = "📍"; // Zabezpieczenie przed pustym stringiem
-            }
-            frequencies[item.baseEmoji] = (frequencies[item.baseEmoji] || 0) + 1;
-        });
-
-        // 2. ANALIZA ZMIAN
-        Object.values(exportLegendItems).forEach(item => {
-            if (!item) return;
-            const count = frequencies[item.baseEmoji];
-            
-            // Wykryto duplikat bez numeru -> trzeba zapytać
-            if (count > 1 && !item.isNumbered) needsPrompt = true;
-            // Wykryto osierocony numer (usunięto duplikaty) -> trzeba wyczyścić
-            if (count === 1 && item.isNumbered) needsCleanup = true;
-        });
-
-        // 3. REAKCJA SYSTEMU (Pytanie o numerację)
-        const banner = document.getElementById('emoji-duplicate-banner');
-        if (needsPrompt) {
-            checkDuplicateEmojis(true);
-        } else if (banner) {
-            banner.style.display = 'none';
-        }
-
-        // 4. AUTOMATYCZNE CZYSZCZENIE OSIEROCONYCH NUMERKÓW
-        if (needsCleanup) {
-            Object.values(exportLegendItems).forEach(item => {
-                if (frequencies[item.baseEmoji] === 1 && item.isNumbered) {
-                    item.emoji = item.baseEmoji;
-                    item.isNumbered = false;
-                    if (item.marker) {
-                        item.marker.setIcon(L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${item.baseEmoji}</div>`, className: 'poi-icon' }));
-                    }
-                    const li = document.getElementById(Object.keys(exportLegendItems).find(key => exportLegendItems[key] === item));
-                    if (li) {
-                        const iconSpan = li.querySelector('.leg-icon');
-                        if (iconSpan) iconSpan.innerHTML = item.baseEmoji;
-                    }
-                }
-            });
-        }
-        
-        // 5. ZARZĄDZANIE PRZYCISKIEM MODALU (Zawsze aktualne)
-        const btn = document.getElementById('btnNumberStyles');
-        if (btn) {
-            // POPRAWKA: Pokazuj przycisk, jeśli w legendzie jest min. 1 element
-            const hasAnyLegendItem = Object.keys(exportLegendItems).length > 0;
-            btn.style.display = hasAnyLegendItem ? 'inline-block' : 'none';
-        }
-
-    } catch (err) {
-        console.error("[Skaner Legendy] Błąd zignorowany, system działa dalej:", err);
-    }
-}
-setInterval(f5_scanLegend, 1000);
 
 
-function f6_correctLegend() {
-    f10_report(6, "Błyskawiczne korygowanie panelu legendy - Reset i Rekalkulacja.");
-    // Zdejmujemy flagi, resetujemy ikony na czyste i odpalamy główny silnik od nowa
-    Object.values(exportLegendItems).forEach(item => {
-        item.emoji = item.baseEmoji;
-        item.isNumbered = false;
-        item.marker.setIcon(L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${item.baseEmoji}</div>`, className: 'poi-icon' }));
-    });
-    applyEmojiNumbering(false); // Rekalkuluje bez pytania
-}
 
 
-function checkDuplicateEmojis(forceShowBanner = false) {
-    if (!exportMap || Object.keys(exportLegendItems).length === 0) return;
-    if (!forceShowBanner) return; // F5 zarządza teraz logiką w tle
-
-    let banner = document.getElementById('emoji-duplicate-banner');
-    if (!banner) {
-        banner = document.createElement('div');
-        banner.id = 'emoji-duplicate-banner';
-        banner.setAttribute('data-html2canvas-ignore', 'true');
-        banner.style.cssText = "position:absolute; top:70px; left:50%; transform:translateX(-50%); background:rgba(59, 130, 246, 0.95); color:white; padding:10px 20px; border-radius:30px; box-shadow:0 4px 15px rgba(0,0,0,0.3); z-index:4000; display:flex; align-items:center; gap:10px; font-size:0.85rem; backdrop-filter:blur(4px); white-space:nowrap;";
-        banner.innerHTML = `
-            <span>💡 Powtarzające się ikony. Ponumerować od nowa?</span>
-            <button onclick="applyEmojiNumbering(true)" style="background:#22c55e; padding:4px 12px; border-radius:15px; border:none; color:white; cursor:pointer; font-weight:bold;">Tak</button>
-            <button onclick="this.parentElement.style.display='none'" style="background:transparent; padding:4px; border:none; color:white; cursor:pointer; font-size:1.1rem;">✖</button>
-        `;
-        document.getElementById('exportWrapper').appendChild(banner);
-    }
-    banner.style.display = 'flex';
-}
 
 
-// OSTATECZNY SILNIK NUMERACJI
-window.applyEmojiNumbering = function(fromUserClick = false) {
-    f10_report(6, "Rozpoczynam proces budowy kaskady numerycznej z czyszczeniem.");
-    document.getElementById('btnNumberStyles').style.display = 'inline-block';
-    
-    if (document.getElementById('emoji-duplicate-banner')) {
-        document.getElementById('emoji-duplicate-banner').style.display = 'none';
-    }
 
-    // F8: Pytanie o sortowanie (Tylko jeśli przyszło z re-kalkulacji i użytkownik coś ruszał)
-    if (!fromUserClick && userReorderedLegend) {
-        document.getElementById('f8CustomAlert').style.display = 'block';
-        return; // Zatrzymujemy do czasu odpowiedzi F8
-    }
 
-    executeNumberingAndSorting(true); // Domyślnie sortujemy przy ręcznym kliku lub gdy user nie ruszał
-};
-
-// F8: Callback z customowego alertu
-window.f8_resolveSort = function(doSort) {
-    f10_report(8, `Użytkownik podjął decyzję: ${doSort ? 'Sortuj' : 'Zachowaj mój układ'}`);
-    document.getElementById('f8CustomAlert').style.display = 'none';
-    if(doSort) userReorderedLegend = false; // Resetujemy flagę jeśli pozwolił posortować
-    executeNumberingAndSorting(doSort);
-}
-
-function executeNumberingAndSorting(shouldSort) {
-    const list = document.getElementById('exportLegendList');
-    const domItems = Array.from(list.children);
-    const frequencies = {}; 
-    const counters = {};    
-
-    // Resetowanie zawartości
-    Object.values(exportLegendItems).forEach(item => {
-        if(!item.baseEmoji) item.baseEmoji = item.emoji.replace(/<[^>]*>/g, '').replace(/\d+/g, '').trim();
-        frequencies[item.baseEmoji] = (frequencies[item.baseEmoji] || 0) + 1;
-    });
-
-    // Sortowanie DOM (jeśli zezwolono) - grupujemy emotki
-    if (shouldSort) {
-        domItems.sort((a, b) => {
-            const itemA = exportLegendItems[a.id];
-            const itemB = exportLegendItems[b.id];
-            if(itemA.baseEmoji === itemB.baseEmoji) return 0; // w obrębie grupy nie zmieniamy kolejności by ID było stabilne
-            return itemA.baseEmoji.localeCompare(itemB.baseEmoji);
-        });
-        list.innerHTML = '';
-        domItems.forEach(li => list.appendChild(li));
-    }
-
-   // Aplikowanie HTML na podstawie ustawień
-    Array.from(list.children).forEach(li => {
-        const id = li.id;
-        const item = exportLegendItems[id];
-        
-        let myNum = "";
-        let isDup = frequencies[item.baseEmoji] > 1;
-        
-        if (isDup) {
-            counters[item.baseEmoji] = (counters[item.baseEmoji] || 0) + 1;
-            myNum = counters[item.baseEmoji];
-        }
-
-        // Zawsze nakładamy styl tła i kropki (nawet jeśli nie ma numeru = myNum jest puste)
-        const conf = legendNumberStyles.perEmoji[item.baseEmoji] || legendNumberStyles.global;
-        const htmlNode = generateStyledNumberHtml(item.baseEmoji, myNum, conf);
-        
-        item.emoji = htmlNode;
-        item.isNumbered = isDup; 
-        item.marker.setIcon(L.divIcon({ html: htmlNode, className: 'poi-icon' }));
-
-        const iconSpan = li.querySelector('.leg-icon');
-        if (iconSpan) iconSpan.innerHTML = htmlNode;
-    });
-}
 
 // FUNKCJA 7: Śledzenie drag & drop
 // (Dodaj tę linijkę DO ŚRODKA SWOJEJ ISTNIEJĄCEJ FUNKCJI setupLegendDragAndDrop(li), wewnątrz zdarzenia 'drop')
@@ -1676,223 +1122,16 @@ function executeNumberingAndSorting(shouldSort) {
    NOWY MODAL STYLU NUMERÓW
 ========================================================= */
 // PODMIEŃ CAŁĄ TĘ FUNKCJĘ W JS
-window.openNumberStyleModal = function() {
-    const modal = document.getElementById('numberStyleModal');
-    if (!modal) return;
-
-    // 1. NAJPIERW OTWIERAMY MODAL (Identycznie jak exportStyleModal)
-    modal.style.display = 'flex';
-    modal.style.left = '50%';
-    modal.style.top = '50%';
-    modal.style.transform = 'translate(-50%, -50%)';
-
-    // 2. DOPIERO POTEM ŁADUJEMY DANE (Zabezpieczone przed błędem)
-    try {
-        const select = document.getElementById('numStyleEmojiSelect');
-        if (select) {
-            select.innerHTML = '<option value="global">Globalne (Wszystkie)</option>';
-            const freqs = {};
-            Object.values(exportLegendItems).forEach(item => {
-                if(item && item.baseEmoji) freqs[item.baseEmoji] = (freqs[item.baseEmoji] || 0) + 1;
-            });
-            Object.keys(freqs).forEach(em => {
-                if(freqs[em] > 1) select.innerHTML += `<option value="${em}">Tylko: ${em}</option>`;
-            });
-            currentEditEmoji = 'global';
-            select.value = 'global';
-        }
-        loadNumberStyleToUI();
-    } catch (e) {
-        console.error("Błąd ładowania danych do modalu:", e);
-        // W razie błędu resetujemy style, ale MODAL I TAK ZOSTANIE OTWARTY
-        legendNumberStyles = { global: { color: '#0f172a', bg: 'rgba(241, 245, 249, 0.95)', dotSize: 24, numSize: 12, dist: 4, pos: 'right', fontStyle: 'bold' }, perEmoji: {} };
-        loadNumberStyleToUI();
-    }
-};
 
 
-function loadNumberStyleToUI() {
-    currentEditEmoji = document.getElementById('numStyleEmojiSelect').value;
-    const conf = (currentEditEmoji === 'global' ? legendNumberStyles.global : (legendNumberStyles.perEmoji[currentEditEmoji] || legendNumberStyles.global));
-    
-    let hexBg = '#3b82f6', opacity = 90; 
-    const rgbaMatch = conf.bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
-    if(rgbaMatch) {
-        hexBg = "#" + ((1 << 24) + (parseInt(rgbaMatch[1]) << 16) + (parseInt(rgbaMatch[2]) << 8) + parseInt(rgbaMatch[3])).toString(16).slice(1);
-        if(rgbaMatch[4]) opacity = Math.round(parseFloat(rgbaMatch[4]) * 100);
-    }
-
-    document.getElementById('numBgColor').value = hexBg;
-    document.getElementById('numBgOpacity').value = opacity;
-    document.getElementById('numTextColor').value = conf.color;
-    document.getElementById('numFontStyle').value = conf.fontStyle || 'bold';
-    document.getElementById('numDotSize').value = conf.dotSize;
-    document.getElementById('numFontSize').value = conf.numSize;
-    document.getElementById('numDist').value = conf.dist;
-    document.getElementById('numPosition').value = conf.pos;
-}
-
-function applyNumberStylePreview() {
-    const hexBg = document.getElementById('numBgColor').value;
-    const opacity = document.getElementById('numBgOpacity').value / 100;
-    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
-    
-    const newConf = {
-        color: document.getElementById('numTextColor').value,
-        bg: `rgba(${r}, ${g}, ${b}, ${opacity})`,
-        dotSize: parseInt(document.getElementById('numDotSize').value),
-        numSize: parseInt(document.getElementById('numFontSize').value),
-        fontStyle: document.getElementById('numFontStyle').value,
-        dist: parseInt(document.getElementById('numDist').value),
-        pos: document.getElementById('numPosition').value
-    };
-
-    if(currentEditEmoji === 'global') legendNumberStyles.global = newConf;
-    else legendNumberStyles.perEmoji[currentEditEmoji] = newConf;
-
-    executeNumberingAndSorting(false); // Live Preview
-}
-
-
-function saveNumberStyles(toLocal = false) {
-    applyNumberStylePreview(); 
-    if(toLocal) {
-        localStorage.setItem('gpx_number_styles', JSON.stringify(legendNumberStyles));
-        showCustomAlert("Style zostały bezpowrotnie zabetonowane w LocalStorage!");
-    }
-    closeModal('numberStyleModal');
-}
-function editLegendItem(id) {
-    const item = exportLegendItems[id];
-    if(!item) return;
-
-    editingLegendId = id;
-    document.getElementById('emojiLabelText').value = item.text;
-    selectEmoji(item.emoji, Array.from(document.querySelectorAll('.emoji-btn')).find(b => b.innerText === item.emoji));
-    
-    const ui = document.getElementById('emojiPickerUI');
-    ui.style.display = 'block';
-    ui.style.left = '50%';
-    ui.style.top = '50%';
-    ui.style.transform = 'translate(-50%, -50%)';
-}
-
-function deleteLegendItem(id) {
-    const item = exportLegendItems[id];
-    if(!item) return;
-    exportMap.removeLayer(item.marker);
-    document.getElementById(id).remove();
-    delete exportLegendItems[id];
-    updatePanelVisibility();
-}
-
-/* --- ZRZUTY EKRANU DLA EKSPORTU --- */
-async function exportMapPNG() {
-    const el = document.getElementById('exportWrapper');
-    const canvas = await html2canvas(el, { useCORS: true, scale: 2, backgroundColor: null });
-    const a = document.createElement('a');
-    a.href = canvas.toDataURL('image/png');
-    a.download = 'mapa_trasy_export.png';
-    a.click();
-}
-
-async function copyMapPNG() {
-    const el = document.getElementById('exportWrapper');
-    const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
-    canvas.toBlob(blob => {
-        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        alert("Mapa skopiowana do schowka 👍");
-    });
-}
-
-async function printExportMap() {
-    const el = document.getElementById('exportWrapper');
-    const canvas = await html2canvas(el, { useCORS: true, scale: 2 });
-    const win = window.open('');
-    win.document.write(`
-        <style>@page { size: landscape; margin: 0; } body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }</style>
-        <img src="${canvas.toDataURL('image/png')}" style="max-width:100%; max-height:100%; object-fit:contain;">
-        <script>window.onload = () => window.print()<\/script>
-    `);
-}
 
 
 
 
 /* --- STATYSTYKI --- */
-function openStatsModal() {
-    document.getElementById('statsSelectionModal').style.display = 'flex';
-}
 
-function applyStatsToPanel() {
-    const incDist = document.getElementById('statCheckDist').checked;
-    const incTime = document.getElementById('statCheckTime').checked;
-    const statsContainer = document.getElementById('miStats');
-    
-    // Pobieranie wartości wprost z głównego UI pod menu po lewej
-    const distText = document.getElementById('stats').innerText; 
-    const timeText = document.getElementById('time').innerText; 
-
-    let html = '';
-    if(incDist) html += `<div class="mi-stat-item">📏 <span>${distText}</span></div>`;
-    if(incTime) {
-        // Usuwamy słowo "Czas: " z początku, żeby ładnie wyglądało w kafelku
-        const cleanTime = timeText.replace('Czas: ', '');
-        html += `<div class="mi-stat-item">⏱️ <span>${cleanTime}</span></div>`;
-    }
-
-    if(html !== '') {
-        statsContainer.innerHTML = html;
-        statsContainer.style.display = 'flex';
-    } else {
-        statsContainer.style.display = 'none';
-    }
-    
-    updatePanelVisibility();
-    document.getElementById('statsSelectionModal').style.display = 'none';
-}
 
 /* --- ODŚWIEŻANIE TRASY --- */
-function confirmRefreshRoute() {
-    document.getElementById('confirmRefreshModal').style.display = 'flex';
-}
-
-function executeRefreshRoute() {
-    document.getElementById('confirmRefreshModal').style.display = 'none';
-    
-    // 1. Czyszczenie legendy z mapy eksportu
-    Object.values(exportLegendItems).forEach(item => exportMap.removeLayer(item.marker));
-    exportLegendItems = {};
-    document.getElementById('exportLegendList').innerHTML = '';
-    
-    // 2. Czyszczenie tekstów i inputów
-    document.getElementById('metaInputTitle').value = '';
-    document.getElementById('metaInputDate').value = '';
-    document.getElementById('metaInputDesc').value = '';
-    
-    document.getElementById('miTitle').style.display = 'none';
-    document.getElementById('miDate').style.display = 'none';
-    document.getElementById('miDesc').style.display = 'none';
-    document.getElementById('miStats').style.display = 'none';
-    document.getElementById('miLegendContainer').style.display = 'none';
-    
-    // 3. Resetowanie pozycji i rozmiaru panelu (jeśli były zmieniane)
-    const panel = document.getElementById('mapInfoPanel');
-    panel.style.top = '20px';
-    panel.style.left = '20px';
-    panel.style.width = 'auto';
-    panel.style.height = 'auto';
-    updatePanelVisibility();
-
-    // 4. Przerysowanie linii trasy
-    if(exportPolyline) exportMap.removeLayer(exportPolyline);
-    exportPolyline = L.polyline(routeGeometry, { color: '#22c55e', weight: 6, opacity: 1 }).addTo(exportMap);
-    
-    // 5. Dopasowanie widoku do nowej trasy
-    if (routeGeometry.length > 1) {
-        exportMap.fitBounds(exportPolyline.getBounds(), { padding: [60, 60] });
-    }
-}
 
 
 
@@ -2369,201 +1608,9 @@ document.addEventListener('keydown', (e) => {
   
 
 // Główny silnik synchronizujący punkty na mapie i w legendzie (POPRAWIONY)
-function syncExportPoints() {
-    if (!exportMap || !exportMap._loaded) return; 
-
-    const bounds = exportMap.getBounds();
-    const shouldBeVisible = new Set(); 
-    const chkGas = document.getElementById('chkExpGasLegend');
-    const chkUser = document.getElementById('chkExpUserLegend');
-    const legendGas = chkGas ? chkGas.checked : false;
-    const legendUser = chkUser ? chkUser.checked : false;
-
-    // 1. Zbieramy ujednolicone postoje
-    const formattedStops = routeStops.map(s => ({
-        id: s.id, latlng: s.latlng, name: s.name, 
-        icon: s.visualType === 'dot' ? '☕' : s.icon, 
-        isUserSaved: true, isStop: true
-    }));
-    
-    // 2. Pobieramy "Moje Punkty" i wymuszamy poprawny format współrzędnych
-    const formattedUserPois = userSavedPois.map(p => ({
-        id: p.id, latlng: L.latLng(p.lat, p.lng), name: p.name, 
-        icon: p.icon, isUserSaved: true, isStop: false
-    }));
-
-    // 3. Złączenie WSZYSTKICH 3 źródeł
-    const combinedPois = [
-        ...globalCustomPois.filter(p => p.isGas), 
-        ...formattedUserPois,
-        ...formattedStops
-    ];
-
-    combinedPois.forEach(poi => {
-        // Sprawdzanie czy dany punkt istnieje w zapisanym secie ID
-        const isGasMatch = poi.isGas && exportPointSettings.gas.ids.has(poi.id);
-        const isUserMatch = (poi.isUserSaved || poi.isStop) && exportPointSettings.user.ids.has(poi.id);
-
-        if (isGasMatch || isUserMatch) {
-            const autoId = 'auto_' + poi.id;
-            const inLegendEnabled = (isGasMatch && legendGas) || (isUserMatch && legendUser);
-            
-            // KLUCZOWE: Sprawdzamy czy punkt jest w zasięgu widoku mapy (BOUNDS)
-            if (bounds.contains(poi.latlng)) {
-                shouldBeVisible.add(autoId);
-
-                // Tworzymy pinezkę na mapie, jeśli jej tam nie ma
-                if (!exportLegendItems[autoId]) {
-                    const marker = L.marker(poi.latlng, {
-                        draggable: true,
-                        icon: L.divIcon({ html: `<div style="font-size:22px; filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.5));">${poi.icon}</div>`, className: 'poi-icon' })
-                    }).addTo(exportMap);
-                    marker.on('click', function(e) { L.DomEvent.stopPropagation(e); });
-                    exportLegendItems[autoId] = { marker: marker, emoji: poi.icon, text: poi.name, isAuto: true };
-                }
-
-                // Wstrzykujemy do legendy bocznej
-                const hasDomNode = document.getElementById(autoId);
-                if (inLegendEnabled && !hasDomNode) {
-                    addAutoLegendItemToDOM(autoId);
-                } else if (!inLegendEnabled && hasDomNode) {
-                    hasDomNode.remove(); // Usuwamy tekst, ale pinezka zostaje
-                }
-            }
-        }
-    });
-
-    // Usuwamy sieroty (te które zjechały poza ekran po przemieszczeniu)
-    Object.keys(exportLegendItems).forEach(id => {
-        if (exportLegendItems[id].isAuto && !shouldBeVisible.has(id)) {
-            exportMap.removeLayer(exportLegendItems[id].marker);
-            const domEl = document.getElementById(id);
-            if(domEl) domEl.remove();
-            delete exportLegendItems[id];
-        }
-    });
-
-    // Usuwamy placeholder "Legenda pusta"
-    const tempEmpty = document.getElementById('temp_empty_leg');
-    if (tempEmpty && document.getElementById('exportLegendList').children.length > 1) {
-        tempEmpty.remove();
-    }
-
-    updatePanelVisibility();
-    checkDuplicateEmojis();
-}
-function addAutoLegendItemToDOM(id) {
-    const item = exportLegendItems[id];
-    const list = document.getElementById('exportLegendList');
-    
-    const tempEmpty = document.getElementById('temp_empty_leg');
-    if (tempEmpty) tempEmpty.remove();
-
-    const li = document.createElement('li');
-    li.id = id;
-    
-    // Zezwalamy na przesuwanie elementu (Drag & Drop)
-    li.draggable = true;
-    setupLegendDragAndDrop(li);
-
-    li.innerHTML = `
-        <span class="leg-icon" style="font-size:20px;">${item.emoji}</span> 
-        <span class="leg-text">${item.text}</span>
-        <div class="leg-actions" data-html2canvas-ignore>
-            <button onclick="editLegendItem('${id}')" title="Edytuj tekst">✏️</button>
-            <button onclick="hideFromLegendOnly('${id}')" title="Ukryj tylko wpis (Zostaw na mapie)">👁️‍🗨️</button>
-            <button onclick="removeCompletelyFromExport('${id}')" title="Usuń całkowicie (Mapa i Legenda)" style="color:#ef4444;">❌</button>
-        </div>
-    `;
-    list.appendChild(li);
-}
-
 
 
     // Zapis PNG z Export Modalu do sesji (aby użyć w PDF)
-async function saveExportMapToSession() {
-    document.getElementById('emojiPickerUI').style.display = 'none';
-    const el = document.getElementById('exportWrapper');
-    const btn = event.currentTarget;
-    
-    const originalText = btn.innerHTML;
-    btn.innerHTML = "⏳ Przetwarzanie...";
-    btn.disabled = true;
-
-    try {
-        const canvas = await html2canvas(el, { useCORS: true, scale: 1.5 }); // scale 1.5 jest optymalne do PDF
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85); // JPEG dla mniejszego rozmiaru w sesji
-        
-        try {
-            sessionStorage.setItem('custom_map_png', dataUrl);
-            showCustomAlert("Pomyślnie zapisano wygląd mapy w sesji! Możesz teraz użyć go w opcji 'Pobierz PDF'.");
-        } catch(e) {
-            if (e.name === 'QuotaExceededError') {
-                showCustomAlert("Mapa jest zbyt duża, by zapisać ją w pamięci podręcznej. Użyj mniejszego kadru lub mniejszego formatu okna.");
-            }
-        }
-    } catch(err) {
-        console.error("Błąd zapisu sesji:", err);
-        showCustomAlert("Wystąpił problem przy renderowaniu.");
-    } finally {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-    }
-}
-
-
-
-/* ================= NOWE AKCJE LEGENDY I POSTOJE ================= */
-function toggleEmptyLegend() {
-    const leg = document.getElementById('miLegendContainer');
-    if (leg.style.display === 'none') {
-        leg.style.display = 'block';
-        if(document.getElementById('exportLegendList').children.length === 0) {
-            document.getElementById('exportLegendList').innerHTML = `<li id="temp_empty_leg" style="opacity:0.5; font-size:0.8rem;">Legenda jest pusta. Użyj 'Własna Legenda' na pasku.</li>`;
-        }
-    } else {
-        leg.style.display = 'none';
-    }
-    updatePanelVisibility();
-}
-
-
-// Nowe funkcje ukrywania
-function hideFromLegendOnly(autoId) {
-    const realId = autoId.replace('auto_', '');
-    
-    // Usuń ID z pamięci Pickera
-    if(exportPointSettings.gas.ids.has(realId)) exportPointSettings.gas.ids.delete(realId);
-    if(exportPointSettings.user.ids.has(realId)) exportPointSettings.user.ids.delete(realId);
-    
-    // Przeładuj mapę i legendę, co usunie też pinezkę z mapy w trybie automatycznym
-    syncExportPoints();
-}
-
-function removeCompletelyFromExport(autoId) {
-    // autoId ma format "auto_IDPUNKTU"
-    const realId = autoId.replace('auto_', '');
-    
-    // Odznacz w ustawieniach by przy zoomowaniu nie wróciło
-    exportPointSettings.gas.ids.delete(realId);
-    exportPointSettings.user.ids.delete(realId);
-    
-    // Usuń marker z mapy
-    if(exportLegendItems[autoId] && exportLegendItems[autoId].marker) {
-        exportMap.removeLayer(exportLegendItems[autoId].marker);
-    }
-    
-    // Usuń z DOM
-    const li = document.getElementById(autoId);
-    if(li) li.remove();
-    
-    delete exportLegendItems[autoId];
-}
-
-
-
- 
- 
 
   
 
@@ -2643,33 +1690,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-function toggleExportSatellite() {
-    if(!exportMap) return;
-    
-    isExportSatellite = !isExportSatellite;
-    const btn = document.getElementById('btnSatExport');
-    
-    if(isExportSatellite) {
-        if(exportTileLayer) exportMap.removeLayer(exportTileLayer);
-        // Fragment wewnątrz toggleExportSatellite:
-exportSatelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-    attribution: '&copy; Google Maps',
-    maxZoom: 20
-}).addTo(exportMap);
-        btn.innerText = "Zwykła mapa";
-        btn.style.boxShadow = "0 0 10px white";
-    } else {
-        if(exportSatelliteLayer) exportMap.removeLayer(exportSatelliteLayer);
-        exportTileLayer = getExportTileLayer();
-        exportTileLayer.addTo(exportMap);
-        btn.innerText = "Satelita";
-        btn.style.boxShadow = "none";
-    }
-    // Dopisujemy to na końcu:
-    if (typeof window.updateCopyrightText === 'function') {
-        window.updateCopyrightText();
-    }
-}
+
 
 // --- PANCERNY STRAŻNIK V3: Źródło idealnie zrośnięte z panelem ---
 function keepAttributionSafe() {
@@ -2705,57 +1726,7 @@ function keepAttributionSafe() {
     requestAnimationFrame(keepAttributionSafe);
 }
 requestAnimationFrame(keepAttributionSafe);
-function setupLegendDragAndDrop(li) {
-    li.addEventListener('dragstart', function(e) {
-        draggedLegendItem = this;
-        this.classList.add('dragging');
-        e.dataTransfer.effectAllowed = 'move';
-        // Kod obchodzący błędy Firefoxa
-        e.dataTransfer.setData('text/plain', this.id); 
-    });
 
-    li.addEventListener('dragover', function(e) {
-        e.preventDefault(); // Zezwól na "drop"
-        this.classList.add('drag-over');
-        e.dataTransfer.dropEffect = 'move';
-        return false;
-    });
-
-    li.addEventListener('dragleave', function(e) {
-        this.classList.remove('drag-over');
-    });
-
-    li.addEventListener('drop', function(e) {
-        e.stopPropagation();
-        this.classList.remove('drag-over');
-
-        if (draggedLegendItem && draggedLegendItem !== this) {
-            const list = document.getElementById('exportLegendList');
-            const children = Array.from(list.children);
-            
-            const draggedIdx = children.indexOf(draggedLegendItem);
-            const targetIdx = children.indexOf(this);
-
-            // Podmiana elementów w DOM (Jeśli upuszczamy na dół to wstawiamy 'po' elemencie, jeśli na górę 'przed')
-            if (draggedIdx < targetIdx) {
-                list.insertBefore(draggedLegendItem, this.nextSibling);
-            } else {
-                list.insertBefore(draggedLegendItem, this);
-            }
-        }
-        return false;
-        userReorderedLegend = true; 
-        f10_report(7, "Zarejestrowano fizyczne przesunięcie elementu w DOM. Ostrzegam F8.");
-    });
-
-    li.addEventListener('dragend', function() {
-        this.classList.remove('dragging');
-        document.querySelectorAll('.map-info-legend-list li').forEach(item => {
-            item.classList.remove('drag-over');
-        });
-        draggedLegendItem = null;
-    });
-}
 /* =========================================================
    PANCERNY SYSTEM ZRZUTÓW EKRANU - ARCHITEKTURA 7 FUNKCJI
 ========================================================= */
