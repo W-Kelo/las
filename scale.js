@@ -3,6 +3,9 @@
 ========================================================= */
 
 let isCustomScaleVisible = false;
+let scaleFrameId = null;
+let customScaleEl = null;
+let scaleUpdateTimeout = null;
 
 window.toggleScale = function() {
     if (!exportMap) return;
