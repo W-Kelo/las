@@ -1,5 +1,5 @@
 /* =========================================================
-   trailsManager.js - POPRAWIONY SYSTEM ZARZĄDZANIA SZLAKAMI (V2)
+   trailsManager.js - SYSTEM ZARZĄDZANIA SZLAKAMI (V3)
 ========================================================= */
 
 let currentTrailsPage = 1;
@@ -8,17 +8,22 @@ let filteredTrails = [];
 let trailHoverMarker = null;
 let activePulseIntervals = {};
 
-// Słownik tłumaczeń tagów OSM
+// Pełny słownik tłumaczeń tagów i wartości OSM
 const TRAILS_TRANSLATIONS = {
     "operator": "Zarządca",
     "ref": "Oznaczenie",
     "website": "Strona WWW",
+    "website:de": "Strona WWW (de)",
     "network": "Ranga sieci",
+    "network:type": "Typ sieci",
     "difficulty": "Stopień trudności",
     "state": "Status szlaku",
     "colour": "Kolor szlaku",
     "note": "Uwagi",
     "description": "Opis szlaku",
+    "distance": "Długość",
+    "from": "Początek szlaku",
+    "to": "Koniec szlaku",
     "red": "Czerwony",
     "green": "Zielony",
     "yellow": "Żółty",
@@ -35,7 +40,12 @@ const TRAILS_TRANSLATIONS = {
     "proposed": "Planowany"
 };
 
-const TAG_BLACKLIST = ["type", "route", "osmc:symbol", "osmc_symbol", "wikidata", "wikipedia", "name", "color", "name:de", "name:pl"];
+// Twarda czarna lista tagów do odrzucenia (nie będą pokazywane na liście parametrów)
+const TAG_BLACKLIST = [
+    "type", "route", "osmc:symbol", "osmc_symbol", "wikidata", "wikipedia", 
+    "name", "color", "name:de", "name:pl", "network", "network:type", 
+    "pilgrimage", "wiki:symbol", "symbol", "website", "website:de"
+];
 
 function translateKey(key) {
     const cleanKey = key.toLowerCase().trim();
@@ -52,32 +62,41 @@ function translateValue(val) {
 function initTrailsDatabase() {
     if (!window.processedTrails || window.processedTrails.length === 0) return;
 
+    // Próba odczytu bazy GS z różnych możliwych kontekstów zmiennych
+    const activeGSPois = window.globalCustomPois || (typeof globalCustomPois !== 'undefined' ? globalCustomPois : []);
+
     window.processedTrails.forEach(trail => {
-        // Generowanie profilu wysokościowego ze scalonej geometrii
+        // Generowanie profilu wysokościowego
         let elevResult = generateTrailElevation(trail.coords, trail.calculatedLength);
         trail.elevationData = elevResult.elevData;
         trail.minElev = elevResult.minElev;
         trail.maxElev = elevResult.maxElev;
         trail.totalAscent = elevResult.totalAscent;
 
-        // Czas przejścia (4.2 km/h + 10 min na każde 100m przewyższeń)
+        // Czas przejścia
         const km = trail.calculatedLength / 1000;
         const totalMinutes = (km / 4.2) * 60 + (trail.totalAscent / 100 * 10);
         trail.estimatedTimeMins = Math.round(totalMinutes);
 
-        // Wyznaczenie atrakcji z bazy danych
-        trail.nearbyGSPois = findGSPoisNearTrail(trail.coords, 50);
+        // Wyznaczenie atrakcji z bazy danych w buforze 100 m
+        trail.nearbyGSPois = findGSPoisNearTrail(trail.coords, activeGSPois, 100);
     });
 
     filteredTrails = [...window.processedTrails];
     
-    // Wymuszenie Draggable na dynamicznych modalach
-    if (typeof makeDraggable === 'function') {
-        makeDraggable(document.getElementById('trailsModal'));
-        makeDraggable(document.getElementById('trailElevationModal'));
-    }
+    // Zapewnienie draggable przy inicjalizacji
+    bindTrailsDraggable();
 }
 window.initTrailsDatabase = initTrailsDatabase;
+
+function bindTrailsDraggable() {
+    if (typeof makeDraggable === 'function') {
+        const m1 = document.getElementById('trailsModal');
+        const m2 = document.getElementById('trailElevationModal');
+        if (m1) makeDraggable(m1);
+        if (m2) makeDraggable(m2);
+    }
+}
 
 function generateTrailElevation(coords, totalDist) {
     let elevData = [];
@@ -91,7 +110,6 @@ function generateTrailElevation(coords, totalDist) {
         const lat = coords[i][0];
         const lng = coords[i][1];
         
-        // Proceduralny profil wysokościowy
         let elev = 45 + Math.sin(lat * 600) * 20 + Math.cos(lng * 600) * 12 + Math.sin((lat + lng) * 1200) * 4;
         elev = Math.max(12, Math.round(elev));
 
@@ -111,14 +129,13 @@ function generateTrailElevation(coords, totalDist) {
     return { elevData, minElev, maxElev, totalAscent: Math.round(totalAscent) };
 }
 
-function findGSPoisNearTrail(coords, maxDistMeters = 50) {
-    if (!window.globalCustomPois || window.globalCustomPois.length === 0) return [];
+function findGSPoisNearTrail(coords, activeGSPois, maxDistMeters = 100) {
+    if (!activeGSPois || activeGSPois.length === 0) return [];
     let nearby = [];
     
-    window.globalCustomPois.forEach(poi => {
+    activeGSPois.forEach(poi => {
         let found = false;
-        // Sprawdzamy co 3 punkty ze względu na wydajność
-        for (let i = 0; i < coords.length; i += 3) {
+        for (let i = 0; i < coords.length; i += 2) { // Próbkowanie co drugi punkt
             const d = poi.latlng.distanceTo(L.latLng(coords[i][0], coords[i][1]));
             if (d <= maxDistMeters) {
                 found = true;
@@ -132,6 +149,7 @@ function findGSPoisNearTrail(coords, maxDistMeters = 50) {
 
 function openTrailsModal() {
     openCenteredModal('trailsModal');
+    bindTrailsDraggable();
     handleTrailsSearchAndSort();
 }
 window.openTrailsModal = openTrailsModal;
@@ -182,14 +200,14 @@ function renderTrailsPage() {
         const mins = trail.estimatedTimeMins % 60;
         const timeText = hours > 0 ? `${hours}h ${mins}m` : `${mins} min`;
 
-        // Generowanie tagów oraz sprawdzanie Wikipedia i Website
+        // Generowanie parametrów z jawnym odstępem flex gap (brak sklejania)
         let tagsHtml = '';
         Object.entries(trail.tags).forEach(([k, v]) => {
             if (TAG_BLACKLIST.includes(k)) return;
             tagsHtml += `
-                <div class="trail-tag-item">
-                    <span style="color:#94a3b8;">${translateKey(k)}:</span>
-                    <strong>${translateValue(v)}</strong>
+                <div class="trail-tag-item" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <span style="color:#94a3b8; font-weight: 500;">${translateKey(k)}:</span>
+                    <strong style="word-break: break-all;">${translateValue(v)}</strong>
                 </div>`;
         });
 
@@ -204,28 +222,38 @@ function renderTrailsPage() {
                 wikiUrl = `https://pl.wikipedia.org/wiki/${encodeURIComponent(wikiTag)}`;
             }
             tagsHtml += `
-                <div class="trail-tag-item">
-                    <span style="color:#94a3b8;">Wikipedia:</span>
+                <div class="trail-tag-item" style="display: flex; gap: 8px;">
+                    <span style="color:#94a3b8; font-weight: 500;">Wikipedia:</span>
                     <strong><a href="${wikiUrl}" target="_blank" class="custom-app-link" style="font-weight:bold;">Otwórz artykuł 🔗</a></strong>
                 </div>`;
         }
 
-        // Obsługa klikalnych linków zewnętrznych witryn
+        // Obsługa klikalnych linków Website
         const webTag = trail.tags.website;
         if (webTag) {
             tagsHtml += `
-                <div class="trail-tag-item">
-                    <span style="color:#94a3b8;">Strona www:</span>
+                <div class="trail-tag-item" style="display: flex; gap: 8px;">
+                    <span style="color:#94a3b8; font-weight: 500;">Strona www:</span>
                     <strong><a href="${webTag}" target="_blank" class="custom-app-link" style="font-weight:bold;">Otwórz witrynę 🔗</a></strong>
                 </div>`;
         }
 
-        // Atrakcje GS
+        // Obsługa klikalnych linków Website (de)
+        const webDeTag = trail.tags["website:de"];
+        if (webDeTag) {
+            tagsHtml += `
+                <div class="trail-tag-item" style="display: flex; gap: 8px;">
+                    <span style="color:#94a3b8; font-weight: 500;">Strona www (de):</span>
+                    <strong><a href="${webDeTag}" target="_blank" class="custom-app-link" style="font-weight:bold;">Otwórz witrynę (de) 🔗</a></strong>
+                </div>`;
+        }
+
+        // Atrakcje GS (teraz poprawnie podpięte i widoczne)
         let poisHtml = '';
-        if (trail.nearbyGSPois.length > 0) {
+        if (trail.nearbyGSPois && trail.nearbyGSPois.length > 0) {
             poisHtml = `
                 <div class="trail-pois-container">
-                    <div style="font-weight:bold; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Atrakcje GS wzdłuż szlaku (do 50 m):</div>
+                    <div style="font-weight:bold; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Atrakcje GS wzdłuż szlaku (do 100 m):</div>
                     <div class="trail-poi-mini-list">
                         ${trail.nearbyGSPois.map(p => `
                             <button class="trail-poi-mini-chip" onclick="event.stopPropagation(); openPoiFromTrail('${p.id}')">
@@ -257,13 +285,13 @@ function renderTrailsPage() {
             </div>
 
             <div class="trail-tag-list">
-                ${tagsHtml || '<div style="opacity:0.5;">Brak dodatkowych tagów.</div>'}
+                ${tagsHtml || '<div style="opacity:0.5;">Brak parametrów do wyświetlenia.</div>'}
             </div>
 
             ${poisHtml}
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:5px; border-top:1px solid rgba(255,255,255,0.05); padding-top:8px;">
-                <span style="font-size:0.75rem; color:#64748b;">🗺️ Dane: OSM</span>
+                <span style="font-size:0.75rem; color:#64748b;">🗺️ Dane źródłowe: OpenStreetMap</span>
                 <button onclick="openTrailElevationChart('${trail.id}')" style="background:${trail.color}; font-size:0.8rem; padding:6px 12px; margin:0;">
                     📊 Wykres wysokościowy
                 </button>
@@ -276,10 +304,9 @@ function renderTrailsPage() {
 }
 
 function openPoiFromTrail(poiId) {
-    if (!window.globalCustomPois) return;
-    const poi = window.globalCustomPois.find(p => p.id === poiId);
+    const activeGSPois = window.globalCustomPois || (typeof globalCustomPois !== 'undefined' ? globalCustomPois : []);
+    const poi = activeGSPois.find(p => p.id === poiId);
     if (poi) {
-        // Wymuszenie z-index nad modalem szlaków
         const pm = document.getElementById('customPoiModal');
         if (pm) pm.style.zIndex = '3500';
         openCustomPoiModal(poi);
@@ -327,7 +354,6 @@ function renderTrailsPagination() {
     });
 }
 
-// Poprawiony, płynny i bezpieczny dla Canvas system pulsowania linii szlaku
 function hoverTrailOnMap(trailId, isHover) {
     if (!window.processedTrails) return;
     const trail = window.processedTrails.find(t => t.id === trailId);
@@ -339,7 +365,6 @@ function hoverTrailOnMap(trailId, isHover) {
         let growing = true;
         let currentWeight = 4;
         
-        // Zaczynamy cykl modulacji grubości
         activePulseIntervals[trailId] = setInterval(() => {
             if (growing) {
                 currentWeight += 0.5;
@@ -356,7 +381,6 @@ function hoverTrailOnMap(trailId, isHover) {
 
         trail.polylines.forEach(pl => pl.bringToFront());
     } else {
-        // Przywrócenie stałych stylów
         if (activePulseIntervals[trailId]) {
             clearInterval(activePulseIntervals[trailId]);
             delete activePulseIntervals[trailId];
@@ -386,6 +410,7 @@ function openTrailElevationChart(trailId) {
     `;
 
     openCenteredModal('trailElevationModal');
+    bindTrailsDraggable();
 
     setTimeout(() => {
         drawTrailElevationCanvas(trail);
