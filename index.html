@@ -193,7 +193,7 @@
         <button class="nav-item" onclick="openStyleModal(); toggleMobileNav(false)"><i style="color:#f59e0b;">🎨</i> <span>Styl Trasy</span></button>
         <button class="nav-item" onclick="openPdfModal(); toggleMobileNav(false)"><i style="color:#a855f7;">📄</i> <span>Pobierz PDF</span></button>
         <button class="nav-item" id="btnMeasureToolMob" onclick="toggleMeasureMode(); toggleMobileNav(false)"><i style="color:#0ea5e9;">📏</i> <span>Pomiar</span></button>
-        
+        <button class="nav-item" onclick="openTrailsModal(); toggleMobileNav(false)"><i style="color:#15803d;">🥾</i> <span>Szlaki</span></button>
         <button class="nav-item" onclick="toggleTheme()"><i>🌓</i> <span>Motyw</span></button>
         <button class="nav-item" id="btnMobileScreenshot"
         ontouchstart="startSnap(event)"
@@ -258,6 +258,7 @@
     <button onclick="openDescModal()">📜 Opis Trasy</button>
     <button onclick="openStopsModal()" style="background: #f59e0b;">☕ Postoje</button>
     <button onclick="openMyPointsModal()" style="background: #10b981;">📋 Moje punkty</button>
+    <button onclick="openTrailsModal()" style="background: #15803d;">🥾 Szlaki</button>
 </div>
     <!--Grupa animacji i stylu linii trasy-->
 <div class="btn-group">
@@ -1279,6 +1280,51 @@
         </div>
     </div>
 </div>
+<!-- MODAL: BAZA SZLAKÓW TURYSTYCZNYCH -->
+<div id="trailsModal" class="floating-modal" style="width: 580px; max-width: 95vw; z-index: 2500; display: none;">
+    <div class="modal-header" style="background: rgba(21, 128, 61, 0.2);">
+        <span style="color: #16a34a; font-weight: bold;">🥾 Baza Szlaków Turystycznych</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('trailsModal')">X</button>
+    </div>
+    <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px; padding: 15px;">
+        <div class="my-points-toolbar" style="margin-bottom: 5px;">
+            <input type="text" id="trailsSearchInput" placeholder="Szukaj szlaku po nazwie lub tagu..." oninput="handleTrailsSearchAndSort()">
+            <select id="trailsSortSelect" onchange="handleTrailsSearchAndSort()" style="max-width: 180px;">
+                <option value="length-asc">Długość: od najkrótszych</option>
+                <option value="length-desc">Długość: od najdłuższych</option>
+                <option value="pois-desc">Atrakcje GS: od najwięcej</option>
+                <option value="pois-asc">Atrakcje GS: od najmniej</option>
+            </select>
+        </div>
+        
+        <!-- Kontener z przewijaną listą szlaków -->
+        <div id="trailsListContainer" style="flex-grow: 1; overflow-y: auto; max-height: 50vh; display: flex; flex-direction: column; gap: 10px; padding-right: 5px;">
+            <!-- Wypełniane dynamicznie przez JS -->
+        </div>
+
+        <!-- Paginacja -->
+        <div id="trailsPaginationContainer" class="trails-pagination" style="display: flex; justify-content: center; gap: 5px; margin-top: 10px; flex-wrap: wrap;">
+            <!-- Przyciski stron -->
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: INTERAKTYWNY PROFIL WYSOKOŚCIOWY SZLAKU -->
+<div id="trailElevationModal" class="floating-modal" style="width: 500px; max-width: 95vw; z-index: 3000; display: none;">
+    <div class="modal-header" style="background: rgba(14, 165, 233, 0.2);">
+        <span id="trailElevationTitle" style="color: #0ea5e9; font-weight: bold;">📊 Profil Szlaku</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeModal('trailElevationModal')">X</button>
+    </div>
+    <div class="modal-body" style="padding: 15px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 8px; font-size: 0.85rem; line-height: 1.5;" id="trailElevationMeta">
+            <!-- Statystyki wysokościowe szlaku -->
+        </div>
+        <canvas id="trailElevationChart" style="width: 100%; height: 130px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);"></canvas>
+        <div style="text-align: center; font-size: 0.75rem; color: #94a3b8; margin-top: -5px;">
+            Przesuwaj kursor nad wykresem, aby śledzić pozycję na mapie głównej.
+        </div>
+    </div>
+</div>
 <!-- PŁYWAJĄCY PRZYCISK PRZYWRACANIA POMIARU (OCZKO) -->
 <button id="measureRestoreBtn" 
     style="position: fixed; 
@@ -1311,6 +1357,7 @@
 <script src="gpx.js"></script>
 <script src="routeGif.js"></script>
 <script src="osm.js"></script>
+<script src="trailsManager.js"></script> 
 <script src="navigation.js"></script>
 <script src="screenshot.js"></script>
 <script src="routePoints.js"></script>
