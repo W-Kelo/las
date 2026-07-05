@@ -184,3 +184,52 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+function showCustomAlert(msg) {
+    document.getElementById('customAlertMsg').innerHTML = msg;
+    document.getElementById('customAlertBtns').innerHTML = `<button style="background:var(--accent); width:100%;" onclick="document.getElementById('customAlertOverlay').style.display='none'">OK</button>`;
+    document.getElementById('customAlertOverlay').style.display = 'flex';
+}
+function showNotificationAlert(msg, storageKey) {
+    // Jeśli użytkownik zaznaczył wcześniej wyłączenie spamu, nie pokazujemy komunikatu
+    if (localStorage.getItem(storageKey) === 'true') return;
+
+    document.getElementById('customAlertMsg').innerHTML = `
+        <div style="font-size:0.95rem; line-height:1.4;">${msg}</div>
+        <label style="display:flex; align-items:center; gap:8px; margin-top:15px; font-size:0.8rem; cursor:pointer; justify-content:center; user-select:none;">
+            <input type="checkbox" id="dontShowAlertAgain" style="width:16px; height:16px; accent-color:var(--accent);">
+            Nie pokazuj więcej tego komunikatu
+        </label>
+    `;
+    
+    document.getElementById('customAlertBtns').innerHTML = `
+        <button style="background:var(--accent); width:100%;" id="btnNotificationOk">OK</button>
+    `;
+    document.getElementById('customAlertOverlay').style.display = 'flex';
+
+    document.getElementById('btnNotificationOk').onclick = () => {
+        const isChecked = document.getElementById('dontShowAlertAgain').checked;
+        if (isChecked) {
+            localStorage.setItem(storageKey, 'true');
+        }
+        document.getElementById('customAlertOverlay').style.display = 'none';
+    };
+}
+
+function showCustomConfirm(msg, onConfirm, onCancel = null) {
+    document.getElementById('customAlertMsg').innerHTML = msg;
+    document.getElementById('customAlertBtns').innerHTML = `
+        <button class="danger" style="flex:1;" id="btnConfirmNo">Nie</button>
+        <button style="flex:1; background:var(--accent);" id="btnConfirmYes">Tak</button>
+    `;
+    document.getElementById('customAlertOverlay').style.display = 'flex';
+    
+    document.getElementById('btnConfirmYes').onclick = () => {
+        document.getElementById('customAlertOverlay').style.display = 'none';
+        if (onConfirm) onConfirm();
+    };
+    document.getElementById('btnConfirmNo').onclick = () => {
+        document.getElementById('customAlertOverlay').style.display = 'none';
+        if (onCancel) onCancel();
+    };
+}
