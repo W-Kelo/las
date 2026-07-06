@@ -1,5 +1,5 @@
 /* =========================================================
-   exportStyle.js - ZAAWANSOWANE STYLIZOWANIE CANVA STUDIO (V2)
+   exportStyle.js - ZSZYWANY SILNIK CANVA STUDIO (V3)
 ========================================================= */
 
 let exportGradientPathLayer = null;
@@ -59,12 +59,11 @@ function openExportStyleModal() {
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
     
-    // Wymuszenie Draggable na starcie
     if(typeof makeDraggable === 'function') makeDraggable(modal);
 }
 window.openExportStyleModal = openExportStyleModal;
 
-// Sprytny generator przezroczystości dla tła gradientowego (rozwiązanie błędu 1)
+// Sprytny generator przezroczystości dla tła gradientowego
 function applyOpacityToGradient(gradientStr, opacityPercent) {
     const opacity = opacityPercent / 100;
     if (typeof parseCssGradient !== 'function') return gradientStr;
@@ -73,7 +72,6 @@ function applyOpacityToGradient(gradientStr, opacityPercent) {
     if (!config || !config.colors || config.colors.length === 0) return gradientStr;
 
     const colorStops = config.colors.map(c => {
-        // Konwersja każdego punktu koloru na format RGBA z suwaka przezroczystości
         const rgb = hexToRgb(c.hex);
         return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity}) ${c.pos}%`;
     }).join(', ');
@@ -81,7 +79,7 @@ function applyOpacityToGradient(gradientStr, opacityPercent) {
     return `linear-gradient(to right, ${colorStops})`;
 }
 
-// Globalny analizator kontrastu dla wszystkich sekcji w czasie rzeczywistym
+// Analizator kontrastu dla wszystkich sekcji w czasie rzeczywistym
 function triggerEditorContrastCheck() {
     const tab = getCurrentActiveTab();
     const warning = document.getElementById('globalContrastWarning');
@@ -89,31 +87,47 @@ function triggerEditorContrastCheck() {
 
     let bgHex = '#ffffff', textHex = '#000000', opacity = 100;
 
-    if (tab === 'panel') {
-        bgHex = document.getElementById('expPanelBg').value;
-        textHex = document.getElementById('expPanelText').value;
-        opacity = parseInt(document.getElementById('expPanelOpacity').value);
-    } else if (tab === 'texts') {
-        bgHex = document.getElementById('expTextBg').value;
-        const mode = document.getElementById('textStyleMode').value;
-        textHex = mode === 'same' ? document.getElementById('expSameTextColor').value : document.getElementById('expTitleColor').value;
-        opacity = parseInt(document.getElementById('expTextOpacity').value);
-    } else if (tab === 'stats') {
-        bgHex = document.getElementById('expStatsBg').value;
-        textHex = document.getElementById('expStatsText').value;
-        opacity = parseInt(document.getElementById('expTextOpacity').value); // dziedziczy z opadania tekstu
-    } else if (tab === 'legend') {
-        bgHex = document.getElementById('expLegendBg').value;
-        textHex = document.getElementById('expLegendText').value;
-        opacity = parseInt(document.getElementById('expLegendOpacity').value);
-    } else if (tab === 'scale') {
-        bgHex = document.getElementById('scaleBgColor').value;
-        textHex = document.getElementById('scaleTextColor').value;
-        opacity = parseInt(document.getElementById('scaleBgOpacity').value);
-    } else if (tab === 'copyright') {
-        bgHex = document.getElementById('copyBgColor').value;
-        textHex = document.getElementById('copyTextColor').value;
-        opacity = parseInt(document.getElementById('copyBgOpacity').value);
+    const elPanelBg = document.getElementById('expPanelBg');
+    const elPanelText = document.getElementById('expPanelText');
+    const elPanelOpacity = document.getElementById('expPanelOpacity');
+
+    const elTextBg = document.getElementById('expTextBg');
+    const elTextStyleMode = document.getElementById('textStyleMode');
+    const elSameTextColor = document.getElementById('expSameTextColor');
+    const elTitleColor = document.getElementById('expTitleColor');
+    const elTextOpacity = document.getElementById('expTextOpacity');
+
+    const elStatsBg = document.getElementById('expStatsBg');
+    const elStatsText = document.getElementById('expStatsText');
+    const elStatsOpacity = document.getElementById('expStatsOpacity');
+
+    const elLegendBg = document.getElementById('expLegendBg');
+    const elLegendText = document.getElementById('expLegendText');
+    const elLegendOpacity = document.getElementById('expLegendOpacity');
+
+    const elScaleBg = document.getElementById('scaleBgColor');
+    const elScaleText = document.getElementById('scaleTextColor');
+    const elScaleOpacity = document.getElementById('scaleBgOpacity');
+
+    const elCopyBg = document.getElementById('copyBgColor');
+    const elCopyText = document.getElementById('copyTextColor');
+    const elCopyOpacity = document.getElementById('copyBgOpacity');
+
+    if (tab === 'panel' && elPanelBg && elPanelText && elPanelOpacity) {
+        bgHex = elPanelBg.value; textHex = elPanelText.value; opacity = parseInt(elPanelOpacity.value);
+    } else if (tab === 'texts' && elTextBg && elTextStyleMode && elSameTextColor && elTitleColor && elTextOpacity) {
+        bgHex = elTextBg.value;
+        const mode = elTextStyleMode.value;
+        textHex = mode === 'same' ? elSameTextColor.value : elTitleColor.value;
+        opacity = parseInt(elTextOpacity.value);
+    } else if (tab === 'stats' && elStatsBg && elStatsText && elStatsOpacity) {
+        bgHex = elStatsBg.value; textHex = elStatsText.value; opacity = parseInt(elStatsOpacity.value);
+    } else if (tab === 'legend' && elLegendBg && elLegendText && elLegendOpacity) {
+        bgHex = elLegendBg.value; textHex = elLegendText.value; opacity = parseInt(elLegendOpacity.value);
+    } else if (tab === 'scale' && elScaleBg && elScaleText && elScaleOpacity) {
+        bgHex = elScaleBg.value; textHex = elScaleText.value; opacity = parseInt(elScaleOpacity.value);
+    } else if (tab === 'copyright' && elCopyBg && elCopyText && elCopyOpacity) {
+        bgHex = elCopyBg.value; textHex = elCopyText.value; opacity = parseInt(elCopyOpacity.value);
     }
 
     if (typeof checkContrastRatio === 'function') {
@@ -122,20 +136,44 @@ function triggerEditorContrastCheck() {
     }
 }
 
-// Dynamiczne renderowanie stylów w locie w oknie podglądu eksportu
+// Zmiana stylizacji w locie bez błędów odwołań
 function applyLiveStyleDirect(tab) {
     triggerEditorContrastCheck();
 
-    if (tab === 'panel') {
-        const bgVal = document.getElementById('expPanelBg').value;
-        const opacity = parseInt(document.getElementById('expPanelOpacity').value);
-        const radius = document.getElementById('expPanelRadius').value;
-        const shadow = document.getElementById('chkExpPanelShadow').checked;
-        const textCol = document.getElementById('expPanelText').value;
-        const fontFam = document.getElementById('expPanelFontFamily').value;
+    const elPanelBg = document.getElementById('expPanelBg');
+    const elPanelOpacity = document.getElementById('expPanelOpacity');
+    const elPanelRadius = document.getElementById('expPanelRadius');
+    const elPanelShadow = document.getElementById('chkExpPanelShadow');
+    const elPanelText = document.getElementById('expPanelText');
+    const elPanelFontFamily = document.getElementById('expPanelFontFamily');
 
+    const elTextBg = document.getElementById('expTextBg');
+    const elTextOpacity = document.getElementById('expTextOpacity');
+    const elTextRadius = document.getElementById('expTextRadius');
+    const elTextStyleMode = document.getElementById('textStyleMode');
+
+    const elStatsBg = document.getElementById('expStatsBg');
+    const elStatsOpacity = document.getElementById('expStatsOpacity');
+    const elStatsRadius = document.getElementById('expStatsRadius');
+    const elStatsText = document.getElementById('expStatsText');
+    const elStatsSize = document.getElementById('expStatsSize');
+
+    const elLegendBg = document.getElementById('expLegendBg');
+    const elLegendOpacity = document.getElementById('expLegendOpacity');
+    const elLegendRadius = document.getElementById('expLegendRadius');
+    const elLegendText = document.getElementById('expLegendText');
+    const elLegendSize = document.getElementById('expLegendSize');
+
+    if (tab === 'panel' && elPanelBg && elPanelOpacity && elPanelRadius && elPanelShadow && elPanelText && elPanelFontFamily) {
         const mainPanel = document.getElementById('mapInfoPanel');
         if (!mainPanel) return;
+
+        const bgVal = elPanelBg.value;
+        const opacity = parseInt(elPanelOpacity.value);
+        const radius = elPanelRadius.value;
+        const shadow = elPanelShadow.checked;
+        const textColor = elPanelText.value;
+        const fontFam = elPanelFontFamily.value;
 
         // Gradienty z przezroczystością
         if (bgVal.startsWith('linear-gradient')) {
@@ -148,26 +186,22 @@ function applyLiveStyleDirect(tab) {
         mainPanel.style.borderRadius = `${radius}px`;
         mainPanel.style.boxShadow = shadow ? '0 10px 30px rgba(0,0,0,0.5)' : 'none';
         
-        // Kaskadowe nakładanie stylów na wszystkie pod-elementy w panelu głównym
+        // Kaskadowe nakładanie stylów na wszystkie pod-elementy w panelu głównym (oprócz tytułu, który ma własne style)
         parentStyleApply(mainPanel, 'font-family', fontFam);
-        parentStyleApply(mainIcon => mainIcon.style.setProperty('color', textColor, 'important'));
         
-        // Zapewnienie, że Tytuł i inne elementy dziedziczą czcionkę i właściwości główne
         const miTitle = document.getElementById('miTitle');
         if (miTitle) {
             miTitle.style.setProperty('color', textColor, 'important');
         }
 
-    } else if (tab === 'texts') {
+    } else if (tab === 'texts' && elTextBg && elTextOpacity && elTextRadius && elTextStyleMode) {
         const block = document.getElementById('miMetaBlock');
         if (!block) return;
 
-        const hexBg = document.getElementById('valBgColor').value;
-        const opacity = document.getElementById('valOpacity').value;
-        const radius = document.getElementById('valRadius').value;
-        const shadow = document.getElementById('valShadow').checked;
+        const hexBg = elTextBg.value;
+        const opacity = parseInt(elTextOpacity.value);
+        const radius = elTextRadius.value;
 
-        // Stylizacja tła bloku tekstów
         if (hexBg.startsWith('linear-gradient')) {
             block.style.background = applyOpacityToGradient(hexBg, opacity);
         } else {
@@ -175,20 +209,21 @@ function applyLiveStyleDirect(tab) {
             block.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity/100})`;
         }
         block.style.borderRadius = radius + 'px';
-        block.style.boxShadow = shadow ? '0 4px 15px rgba(0,0,0,0.15)' : 'none';
 
-        // Formatowanie tekstu (Jednakowe vs Osobne)
-        const isUniform = document.getElementById('textStyleMode').value === 'united';
+        const isUniform = elTextStyleMode.value === 'same';
         const titleEl = document.getElementById('miTitle');
         const dateEl = document.getElementById('miDate');
         const descEl = document.getElementById('miDesc');
 
-        if (isUniform) {
-            const size = document.getElementById('uniFontSize').value + 'px';
-            const color = document.getElementById('uniTextColor').value;
-            const bold = document.getElementById('btnUniBold').classList.contains('active') ? 'bold' : 'normal';
-            const italic = document.getElementById('btnUniItalic').classList.contains('active') ? 'italic' : 'normal';
-            const underline = document.getElementById('btnUniUnderline').classList.contains('active') ? 'underline' : 'none';
+        const elSameTextColor = document.getElementById('expSameTextColor');
+        const elSameSize = document.getElementById('expSameSize');
+
+        if (isUniform && elSameTextColor && elSameSize) {
+            const size = elSameSize.value + 'px';
+            const color = elSameTextColor.value;
+            const bold = document.getElementById('btnSameBold').classList.contains('active') ? 'bold' : 'normal';
+            const italic = document.getElementById('btnSameItalic').classList.contains('active') ? 'italic' : 'normal';
+            const underline = document.getElementById('btnSameUnderline').classList.contains('active') ? 'underline' : 'none';
 
             [titleEl, dateEl, descEl].forEach(el => {
                 if (!el) return;
@@ -199,37 +234,41 @@ function applyLiveStyleDirect(tab) {
                 el.style.setProperty('text-decoration', underline, 'important');
             });
         } else {
-            // Osobne style dla Tytułu
-            if (titleEl) {
-                titleEl.style.setProperty('font-size', document.getElementById('expTitleSize').value + 'px', 'important');
-                titleEl.style.setProperty('color', document.getElementById('expTitleColor').value, 'important');
+            const elTitleSize = document.getElementById('expTitleSize');
+            const elTitleColor = document.getElementById('expTitleColor');
+            const elDateSize = document.getElementById('expDateSize');
+            const elDateColor = document.getElementById('expDateColor');
+            const elDescSize = document.getElementById('expDescSize');
+            const elDescColor = document.getElementById('expDescColor');
+
+            if (titleEl && elTitleSize && elTitleColor) {
+                titleEl.style.setProperty('font-size', elTitleSize.value + 'px', 'important');
+                titleEl.style.setProperty('color', elTitleColor.value, 'important');
                 titleEl.style.setProperty('font-weight', document.getElementById('btnTitleBold').classList.contains('active') ? 'bold' : 'normal', 'important');
                 titleEl.style.setProperty('font-style', document.getElementById('btnTitleItalic').classList.contains('active') ? 'italic' : 'normal', 'important');
             }
-            // Osobne style dla Daty
-            if (dateEl) {
-                dateEl.style.setProperty('font-size', document.getElementById('expDateSize').value + 'px', 'important');
-                dateEl.style.setProperty('color', document.getElementById('expDateColor').value, 'important');
+            if (dateEl && elDateSize && elDateColor) {
+                dateEl.style.setProperty('font-size', elDateSize.value + 'px', 'important');
+                dateEl.style.setProperty('color', elDateColor.value, 'important');
                 dateEl.style.setProperty('font-weight', document.getElementById('btnDateBold').classList.contains('active') ? 'bold' : 'normal', 'important');
                 dateEl.style.setProperty('font-style', document.getElementById('btnDateItalic').classList.contains('active') ? 'italic' : 'normal', 'important');
             }
-            // Osobne style dla Opisu
-            if (descEl) {
-                descEl.style.setProperty('font-size', document.getElementById('expDescSize').value + 'px', 'important');
-                descEl.style.setProperty('color', document.getElementById('expDescColor').value, 'important');
+            if (descEl && elDescSize && elDescColor) {
+                descEl.style.setProperty('font-size', elDescSize.value + 'px', 'important');
+                descEl.style.setProperty('color', elDescColor.value, 'important');
                 descEl.style.setProperty('font-weight', document.getElementById('btnDescBold').classList.contains('active') ? 'bold' : 'normal', 'important');
                 descEl.style.setProperty('font-style', document.getElementById('btnDescItalic').classList.contains('active') ? 'italic' : 'normal', 'important');
             }
         }
-    } else if (tab === 'stats') {
+    } else if (tab === 'stats' && elStatsBg && elStatsOpacity && elStatsRadius && elStatsText && elStatsSize) {
         const statsEl = document.getElementById('miStats');
         if (!statsEl) return;
 
-        const hexBg = document.getElementById('expStatsBg').value;
-        const opacity = document.getElementById('expStatsOpacity').value;
-        const radius = document.getElementById('expStatsRadius').value;
-        const textCol = document.getElementById('expStatsText').value;
-        const fontSize = document.getElementById('expStatsSize').value + 'px';
+        const hexBg = elStatsBg.value;
+        const opacity = elStatsOpacity.value;
+        const radius = elStatsRadius.value;
+        const textCol = elStatsText.value;
+        const fontSize = elStatsSize.value + 'px';
         const bold = document.getElementById('btnStatsBold').classList.contains('active') ? 'bold' : 'normal';
         const italic = document.getElementById('btnStatsItalic').classList.contains('active') ? 'italic' : 'normal';
 
@@ -246,15 +285,15 @@ function applyLiveStyleDirect(tab) {
             item.style.setProperty('font-weight', bold, 'important');
             item.style.setProperty('font-style', italic, 'important');
         });
-    } else if (tab === 'legend') {
+    } else if (tab === 'legend' && elLegendBg && elLegendOpacity && elLegendRadius && elLegendText && elLegendSize) {
         const legEl = document.getElementById('miLegendContainer');
         if (!legEl) return;
 
-        const hexBg = document.getElementById('expLegendBg').value;
-        const opacity = document.getElementById('expLegendOpacity').value;
-        const radius = document.getElementById('expLegendRadius').value;
-        const textCol = document.getElementById('expLegendText').value;
-        const fontSize = document.getElementById('expLegendSize').value + 'px';
+        const hexBg = elLegendBg.value;
+        const opacity = elLegendOpacity.value;
+        const radius = elLegendRadius.value;
+        const textCol = elLegendText.value;
+        const fontSize = elLegendSize.value + 'px';
         const bold = document.getElementById('btnLegendBold').classList.contains('active') ? 'bold' : 'normal';
         const italic = document.getElementById('btnLegendItalic').classList.contains('active') ? 'italic' : 'normal';
 
@@ -286,29 +325,36 @@ function parentStyleApply(el, prop, val) {
 }
 
 function toggleTextStyleModeUI() {
-    const isUniform = document.getElementById('textStyleMode').value === 'united';
+    const elMode = document.getElementById('textStyleMode');
+    if (!elMode) return;
+
+    const isUniform = elMode.value === 'same';
     const sameWrap = document.getElementById('text-style-same-wrap');
     const diffWrap = document.getElementById('text-style-diff-wrap');
 
-    if (isUniform) {
-        sameWrap.style.display = 'block';
-        diffWrap.style.display = 'none';
-    } else {
-        sameWrap.style.display = 'none';
-        diffWrap.style.display = 'flex';
+    if (sameWrap && diffWrap) {
+        if (isUniform) {
+            sameWrap.style.display = 'block';
+            diffWrap.style.display = 'none';
+        } else {
+            sameWrap.style.display = 'none';
+            diffWrap.style.display = 'flex';
+        }
     }
     applyLiveStyleDirect('texts');
 }
 window.toggleTextStyleModeUI = toggleTextStyleModeUI;
 
 function loadExportStyleToUI() {
-    // Ładowanie tła panelu głównego
     const panel = document.getElementById('mapInfoPanel');
     if (panel) {
         const bgVal = panel.style.backgroundColor || '#ffffff';
         const opVal = Math.round((parseFloat(panel.style.opacity) || 0.92) * 100);
-        document.getElementById('expPanelBg').value = bgVal;
-        document.getElementById('expPanelOpacity').value = opVal;
+        
+        const elBg = document.getElementById('expPanelBg');
+        const elOp = document.getElementById('expPanelOpacity');
+        if (elBg) elBg.value = bgVal;
+        if (elOp) elOp.value = opVal;
     }
     toggleTextStyleModeUI();
 }
@@ -316,13 +362,11 @@ function loadExportStyleToUI() {
 function applyExportStyle() {
     applyLineStyle();
     
-    // Zastosowanie stylów na poszczególne panele
     applyLiveStyleDirect('panel');
     applyLiveStyleDirect('texts');
     applyLiveStyleDirect('stats');
     applyLiveStyleDirect('legend');
 
-    // Aktualizacja Skali i Copyrightu na wprost
     if (typeof updateCustomScaleAppearance === 'function') updateCustomScaleAppearance();
     if (typeof updateCustomCopyrightAppearance === 'function') updateCustomCopyrightAppearance();
 
@@ -331,10 +375,14 @@ function applyExportStyle() {
 window.applyExportStyle = applyExportStyle;
 
 function applyLineStyle() {
-    exportLineColor = document.getElementById('expStyleColor').value;
-    exportLineWeight = parseInt(document.getElementById('expStyleWeight').value);
-    if (typeof renderExportRouteLineWithStyle === 'function') {
-        renderExportRouteLineWithStyle();
+    const elColor = document.getElementById('expStyleColor');
+    const elWeight = document.getElementById('expStyleWeight');
+    if (elColor && elWeight) {
+        exportLineColor = elColor.value;
+        exportLineWeight = parseInt(elWeight.value);
+        if (typeof renderExportRouteLineWithStyle === 'function') {
+            renderExportRouteLineWithStyle();
+        }
     }
 }
 window.applyLineStyle = applyLineStyle;
