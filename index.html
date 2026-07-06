@@ -505,31 +505,27 @@
 <div id="mapExportModal" class="floating-modal map-export-modal" style="display: none;">
     <div class="modal-header export-header">
         <div class="export-toolbar" id="exportToolbar">
-            <button onclick="confirmRefreshRoute()" title="Odśwież trasę">🔄</button>
-            <button onclick="exportZoomIn()">➕</button>
-            <button onclick="exportZoomOut()">➖</button>
-            <div class="toolbar-divider"></div>
-            <button onclick="toggleScale()">Skala</button>
-            <button onclick="togglePanelDrag()" id="btnDragPanel">Przesuń panel</button>
-            <button onclick="togglePanelResize()" id="btnResizePanel">Kadruj panel</button>
-            <button onclick="togglePanelScale()" id="btnScalePanel">Skaluj (Wielkość)</button>
-            <button onclick="toggleExportSatellite()" id="btnSatExport">Satelita</button>
-            <button onclick="openExportMetaModal()">Teksty</button>
-            <button onclick="openStatsModal()">Statystyki</button>
-            <button onclick="openExportStyleModal()">Wygląd</button>
+    <button onclick="confirmRefreshRoute()" title="Odśwież trasę">🔄</button>
+    <button onclick="exportZoomIn()">➕</button>
+    <button onclick="exportZoomOut()">➖</button>
+    <div class="toolbar-divider"></div>
+    <button onclick="toggleScale()">Skala</button>
+    <button onclick="togglePanelDrag()" id="btnDragPanel">Przesuń panel</button>
+    <button onclick="openTransformModal()" id="btnTransformPanel">📐 Przekształcanie</button>
+    <button onclick="toggleExportSatellite()" id="btnSatExport">Satelita</button>
+    <button onclick="openExportMetaModal()">Teksty</button>
+    <button onclick="openStatsModal()">Statystyki</button>
+    <button onclick="openExportStyleModal()">Wygląd</button>
             <div class="toolbar-divider"></div>
             <button onclick="toggleLegendMode()" id="btnLegend">Własna Legenda</button>
             <button onclick="toggleEmptyLegend()">Pusta Legenda</button>
-            <button onclick="openNumberStyleModal()" id="btnNumberStyles" style="display: none;">🎨 Styl Numerków</button>
-            <button onclick="activateScissorsMode()" id="btnScissors" >Rozłącz panele</button>
-            <button onclick="resetSplitPanels()" id="btnMerge">Złącz wszystko</button>
-            <button onclick="openExportDataModal()">Baza Punktów</button>
-            <button onclick="syncExportPoints()" title="Przeładuj i zaktualizuj legendę w obecnym widoku">🔄 Legenda</button>
-            <div class="toolbar-divider"></div>
-            <button onclick="copyMapPNG()">Kopiuj</button>
-            <button onclick="saveExportMapToSession()" titile="Zapisz obraz mapy i wykorzystaj go w pliku PDF z opracowaniem trasy.">💾 Do Sesji (Dla PDF)</button>
-            <button onclick="exportMapPNG()">Zapisz PNG</button>
-            <button onclick="printExportMap()">Drukuj</button>
+    <button onclick="openExportDataModal()">Baza Punktów</button>
+    <button onclick="syncExportPoints()" title="Przeładuj i zaktualizuj legendę">🔄 Legenda</button>
+    <div class="toolbar-divider"></div>
+    <button onclick="copyMapPNG()">Kopiuj</button>
+    <button onclick="saveExportMapToSession()">💾 Do Sesji (Dla PDF)</button>
+    <button onclick="exportMapPNG()">Zapisz PNG</button>
+    <button onclick="printExportMap()">Drukuj</button>
         </div>
         <button class="danger icon-only" style="padding: 4px 10px; flex-shrink: 0;" onclick="closeModal('mapExportModal')">X</button>
     </div>
@@ -922,35 +918,59 @@
 
             <!-- ZAKŁADKA 3: STATYSTYKI -->
             <div id="tab-content-stats" class="editor-tab-content" style="display: none; flex-direction: column; gap: 15px; width: 100%;">
-                <h3 style="color: #eab308; margin:0;">📊 Panel Statystyk (Wymiary i Tło)</h3>
+                <h3 style="color: #eab308; margin:0;">📊 Panel Statystyk</h3>
                 
+                <!-- Styl tła całego obszaru (kontenera) statystyk -->
                 <div class="editor-group-box">
-                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Tło pojedynczego kafelka:</label>
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px;">Tło całego obszaru statystyk:</label>
                     <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 6px;">
-                        <button type="button" onclick="openCustomColorPicker('expStatsBg', 'statsBg')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin:0;">Wybierz kolor tła</button>
+                        <button type="button" onclick="openCustomColorPicker('expStatsContainerBg', 'statsContainerBg')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin:0;">Wybierz kolor tła obszaru</button>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="expStatsContainerBgHex" style="font-family: monospace; font-size: 0.9em; opacity: 0.8;">#E2E8F0</span>
+                            <div id="expStatsContainerBgPreview" class="color-preview-rect" style="background-color: #e2e8f0;"></div>
+                        </div>
+                        <input type="hidden" id="expStatsContainerBg" value="#e2e8f0">
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:10px;">
+                    <div class="editor-group-box" style="flex:1;">
+                        <label>Przezroczystość obszaru: <span id="lblExpStatsContainerOpacity">95</span>%</label>
+                        <input type="range" id="expStatsContainerOpacity" class="thick-slider" min="0" max="100" value="95" oninput="document.getElementById('lblExpStatsContainerOpacity').innerText=this.value; applyLiveStyleDirect('stats');">
+                    </div>
+                    <div class="editor-group-box" style="flex:1;">
+                        <label>Zaokrąglenie obszaru: <span id="lblExpStatsContainerRadius">6</span>px</label>
+                        <input type="range" id="expStatsContainerRadius" class="thick-slider" min="0" max="40" value="6" oninput="document.getElementById('lblExpStatsContainerRadius').innerText=this.value; applyLiveStyleDirect('stats');">
+                    </div>
+                </div>
+
+                <div class="editor-group-box">
+                    <label>Margines wewnętrzny obszaru (Padding): <span id="lblExpStatsContainerPadding">12</span>px</label>
+                    <input type="range" id="expStatsContainerPadding" class="thick-slider" min="0" max="30" value="12" oninput="document.getElementById('lblExpStatsContainerPadding').innerText=this.value; applyLiveStyleDirect('stats');">
+                </div>
+
+                <!-- Przełącznik jednakowych/różnych styli kafelków -->
+                <div class="editor-group-box">
+                    <label style="font-weight: bold;">Tryb stylizacji kafelków:</label>
+                    <select id="statsStyleMode" class="style-select" onchange="toggleStatsStyleModeUI()" style="margin-top: 5px;">
+                        <option value="same" selected>Jednakowy styl dla obu kafelków</option>
+                        <option value="different">Różne style (Dystans vs Czas)</option>
+                    </select>
+                </div>
+
+                <!-- Konfiguracja: Jednakowe kafelki -->
+                <div id="stats-style-same-wrap" class="editor-group-box">
+                    <label style="font-weight: bold; color: var(--accent);">Wspólny styl kafelków:</label>
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 6px; margin-bottom: 8px; margin-top:5px;">
+                        <button type="button" onclick="openCustomColorPicker('expStatsBg', 'statsBg')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin:0;">Wybierz kolor kafelka</button>
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span id="expStatsBgHex" style="font-family: monospace; font-size: 0.9em; opacity: 0.8;">#E2E8F0</span>
                             <div id="expStatsBgPreview" class="color-preview-rect" style="background-color: #e2e8f0;"></div>
                         </div>
                         <input type="hidden" id="expStatsBg" value="#e2e8f0">
                     </div>
-                </div>
-
-                <div style="display:flex; gap:10px;">
-                    <div class="editor-group-box" style="flex:1;">
-                        <label>Przezroczystość: <span id="lblExpStatsOpacity">95</span>%</label>
-                        <input type="range" id="expStatsOpacity" class="thick-slider" min="0" max="100" value="95" oninput="document.getElementById('lblExpStatsOpacity').innerText=this.value; applyLiveStyleDirect('stats');">
-                    </div>
-                    <div class="editor-group-box" style="flex:1;">
-                        <label>Zaokrąglenie: <span id="lblExpStatsRadius">6</span>px</label>
-                        <input type="range" id="expStatsRadius" class="thick-slider" min="0" max="40" value="6" oninput="document.getElementById('lblExpStatsRadius').innerText=this.value; applyLiveStyleDirect('stats');">
-                    </div>
-                </div>
-
-                <div class="editor-group-box">
-                    <label style="font-weight: bold;">Stylizacja czcionki kafelków:</label>
-                    <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 6px; margin-bottom: 8px; margin-top:5px;">
-                        <button type="button" onclick="openCustomColorPicker('expStatsText', 'statsText')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin:0;">Wybierz kolor tekstu</button>
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 6px; margin-bottom: 8px;">
+                        <button type="button" onclick="openCustomColorPicker('expStatsText', 'statsText')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin:0;">Wybierz kolor czcionki</button>
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span id="expStatsTextHex" style="font-family: monospace; font-size: 0.9em; opacity: 0.8;">#334155</span>
                             <div id="expStatsTextPreview" class="color-preview-rect" style="background-color: #334155;"></div>
@@ -959,7 +979,7 @@
                     </div>
                     <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
                         <div style="flex:1;">
-                            <label style="font-size:0.75rem; margin:0;">Rozmiar tekstu: <span id="lblExpStatsSize">12</span>px</label>
+                            <label style="font-size:0.75rem; margin:0;">Rozmiar czcionki: <span id="lblExpStatsSize">12</span>px</label>
                             <input type="range" id="expStatsSize" class="thick-slider" min="10" max="24" value="12" oninput="document.getElementById('lblExpStatsSize').innerText=this.value; applyLiveStyleDirect('stats');">
                         </div>
                         <div class="format-btn-group" style="margin:0; flex-shrink:0;">
@@ -968,18 +988,122 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Konfiguracja: Różne kafelki -->
+                <div id="stats-style-diff-wrap" style="display:none; flex-direction:column; gap:10px;">
+                    <!-- Kafelek Dystansu -->
+                    <div class="editor-group-box">
+                        <span style="font-weight:bold; color: #16a34a; font-size:0.85rem;">Kafelek Dystansu:</span>
+                        <div style="display:flex; gap:10px; align-items:center; margin-top:5px;">
+                            <button type="button" onclick="openCustomColorPicker('expDistBg', 'distBg')" style="padding: 4px 8px; font-size: 0.75rem; background: var(--accent); margin:0;">Tło</button>
+                            <div id="expDistBgPreview" class="color-preview-rect" style="width:25px; height:20px; background-color:#e2e8f0;"></div>
+                            <input type="hidden" id="expDistBg" value="#e2e8f0">
+                            
+                            <button type="button" onclick="openCustomColorPicker('expDistText', 'distText')" style="padding: 4px 8px; font-size: 0.75rem; background: var(--accent); margin:0;">Tekst</button>
+                            <div id="expDistTextPreview" class="color-preview-rect" style="width:25px; height:20px; background-color:#334155;"></div>
+                            <input type="hidden" id="expDistText" value="#334155">
+                            
+                            <input type="range" id="expDistSize" class="thick-slider" min="10" max="24" value="12" style="flex:1;" oninput="applyLiveStyleDirect('stats')">
+                        </div>
+                    </div>
+                    <!-- Kafelek Czasu i Podejść -->
+                    <div class="editor-group-box">
+                        <span style="font-weight:bold; color: #3b82f6; font-size:0.85rem;">Kafelek Czasu i Podejść:</span>
+                        <div style="display:flex; gap:10px; align-items:center; margin-top:5px;">
+                            <button type="button" onclick="openCustomColorPicker('expTimeBg', 'timeBg')" style="padding: 4px 8px; font-size: 0.75rem; background: var(--accent); margin:0;">Tło</button>
+                            <div id="expTimeBgPreview" class="color-preview-rect" style="width:25px; height:20px; background-color:#e2e8f0;"></div>
+                            <input type="hidden" id="expTimeBg" value="#e2e8f0">
+                            
+                            <button type="button" onclick="openCustomColorPicker('expTimeText', 'timeText')" style="padding: 4px 8px; font-size: 0.75rem; background: var(--accent); margin:0;">Tekst</button>
+                            <div id="expTimeTextPreview" class="color-preview-rect" style="width:25px; height:20px; background-color:#334155;"></div>
+                            <input type="hidden" id="expTimeText" value="#334155">
+                            
+                            <input type="range" id="expTimeSize" class="thick-slider" min="10" max="24" value="12" style="flex:1;" oninput="applyLiveStyleDirect('stats')">
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <!-- ZAKŁADKA 4: LEGENDA I KROPKI -->
+            <!-- ZAKŁADKA 4: LEGENDA I STYL NUMERACJI -->
             <div id="tab-content-legend" class="editor-tab-content" style="display: none; flex-direction: column; gap: 15px; width: 100%;">
-                <h3 style="color: #a855f7; margin:0;">📌 Panel Legendy i Styl Numeracji</h3>
+                <h3 style="color: #a855f7; margin:0;">📌 Panel Legendy</h3>
                 
-                <!-- INTEGRACJA PRZYCISKU NUMERACJI (Błąd 12) -->
-                <div class="editor-group-box" style="background: rgba(139, 92, 246, 0.1); border-color: rgba(139, 92, 246, 0.3); text-align: center; padding: 15px;">
-                    <span style="font-weight: bold; display: block; margin-bottom: 8px;">🔢 Konfiguracja Stylu Numerków i Kropki Legendy:</span>
-                    <button type="button" onclick="openNumberStyleModal()" style="width: 100%; background: #8b5cf6; padding: 10px;">🎨 Otwórz Konfigurator Numerków Legendy</button>
+                <!-- ZINTEGROWANY STYL NUMERACJI (Wyświetlany tylko gdy numeracja jest aktywna - Błędy 5 i 10) -->
+                <div id="legendNumberingSection" class="editor-group-box" style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.25); display: none; flex-direction: column; gap: 10px; padding: 12px;">
+                    <span style="font-weight: bold; color: #8b5cf6; font-size: 0.9rem;">🔢 Stylizacja kropki i numeru w legendzie:</span>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 10px;">
+                        <!-- Kolor Tła kropki -->
+                        <div>
+                            <label style="font-size:0.75rem; margin:0; font-weight:bold;">Tło kropki:</label>
+                            <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 5px; border-radius: 4px;">
+                                <button type="button" onclick="openCustomColorPicker('numBgColor', 'numBg')" style="padding: 4px 8px; font-size: 0.75rem; background: var(--accent); margin:0;">Kolor</button>
+                                <div id="numBgColorPreview" class="color-preview-rect" style="width:20px; height:15px; background-color:#3b82f6;"></div>
+                                <input type="hidden" id="numBgColor" value="#3b82f6">
+                            </div>
+                        </div>
+                        <!-- Przezroczystość kropki -->
+                        <div>
+                            <label style="font-size:0.75rem; margin:0; font-weight:bold;">Przezroczystość kropki: <span id="lblNumBgOpacity">95</span>%</label>
+                            <input type="range" id="numBgOpacity" min="0" max="100" value="95" class="thick-slider" oninput="document.getElementById('lblNumBgOpacity').innerText=this.value; applyLiveStyleDirect('legend');">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <!-- Rozmiar kropki -->
+                        <div>
+                            <label style="font-size:0.75rem; margin:0; font-weight:bold;">Wielkość kropki: <span id="lblNumDotSize">35</span>px</label>
+                            <input type="range" id="numDotSize" min="20" max="60" value="35" class="thick-slider" oninput="document.getElementById('lblNumDotSize').innerText=this.value; applyLiveStyleDirect('legend');">
+                        </div>
+                        <!-- Kolor tekstu numerka -->
+                        <div>
+                            <label style="font-size:0.75rem; margin:0; font-weight:bold;">Kolor numerka:</label>
+                            <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 5px; border-radius: 4px;">
+                                <button type="button" onclick="openCustomColorPicker('numTextColor', 'numText')" style="padding: 4px 8px; font-size: 0.75rem; background: var(--accent); margin:0;">Kolor</button>
+                                <div id="numTextColorPreview" class="color-preview-rect" style="width:20px; height:15px; background-color:#ffffff;"></div>
+                                <input type="hidden" id="numTextColor" value="#ffffff">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <!-- Styl czcionki numerka -->
+                        <div>
+                            <label style="font-size:0.75rem; margin:0; font-weight:bold;">Styl numerka:</label>
+                            <select id="numFontStyle" class="style-select" onchange="applyLiveStyleDirect('legend')">
+                                <option value="normal">Zwykły</option>
+                                <option value="bold" selected>Pogrubiony</option>
+                                <option value="italic">Kursywa</option>
+                                <option value="italic bold">Pogrubiona kursywa</option>
+                            </select>
+                        </div>
+                        <!-- Rozmiar czcionki numerka -->
+                        <div>
+                            <label style="font-size:0.75rem; margin:0; font-weight:bold;">Rozmiar numerka: <span id="lblNumFontSize">12</span>px</label>
+                            <input type="range" id="numFontSize" min="8" max="24" value="12" class="thick-slider" oninput="document.getElementById('lblNumFontSize').innerText=this.value; applyLiveStyleDirect('legend');">
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <!-- Pozycja numerka -->
+                        <div>
+                            <label style="font-size:0.75rem; margin:0; font-weight:bold;">Położenie numeru:</label>
+                            <select id="numPosition" class="style-select" onchange="applyLiveStyleDirect('legend')">
+                                <option value="right" selected>Po prawej</option>
+                                <option value="left">Po lewej</option>
+                                <option value="top">Nad ikoną</option>
+                                <option value="bottom">Pod ikoną</option>
+                                <option value="overlap">Nałożone (Na ikonie)</option>
+                            </select>
+                        </div>
+                        <!-- Odległość od kropki -->
+                        <div>
+                            <label style="font-size:0.75rem; margin:0; font-weight:bold;">Odległość numerka: <span id="lblNumDist">2</span>px</label>
+                            <input type="range" id="numDist" min="-20" max="30" value="2" class="thick-slider" oninput="document.getElementById('lblNumDist').innerText=this.value; applyLiveStyleDirect('legend');">
+                        </div>
+                    </div>
                 </div>
-                
+
                 <div class="editor-group-box">
                     <label style="font-weight: bold; display: block; margin-bottom: 5px;">Tło bloku legendy:</label>
                     <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 6px;">
@@ -1003,6 +1127,12 @@
                     </div>
                 </div>
 
+                <!-- Regulacja interlinii (odstępu punktów) legendy (Błąd 6) -->
+                <div class="editor-group-box">
+                    <label>Odstęp między punktami legendy (Interlinia): <span id="lblExpLegendGap">5</span>px</label>
+                    <input type="range" id="expLegendGap" class="thick-slider" min="0" max="20" value="5" oninput="document.getElementById('lblExpLegendGap').innerText=this.value; applyLiveStyleDirect('legend');">
+                </div>
+
                 <div class="editor-group-box">
                     <label style="font-weight: bold;">Formatowanie tekstu legendy:</label>
                     <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 6px; margin-bottom: 8px; margin-top:5px;">
@@ -1024,26 +1154,9 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- INTEGRACJA WYGLĄDU KROPEK GPX BEZPOŚREDNIO W TYM MIEJSCU (colors.js) -->
-                <div class="editor-group-box" style="background: rgba(168, 85, 247, 0.1); border-color: rgba(168, 85, 247, 0.3);">
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight: bold;">
-                        <input type="checkbox" id="stylePointsToggle" onchange="togglePointsColorInput(this.checked); if(typeof renderPointsWithStyle === 'function') renderPointsWithStyle();">
-                        Włącz zmianę koloru kropek trasy (GPX)
-                    </label>
-                    <div id="stylePointsColorWrap" style="display:none; margin-top:10px;">
-                        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 6px;">
-                            <button type="button" onclick="openCustomColorPicker('stylePointsColor', 'dot')" style="padding: 6px 12px; font-size: 0.85rem; background: var(--accent); margin:0;">Wybierz kolor/gradient kropek</button>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span id="stylePointsColorHex" style="font-family: monospace; font-size: 0.9em; opacity: 0.8;">#22C55E</span>
-                                <div id="stylePointsColorPreview" class="color-preview-rect" style="background-color: #22c55e;"></div>
-                            </div>
-                            <input type="hidden" id="stylePointsColor" value="#22c55e">
-                        </div>
-                    </div>
-                </div>
             </div>
 
+           
             <!-- ZAKŁADKA 5: SKALA -->
             <div id="tab-content-scale" class="editor-tab-content" style="display: none; flex-direction: column; gap: 15px; width: 100%;">
                 <h3 style="color: #0ea5e9; margin:0;">📏 Edycja Stylu Skali</h3>
@@ -1665,6 +1778,54 @@
         </div>
     </div>
 </div>
+    <!-- NOWY DUŻY SKOK JAKOŚCIOWY: MODAL PRZEKSZTAŁCANIA PANELI (KADROWANIE / SKALOWANIE - Błędy 9 i 10) -->
+<div id="transformModal" class="floating-modal" style="width: 320px; z-index: 9999; display: none;" data-html2canvas-ignore>
+    <div class="modal-header">
+        <span style="font-weight:bold; color:#3b82f6;">📐 Przekształcanie Paneli</span>
+        <button class="danger icon-only" style="padding: 2px 8px; min-width: auto;" onclick="closeTransformModal()">X</button>
+    </div>
+    <div class="modal-body" style="display:flex; flex-direction:column; gap:12px; padding:15px;">
+        <div style="background:rgba(59,130,246,0.1); border-left:3px solid #3b82f6; padding:8px; font-size:0.8rem; border-radius:4px;">
+            💡 <strong>Kliknij na panel na mapie</strong>, który chcesz edytować, a następnie skorzystaj z poniższych przycisków regulacji.
+        </div>
+        
+        <div style="font-size:0.85rem; color:#94a3b8; text-align:center;">
+            Wybrany element: <strong id="lblActiveTransformTarget" style="color:var(--accent);">Wybierz panel...</strong>
+        </div>
+
+        <!-- Sekcja 1: Kadrowanie (Szerokość / Wysokość kafelków) -->
+        <div class="editor-group-box" style="display:flex; flex-direction:column; gap:8px;">
+            <span style="font-weight:bold; font-size:0.8rem; color:#a855f7;">📏 Rozmiar panelu (Szerokość / Wysokość):</span>
+            
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <span style="font-size:0.75rem; width:50px;">Szerokość:</span>
+                <button onclick="adjustSelectedSize('width', -20)" style="padding:3px 8px; font-size:0.8rem;">-</button>
+                <input type="range" id="transformWidthSlider" min="100" max="600" value="250" style="flex:1;" oninput="applyTransformFromSliders()">
+                <button onclick="adjustSelectedSize('width', 20)" style="padding:3px 8px; font-size:0.8rem;">+</button>
+            </div>
+            
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <span style="font-size:0.75rem; width:50px;">Wysokość:</span>
+                <button onclick="adjustSelectedSize('height', -15)" style="padding:3px 8px; font-size:0.8rem;">-</button>
+                <input type="range" id="transformHeightSlider" min="40" max="600" value="150" style="flex:1;" oninput="applyTransformFromSliders()">
+                <button onclick="adjustSelectedSize('height', 15)" style="padding:3px 8px; font-size:0.8rem;">+</button>
+            </div>
+        </div>
+
+        <!-- Sekcja 2: Skalowanie czcionek (zamiast gestów dwoma palcami) -->
+        <div class="editor-group-box" style="display:flex; flex-direction:column; gap:8px;">
+            <span style="font-weight:bold; font-size:0.8rem; color:#eab308;">🔎 Skalowanie czcionek / Zoom kafelka:</span>
+            <div style="display:flex; align-items:center; justify-content:center; gap:15px; padding:5px 0;">
+                <button onclick="adjustSelectedTextScale(-0.05)" style="background:#cbd5e1; color:#0f172a; padding:6px 20px; font-size:1.1rem; font-weight:bold;">A-</button>
+                <span id="lblTransformScaleVal" style="font-weight:bold; font-size:1rem;">100%</span>
+                <button onclick="adjustSelectedTextScale(0.05)" style="background:#cbd5e1; color:#0f172a; padding:6px 20px; font-size:1.1rem; font-weight:bold;">A+</button>
+            </div>
+        </div>
+        
+        <button onclick="closeTransformModal()" style="width:100%; background:#22c55e; font-weight:bold; padding:10px;">Gotowe</button>
+    </div>
+</div>
+    
 <!-- PŁYWAJĄCY PRZYCISK PRZYWRACANIA POMIARU (OCZKO) -->
 <button id="measureRestoreBtn" 
     style="position: fixed; 
