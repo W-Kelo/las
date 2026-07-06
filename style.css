@@ -582,7 +582,7 @@
     left: 20px;
     background: transparent !important; /* Usunięcie globalnego tła panelu nadrzędnego */
     border: none !important;            /* Usunięcie ramki nadrzędnej */
-    box-shadow: none !important;        /* Usunięcie cienia nadrzędnego */
+    box-shadow: none !important;        /* Usunięcie cienia nadrzędnej */
     padding: 0 !important;
     margin: 0 !important;
     z-index: 2500 !important;
@@ -594,16 +594,46 @@
     display: none; 
     backdrop-filter: none !important;
 }
-/* Klasy bazowe dla bloków (Blok Tekstowy, Statystyki, Legenda) */
+/* Podstawowe style bloków */
 .mi-meta-block, .mi-stats-container, #miLegendContainer {
     background: rgba(255, 255, 255, 0.92);
     border: 1px solid rgba(0, 0, 0, 0.12);
-    border-radius: 8px;
     padding: 12px 18px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-    margin-bottom: 8px; /* Odstęp dający efekt "zszywania obrzeży" */
     box-sizing: border-box;
     transition: all 0.2s ease-in-out;
+}
+/* --- AUTOMATYCZNE ZSZYWANIE: Kiedy bloki są połączone (wewnątrz panelu nadrzędnego) --- */
+#mapInfoPanel > div {
+    margin-bottom: 0 !important;       /* Wyzerowanie przerw między blokami */
+    border-bottom: none !important;     /* Usunięcie podwójnych granic stykających się bloków */
+    border-radius: 0 !important;        /* Wyzerowanie wewnętrznych zaokrągleń */
+}
+
+/* Zaokrąglamy tylko zewnętrzne, skrajne rogi połączonego konglomeratu */
+#mapInfoPanel > div:first-child {
+    border-radius: 8px 8px 0 0 !important;
+}
+
+#mapInfoPanel > div:last-child {
+    border-radius: 0 0 8px 8px !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.12) !important; /* Przywrócenie dolnej krawędzi */
+}
+/* Ciemny motyw dla zszytych bloków */
+.dark-theme #mapInfoPanel > div {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+.dark-theme #mapInfoPanel > div:last-child {
+    border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Obsługa sytuacji, gdy tylko jeden blok jest widoczny w połączonym panelu */
+#mapInfoPanel > div:only-child {
+    border-radius: 8px !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.12) !important;
+}
+.dark-theme #mapInfoPanel > div:only-child {
+    border-bottom-color: rgba(255, 255, 255, 0.1) !important;
 }
 /* Ciemny motyw dla bloków */
 .dark-theme .mi-meta-block, 
@@ -737,12 +767,15 @@ canvas#elevation {
     box-shadow: 0 0 5px rgba(0,0,0,0.5);
 }
 .split-divider:hover { opacity: 1; }
+/* --- ODCZEPIENIE: Gdy blok zostaje odłączony jako wolny panel (detached-panel) --- */
 .detached-panel {
-    position: absolute !important;
-    z-index: 2500 !important;
-    box-sizing: border-box;
-    height: auto !important;
-    min-width: 150px;
+    border-radius: 8px !important; /* Odzyskuje pełne, niezależne zaokrąglenie */
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
+    margin-bottom: 0 !important;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3) !important;
+}
+.dark-theme .detached-panel {
+    border-color: rgba(255, 255, 255, 0.1) !important;
 }
 .detached-panel.draggable { cursor: grab; border: 2px dashed #3b82f6; }
 .detached-panel.draggable:active { cursor: grabbing; }
