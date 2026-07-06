@@ -635,6 +635,7 @@
 .dark-theme #mapInfoPanel > div:only-child {
     border-bottom-color: rgba(255, 255, 255, 0.1) !important;
 }
+
 /* Ciemny motyw dla bloków */
 .dark-theme .mi-meta-block, 
 .dark-theme .mi-stats-container, 
