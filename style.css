@@ -467,16 +467,7 @@
     color: white; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 1.1rem;
 }
 .map-info-legend-list li {
-    display: flex; 
-    align-items: center; 
-    gap: 8px; 
-    padding: 2px 4px;
-    border-radius: 4px;
-    transition: background 0.2s;
-    margin-bottom: var(--legend-gap, 5px) !important;
-    cursor: grab;
-    transition: transform 0.2s, background 0.2s;
-    border: 1px solid transparent; /* Zapobiega skakaniu elementów */
+    margin-bottom: var(--legend-gap, 5px) !important; /* Elastyczna interlinia */
 }
 .map-info-legend-list li:hover {
     background: rgba(0,0,0,0.05);
@@ -588,10 +579,10 @@
     overflow-y: auto;
     display: none; 
     box-sizing: border-box;
-    background: rgba(255, 255, 255, 0.92); 
-    border: 1px solid rgba(0, 0, 0, 0.12);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
-    border-radius: 8px;
+    /* Usunięcie sztywnych ram i tła na rzecz dziedziczenia z globalnego panelu */
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 /* Podstawowe style bloków */
 .mi-meta-block, .mi-stats-container, #miLegendContainer {
@@ -669,7 +660,13 @@
   italic; 
 }
 .map-info-desc { font-size: var(--exp-font, 14px) !important; margin-bottom: 12px; line-height: 1.4; }
-.map-info-legend-title { font-size: 1rem; font-weight: bold; margin: 10px 0 5px 0; border-top: 1px solid #ccc; padding-top: 10px; }
+.map-info-legend-title {
+    font-size: 1rem;
+    font-weight: bold;
+    margin: 4px 0 2px 0 !important;
+    padding-top: 0 !important;
+    border-top: none !important; /* Usunięcie marnującego miejsce separatora */
+}
 .dark-theme .map-info-legend-title { border-top-color: #334155; }
 .map-info-legend-list { list-style: none; padding: 0; margin: 0; font-size: var(--exp-font, 14px) !important; }
 .mi-stats-container {
@@ -680,15 +677,10 @@
     font-size: 0.85rem;
 }
 .mi-stat-item {
-    background: rgba(0,0,0,0.06);
-    padding: 6px 10px;
-    border-radius: 6px;
+    padding: 6px 10px !important; /* Stałe paddingi w px chronią przed nadmiernym skalowaniem */
     display: flex;
     align-items: center;
     gap: 5px;
-    font-weight: 500;
-    color: #334155;
-    border: 1px solid rgba(0,0,0,0.05);
 }
 .dark-theme .mi-stat-item {
     background: rgba(255,255,255,0.1);
@@ -776,9 +768,9 @@ canvas#elevation {
 .split-divider:hover { opacity: 1; }
 /* Poprawiona klasa detached-panel - absolutne pozycjonowanie pozwala na swobodne przesuwanie */
 .detached-panel {
-    position: absolute !important; 
-    border-radius: 8px !important; 
-    border: 1px solid rgba(0, 0, 0, 0.12) !important;
+    position: absolute !important; /* Pozwala na płynne, niezależne przesuwanie */
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
     margin-bottom: 0 !important;
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3) !important;
     background: rgba(255, 255, 255, 0.92);
@@ -877,6 +869,11 @@ canvas#elevation {
 .light .editor-group-box {
     background: rgba(0, 0, 0, 0.03);
     border-color: rgba(0, 0, 0, 0.05);
+}
+/* Ramka zaznaczenia podczas aktywnego przekształcania */
+.transform-active-outline {
+    outline: 2px dashed #3b82f6 !important;
+    outline-offset: 4px;
 }
 /* ===================================
    11. LISTA PUNKTÓW
