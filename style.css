@@ -580,11 +580,6 @@
     position: absolute;
     top: 20px;
     left: 20px;
-    background: transparent !important; /* Usunięcie globalnego tła panelu nadrzędnego */
-    border: none !important;            /* Usunięcie ramki nadrzędnej */
-    box-shadow: none !important;        /* Usunięcie cienia nadrzędnej */
-    padding: 0 !important;
-    margin: 0 !important;
     z-index: 2500 !important;
     pointer-events: auto; 
     font-family: 'Segoe UI', sans-serif;
@@ -592,7 +587,11 @@
     max-height: 70vh;
     overflow-y: auto;
     display: none; 
-    backdrop-filter: none !important;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.92); 
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    border-radius: 8px;
 }
 /* Podstawowe style bloków */
 .mi-meta-block, .mi-stats-container, #miLegendContainer {
@@ -602,6 +601,13 @@
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
     box-sizing: border-box;
     transition: all 0.2s ease-in-out;
+}
+/* Klasa aktywowana przy rozłączeniu paneli, wyłączająca tło i obramowanie kontenera nadrzędnego */
+.map-info-panel.split-active {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
 }
 /* --- AUTOMATYCZNE ZSZYWANIE: Kiedy bloki są połączone (wewnątrz panelu nadrzędnego) --- */
 #mapInfoPanel > div {
@@ -768,12 +774,16 @@ canvas#elevation {
     box-shadow: 0 0 5px rgba(0,0,0,0.5);
 }
 .split-divider:hover { opacity: 1; }
-/* --- ODCZEPIENIE: Gdy blok zostaje odłączony jako wolny panel (detached-panel) --- */
+/* Poprawiona klasa detached-panel - absolutne pozycjonowanie pozwala na swobodne przesuwanie */
 .detached-panel {
-    border-radius: 8px !important; /* Odzyskuje pełne, niezależne zaokrąglenie */
+    position: absolute !important; 
+    border-radius: 8px !important; 
     border: 1px solid rgba(0, 0, 0, 0.12) !important;
     margin-bottom: 0 !important;
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3) !important;
+    background: rgba(255, 255, 255, 0.92);
+    z-index: 2600 !important;
+    box-sizing: border-box;
 }
 .dark-theme .detached-panel {
     border-color: rgba(255, 255, 255, 0.1) !important;
