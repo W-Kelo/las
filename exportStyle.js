@@ -6,6 +6,9 @@
 let styleHistory = [];
 let isUndoAction = false;
 let localTextStylesModified = false; // Flaga chroniąca lokalne ustawienia tekstu
+let initialEditorStateBackup = null; // Kopia zapasowa do funkcji Anuluj
+
+
 // Synchronizacja wartości pomiędzy zduplikowanymi ID w oknach
 document.addEventListener('input', (e) => {
     if (e.target && e.target.id) {
@@ -37,6 +40,33 @@ document.addEventListener('input', (e) => {
         }
     }
 });
+// Pobiera kompletny obiekt stanu wyglądu i pozycji paneli
+function getCurrentStateObject() {
+    const panelsData = {};
+    ['mapInfoPanel', 'miMetaBlock', 'miStats', 'miLegendContainer'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            panelsData[id] = {
+                top: el.style.top,
+                left: el.style.left,
+                width: el.style.width,
+                height: el.style.height,
+                scale: el.dataset.scale || "1",
+                isDetached: el.classList.contains('detached-panel')
+            };
+        }
+    });
+
+    const inputs = {};
+    document.querySelectorAll('.advanced-editor-modal input, .advanced-editor-modal select').forEach(input => {
+        if (input.id) {
+            inputs[input.id] = input.type === 'checkbox' ? input.checked : input.value;
+        }
+    });
+
+    return { panels: panelsData, inputs: inputs };
+}
+
 function saveStateToHistory() {
     if (isUndoAction) return;
     const state = {
@@ -76,50 +106,52 @@ function saveStateToHistory() {
 }
 
 function restoreStateFromHistory(stateStr) {
+    if (!stateStr) return;
     isUndoAction = true;
-    const state = JSON.parse(stateStr);
     
-    document.getElementById('expPanelBg').value = state.panelBg;
-    document.getElementById('expPanelOpacity').value = state.panelOpacity;
-    document.getElementById('expPanelRadius').value = state.panelRadius;
-    document.getElementById('chkExpPanelShadow').checked = state.panelShadow;
-    document.getElementById('expPanelText').value = state.panelText;
-    document.getElementById('expPanelFontFamily').value = state.panelFont;
+    const state = typeof stateStr === 'string' ? JSON.parse(stateStr) : stateStr;
     
-    document.getElementById('expTextBg').value = state.textBg;
-    document.getElementById('expTextOpacity').value = state.textOpacity;
-    document.getElementById('expTextRadius').value = state.textRadius;
-    document.getElementById('textStyleMode').value = state.textMode;
-    
-    document.getElementById('expSameTextColor').value = state.sameColor;
-    document.getElementById('expSameSize').value = state.sameSize;
+    // 1. Odtworzenie stanu fizycznych paneli na mapie
+    const parentPanel = document.getElementById('mapInfoPanel');
+    if (parentPanel) {
+        parentPanel.className = 'map-info-panel';
+        if (state.panels['mapInfoPanel'].isDetached) parentPanel.classList.add('split-active');
+    }
 
-    document.getElementById('expTitleColor').value = state.titleColor;
-    document.getElementById('expTitleSize').value = state.titleSize;
-    document.getElementById('expDateColor').value = state.dateColor;
-    document.getElementById('expDateSize').value = state.dateSize;
-    document.getElementById('expDescColor').value = state.descColor;
-    document.getElementById('expDescSize').value = state.descSize;
+    Object.entries(state.panels).forEach(([id, data]) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.top = data.top;
+            el.style.left = data.left;
+            el.style.width = data.width;
+            el.style.height = data.height;
+            el.style.scale = data.scale;
+            el.dataset.scale = data.scale;
+            
+            if (data.isDetached && id !== 'mapInfoPanel') {
+                el.classList.add('detached-panel');
+                document.getElementById('exportWrapper').appendChild(el);
+            } else if (id !== 'mapInfoPanel') {
+                el.classList.remove('detached-panel');
+                parentPanel.appendChild(el);
+            }
+        }
+    });
 
-    document.getElementById('expStyleColor').value = state.lineColor;
-    document.getElementById('expStyleWeight').value = state.lineWeight;
+    // 2. Przywrócenie wartości kontrolek w edytorze
+    Object.entries(state.inputs).forEach(([id, val]) => {
+        const input = document.getElementById(id);
+        if (input) {
+            if (input.type === 'checkbox') input.checked = val;
+            else input.value = val;
+            
+            const event = new Event('input', { bubbles: true });
+            input.dispatchEvent(event);
+        }
+    });
 
-    document.getElementById('scaleBgColor').value = state.scaleBg;
-    document.getElementById('scaleTextColor').value = state.scaleText;
-
-    document.getElementById('copyBgColor').value = state.copyBg;
-    document.getElementById('copyTextColor').value = state.copyText;
-
-    updateColorPreviews();
-    applyLiveStyleDirect('panel');
-    applyLiveStyleDirect('texts');
-    applyLineStyle();
-    if (typeof updateCustomScaleAppearance === 'function') updateCustomScaleAppearance();
-    if (typeof updateCustomCopyrightAppearance === 'function') updateCustomCopyrightAppearance();
-    
     isUndoAction = false;
 }
-
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         if (styleHistory.length > 1) {
@@ -163,6 +195,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (activePane) activePane.style.display = 'flex';
         });
     });
+   // Podpięcie w locie wczytywania presetu przy starcie
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        loadGlobalPresetFromLocalStorage();
+    }, 500);
+});
 
     const inputsToTrack = document.querySelectorAll('.advanced-editor-modal input, .advanced-editor-modal select');
     inputsToTrack.forEach(el => {
@@ -194,15 +232,32 @@ function getCurrentActiveTab() {
 }
 
 function openExportStyleModal() {
+    // 1. Zbudowanie kopii zapasowej przed wejściem (umożliwia bezpieczne Anuluj)
+    initialEditorStateBackup = getCurrentStateObject();
+    
     loadExportStyleToUI();
     const modal = document.getElementById('exportStyleModal');
     modal.style.display = 'flex';
     modal.style.left = '50%';
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
+
+    // Pokazywanie lub ukrywanie zintegrowanego stylu numerków legendy (Błąd 5)
+    const numberingSection = document.getElementById('legendNumberingSection');
+    if (numberingSection) {
+        const hasNumberedItems = Object.keys(exportLegendItems).length > 0;
+        numberingSection.style.display = hasNumberedItems ? 'flex' : 'none';
+    }
 }
 window.openExportStyleModal = openExportStyleModal;
-
+function closeCustomExportStyleModal() {
+    // Przywrócenie stanu sprzed wejścia do edytora (Błąd 11)
+    if (initialEditorStateBackup) {
+        restoreStateFromHistory(initialEditorStateBackup);
+    }
+    closeModal('exportStyleModal');
+}
+window.closeCustomExportStyleModal = closeCustomExportStyleModal;
 // Sprytny generator przezroczystości
 function applyOpacityToGradient(gradientStr, opacityPercent) {
     const opacity = opacityPercent / 100;
@@ -215,7 +270,40 @@ function applyOpacityToGradient(gradientStr, opacityPercent) {
     }).join(', ');
     return `linear-gradient(to right, ${colorStops})`;
 }
+// Przełącznik stylów jednakowych i różnych dla statystyk
+function toggleStatsStyleModeUI() {
+    const elMode = document.getElementById('statsStyleMode');
+    if (!elMode) return;
+    const isUniform = elMode.value === 'same';
+    
+    document.getElementById('stats-style-same-wrap').style.display = isUniform ? 'block' : 'none';
+    document.getElementById('stats-style-diff-wrap').style.display = isUniform ? 'none' : 'flex';
+    
+    applyLiveStyleDirect('stats');
+}
+window.toggleStatsStyleModeUI = toggleStatsStyleModeUI;
+function saveGlobalPresetToLocalStorage() {
+    const stateObj = getCurrentStateObject();
+    localStorage.setItem('gpx_global_map_preset', JSON.stringify(stateObj));
+    showCustomAlert("Styl i układ paneli zostały pomyślnie zapisane jako domyślne. Będą wczytywane automatycznie.");
+    updatePresetButtonLabel();
+}
+window.saveGlobalPresetToLocalStorage = saveGlobalPresetToLocalStorage;
+function loadGlobalPresetFromLocalStorage() {
+    const saved = localStorage.getItem('gpx_global_map_preset');
+    if (saved) {
+        restoreStateFromHistory(JSON.parse(saved));
+        updatePresetButtonLabel();
+    }
 
+function updatePresetButtonLabel() {
+    const btn = document.getElementById('btnSavePresetLocal');
+    if (btn && localStorage.getItem('gpx_global_map_preset')) {
+        btn.innerText = "🔄 Aktualizuj zapisany preset";
+    }
+}
+
+window.loadGlobalPresetFromLocalStorage = loadGlobalPresetFromLocalStorage;
 // Globalny analizator kontrastu
 function checkGlobalContrastWarnings() {
     // ... analogicznie do poprzedniej funkcji ostrzegającej ...
