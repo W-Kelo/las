@@ -1194,3 +1194,23 @@ function selectEmoji(e, btn) {
         btn.classList.add('selected');
     }
 }
+// Dynamiczne rysowanie trasy na mapie eksportowej na żywo
+function renderExportRouteLineWithStyle() {
+    if (!exportMap) return;
+    
+    if (exportPolyline) {
+        exportMap.removeLayer(exportPolyline);
+    }
+
+    const colorVal = exportLineColor || '#22c55e';
+    const weightVal = exportLineWeight || 6;
+
+    exportPolyline = L.polyline(routeGeometry, {
+        color: colorVal,
+        weight: weightVal,
+        opacity: 0.9,
+        lineCap: 'round',
+        lineJoin: 'round'
+    }).addTo(exportMap);
+}
+window.renderExportRouteLineWithStyle = renderExportRouteLineWithStyle;
