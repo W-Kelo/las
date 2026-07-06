@@ -750,6 +750,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+   // Obsługa dynamicznej zmiany grubości trasy w oknie głównym na żywo
+    const styleWeightInput = document.getElementById('styleWeight');
+    if (styleWeightInput) {
+        styleWeightInput.addEventListener('input', (e) => {
+            routePrefWeight = parseInt(e.target.value);
+            if (typeof renderRouteLineWithStyle === 'function') {
+                renderRouteLineWithStyle();
+            }
+        });
+    }
 });
 function getLuminance(r, g, b) {
     let [rs, gs, bs] = [r, g, b].map(c => {
