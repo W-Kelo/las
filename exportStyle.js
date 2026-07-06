@@ -1,5 +1,5 @@
 /* =========================================================
-   exportStyle.js - ZSZYWANY SILNIK CANVA STUDIO (V3)
+   exportStyle.js - ZSZYWANY SILNIK CANVA STUDIO (V3) 
 ========================================================= */
 
 let exportGradientPathLayer = null;
