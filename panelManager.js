@@ -8,6 +8,7 @@ let isPanelResizable = false;
 let isPanelScaleMode = false;
 let isPanelsSplitMode = false;
 let isScissorsMode = false;
+let transformTargetEl = null;
 
 function updatePanelVisibility() {
     const panel = document.getElementById('mapInfoPanel');
@@ -81,12 +82,35 @@ function togglePanelDrag() {
     const btn = document.getElementById('btnDragPanel');
     if (btn) btn.style.boxShadow = isPanelDraggable ? "0 0 10px white" : "none";
     
-    const targets = [document.getElementById('mapInfoPanel'), ...document.querySelectorAll('.detached-panel')];
+    const parentPanel = document.getElementById('mapInfoPanel');
+    const detachedPanels = document.querySelectorAll('.detached-panel');
+    
+    // Zapytanie o rozdzielenie przy włączaniu przesuwania (Błąd 8)
+    if (isPanelDraggable && parentPanel && detachedPanels.length === 0) {
+        showCustomConfirm("Czy chcesz przesuwać scalone bloki (razem) czy rozdzielić je i przesuwać osobno?", () => {
+            // "RAZEM" -> Przesuwamy cały sklejony panel
+            parentPanel.classList.add('draggable');
+            makePanelDraggable(parentPanel);
+        }, () => {
+            // "OSOBNO" -> Automatycznie rozcinamy bloki na niezależne pływające kafelki
+            const childrenToDetach = ['miMetaBlock', 'miStats', 'miLegendContainer'];
+            childrenToDetach.forEach(id => {
+                const el = document.getElementById(id);
+                if (el && el.style.display !== 'none' && el.innerHTML.trim() !== '') {
+                    detachPanel(id, null);
+                }
+            });
+            togglePanelDrag(); // Re-trigger po podziale
+        });
+        return;
+    }
+
+    const targets = [parentPanel, ...detachedPanels];
     targets.forEach(el => {
         if(!el) return;
         if(isPanelDraggable) {
             el.classList.add('draggable');
-            forceEnableDragAndResize(el);
+            makePanelDraggable(el);
         } else {
             el.classList.remove('draggable');
             el.onmousedown = null;
@@ -94,7 +118,109 @@ function togglePanelDrag() {
     });
 }
 window.togglePanelDrag = togglePanelDrag;
+function openTransformModal() {
+    const modal = document.getElementById('transformModal');
+    if (!modal) return;
+    
+    modal.style.display = 'flex';
+    modal.style.left = '80px';
+    modal.style.top = '150px';
+    modal.style.transform = 'none';
 
+    // Dodanie nasłuchu kliknięć na panelach na mapie eksportu w celu zaznaczenia
+    const blocks = ['mapInfoPanel', 'miMetaBlock', 'miStats', 'miLegendContainer'];
+    blocks.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.cursor = 'pointer';
+            el.onclick = (e) => {
+                e.stopPropagation();
+                selectTransformTarget(el);
+            };
+        }
+    });
+
+    makeDraggable(modal);
+}
+window.openTransformModal = openTransformModal;
+function selectTransformTarget(el) {
+    // Usunięcie poprzednich obrysów zaznaczenia
+    document.querySelectorAll('.transform-active-outline').forEach(b => b.classList.remove('transform-active-outline'));
+    
+    transformTargetEl = el;
+    el.classList.add('transform-active-outline');
+
+    const friendlyNames = {
+        'mapInfoPanel': 'Scalony panel główny',
+        'miMetaBlock': 'Blok Tytułu i Opisu',
+        'miStats': 'Obszar Statystyk',
+        'miLegendContainer': 'Blok Legendy'
+    };
+    document.getElementById('lblActiveTransformTarget').innerText = friendlyNames[el.id] || "Wybrany element";
+
+    // Odtworzenie suwaków szerokości/wysokości w małym modalu transformacji
+    const currentW = el.offsetWidth;
+    const currentH = el.offsetHeight;
+    document.getElementById('transformWidthSlider').value = currentW;
+    document.getElementById('transformHeightSlider').value = currentH;
+
+    const currentScale = parseFloat(el.dataset.scale || "1");
+    document.getElementById('lblTransformScaleVal').innerText = Math.round(currentScale * 100) + '%';
+}
+function applyTransformFromSliders() {
+    if (!transformTargetEl) return;
+    const w = document.getElementById('transformWidthSlider').value;
+    const h = document.getElementById('transformHeightSlider').value;
+    
+    transformTargetEl.style.width = w + 'px';
+    transformTargetEl.style.height = h + 'px';
+}
+window.applyTransformFromSliders = applyTransformFromSliders;
+function adjustSelectedSize(dimension, delta) {
+    if (!transformTargetEl) return showCustomAlert("Najpierw kliknij na panel, który chcesz edytować.");
+    
+    const current = dimension === 'width' ? transformTargetEl.offsetWidth : transformTargetEl.offsetHeight;
+    const newVal = Math.max(dimension === 'width' ? 100 : 40, current + delta);
+    
+    transformTargetEl.style[dimension] = newVal + 'px';
+    
+    // Zsynchronizuj suwaki
+    const sliderId = dimension === 'width' ? 'transformWidthSlider' : 'transformHeightSlider';
+    document.getElementById(sliderId).value = newVal;
+}
+window.adjustSelectedSize = adjustSelectedSize;
+
+function adjustSelectedTextScale(delta) {
+    if (!transformTargetEl) return showCustomAlert("Najpierw kliknij na panel, który chcesz edytować.");
+    
+    let currentScale = parseFloat(transformTargetEl.dataset.scale || "1");
+    currentScale = Math.max(0.4, Math.min(currentScale + delta, 2.5));
+    
+    transformTargetEl.style.transformOrigin = "top left";
+    transformTargetEl.style.scale = currentScale;
+    transformTargetEl.dataset.scale = currentScale;
+
+    document.getElementById('lblTransformScaleVal').innerText = Math.round(currentScale * 100) + '%';
+}
+window.adjustSelectedTextScale = adjustSelectedTextScale;
+
+function closeTransformModal() {
+    document.querySelectorAll('.transform-active-outline').forEach(b => b.classList.remove('transform-active-outline'));
+    
+    // Przywrócenie domyślnego klikania i kursora na panelach
+    const blocks = ['mapInfoPanel', 'miMetaBlock', 'miStats', 'miLegendContainer'];
+    blocks.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.cursor = '';
+            el.onclick = null;
+        }
+    });
+    
+    transformTargetEl = null;
+    closeModal('transformModal');
+}
+window.closeTransformModal = closeTransformModal;
 function makePanelDraggable(el) {
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
     el.onmousedown = dragMouseDown;
