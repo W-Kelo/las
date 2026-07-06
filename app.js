@@ -199,3 +199,32 @@ function openCustomPoiModal(poiData) {
     openCenteredModal('customPoiModal');
 }
 window.openCustomPoiModal = openCustomPoiModal;
+/* --- CENTRALNY KONTROLER COFANIA ZMIAN (CTRL + Z UNDO SYSTEM) --- */
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        // 1. Obsługa cofania punktów pomiarowych
+        if (typeof isMeasureMode !== 'undefined' && isMeasureMode && typeof measurePoints !== 'undefined' && measurePoints.length > 0) {
+            e.preventDefault();
+            if (typeof undoLastMeasurePoint === 'function') {
+                undoLastMeasurePoint();
+            }
+        }
+        // 2. Obsługa cofania zmian styli w edytorze zaawansowanym Studio
+        else if (document.getElementById('exportStyleModal') && document.getElementById('exportStyleModal').style.display === 'flex') {
+            if (typeof styleHistory !== 'undefined' && styleHistory.length > 1) {
+                e.preventDefault();
+                styleHistory.pop();
+                if (typeof restoreStateFromHistory === 'function') {
+                    restoreStateFromHistory(styleHistory[styleHistory.length - 1]);
+                }
+            }
+        }
+        // 3. Obsługa cofania punktów trasy na mapie głównej
+        else if (typeof routePoints !== 'undefined' && routePoints.length > 0 && !isRouting) {
+            e.preventDefault();
+            if (typeof removePointById === 'function') {
+                removePointById(routePoints[routePoints.length - 1].id);
+            }
+        }
+    }
+});
