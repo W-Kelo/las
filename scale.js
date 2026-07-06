@@ -6,6 +6,8 @@ let isCustomScaleVisible = false;
 let scaleFrameId = null;
 let customScaleEl = null;
 let scaleUpdateTimeout = null;
+let scaleUpdateFrameId = null;
+
 
 window.toggleScale = function() {
     if (!exportMap) return;
@@ -150,12 +152,13 @@ window.updateCustomScaleAppearance = function() {
             ratio = checkContrastRatio(hexBg, textColor, opacityVal);
         }
 
-        const warningDiv = document.getElementById('scaleContrastWarning');
-        if (warningDiv) {
-            warningDiv.style.display = (opacityVal > 0 && ratio < 3.0) ? 'block' : 'none';
-        }
+        // Aktualizacja komunikatów w obu modalach (Błąd 1)
+        const warningDivs = document.querySelectorAll('#scaleContrastWarning');
+        warningDivs.forEach(div => {
+            div.style.display = (opacityVal > 0 && ratio < 3.0) ? 'block' : 'none';
+        });
 
-        // Zastosowanie tła (obsługuje kolory jednolite oraz gradienty)
+        // Zastosowanie tła
         if (hexBg.startsWith('linear-gradient')) {
             customScaleEl.style.background = hexBg;
         } else {
@@ -187,7 +190,6 @@ window.updateCustomScaleAppearance = function() {
         updateScaleValues();
     });
 };
-
 // Automatyczna synchronizacja zmian w tle
 document.addEventListener('DOMContentLoaded', () => {
     const bgInput = document.getElementById('scaleBgColor');
