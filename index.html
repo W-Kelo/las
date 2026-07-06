@@ -972,7 +972,13 @@
 
             <!-- ZAKŁADKA 4: LEGENDA I KROPKI -->
             <div id="tab-content-legend" class="editor-tab-content" style="display: none; flex-direction: column; gap: 15px; width: 100%;">
-                <h3 style="color: #a855f7; margin:0;">📌 Panel Legendy i Punkty Trasy</h3>
+                <h3 style="color: #a855f7; margin:0;">📌 Panel Legendy i Styl Numeracji</h3>
+                
+                <!-- INTEGRACJA PRZYCISKU NUMERACJI (Błąd 12) -->
+                <div class="editor-group-box" style="background: rgba(139, 92, 246, 0.1); border-color: rgba(139, 92, 246, 0.3); text-align: center; padding: 15px;">
+                    <span style="font-weight: bold; display: block; margin-bottom: 8px;">🔢 Konfiguracja Stylu Numerków i Kropki Legendy:</span>
+                    <button type="button" onclick="openNumberStyleModal()" style="width: 100%; background: #8b5cf6; padding: 10px;">🎨 Otwórz Konfigurator Numerków Legendy</button>
+                </div>
                 
                 <div class="editor-group-box">
                     <label style="font-weight: bold; display: block; margin-bottom: 5px;">Tło bloku legendy:</label>
