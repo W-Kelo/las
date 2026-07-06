@@ -131,8 +131,7 @@ function updateScaleValues() {
     }
 }
 
-// Płynna aktualizacja wyglądu skali z kolejkowaniem klatek (Bez obciążenia procesora)
-let scaleUpdateFrameId = null;
+
 window.updateCustomScaleAppearance = function() {
     if (!customScaleEl) return;
 
