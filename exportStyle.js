@@ -6,7 +6,37 @@
 let styleHistory = [];
 let isUndoAction = false;
 let localTextStylesModified = false; // Flaga chroniąca lokalne ustawienia tekstu
-
+// Synchronizacja wartości pomiędzy zduplikowanymi ID w oknach
+document.addEventListener('input', (e) => {
+    if (e.target && e.target.id) {
+        const id = e.target.id;
+        const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+        
+        const syncTargets = document.querySelectorAll(`[id="${id}"]`);
+        if (syncTargets.length > 1) {
+            syncTargets.forEach(target => {
+                if (target !== e.target) {
+                    if (target.type === 'checkbox') {
+                        target.checked = value;
+                    } else {
+                        target.value = value;
+                    }
+                }
+            });
+        }
+        
+        // Dynamiczne odświeżanie kafelków podglądu i HEX
+        if (e.target.type === 'hidden' || e.target.type === 'color' || id.includes('Color') || id.includes('Text') || id.includes('Bg')) {
+            const previews = document.querySelectorAll(`[id="${id}Preview"]`);
+            previews.forEach(p => p.style.background = e.target.value);
+            
+            const hexes = document.querySelectorAll(`[id="${id}Hex"]`);
+            hexes.forEach(h => {
+                h.innerText = e.target.value.startsWith('linear-gradient') ? "GRADIENT" : e.target.value.toUpperCase();
+            });
+        }
+    }
+});
 function saveStateToHistory() {
     if (isUndoAction) return;
     const state = {
@@ -192,7 +222,6 @@ function checkGlobalContrastWarnings() {
 }
 
 function applyLiveStyleDirect(tab) {
-    // HIERARCHIA 1: Panel Główny
     if (tab === 'panel') {
         const mainPanel = document.getElementById('mapInfoPanel');
         if (!mainPanel) return;
@@ -211,22 +240,24 @@ function applyLiveStyleDirect(tab) {
             mainPanel.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity/100})`;
         }
 
-        // Kaskadowanie czcionki globalnej do wszystkich elementów
+        mainPanel.style.setProperty('border-radius', radius + 'px', 'important');
         mainPanel.style.setProperty('font-family', fontFam, 'important');
+        
+        if (shadow) {
+            mainPanel.style.setProperty('box-shadow', '0 4px 15px rgba(0,0,0,0.3)', 'important');
+        } else {
+            mainPanel.style.setProperty('box-shadow', 'none', 'important');
+        }
+
         mainPanel.querySelectorAll('*').forEach(child => {
-            child.style.setProperty('font-family', fontFam, 'important');
-            
-            // Kolor globalny narzucamy, tylko jeśli nie ma nadpisania lokalnego
+            child.style.fontFamily = fontFam;
             if (!localTextStylesModified && child.id && (child.id === 'miTitle' || child.id === 'miDate' || child.id === 'miDesc')) {
                 child.style.setProperty('color', textColor, 'important');
             }
         });
-
     } 
-    // HIERARCHIA 2: Blok Tekstowy (Lokalnie)
     else if (tab === 'texts') {
-        localTextStylesModified = true; // Zaznaczamy, że użytkownik dotknął lokalnych styli
-        
+        localTextStylesModified = true; 
         const block = document.getElementById('miMetaBlock');
         if (!block) return;
 
@@ -240,6 +271,7 @@ function applyLiveStyleDirect(tab) {
             const rgb = hexToRgb(hexBg);
             block.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity/100})`;
         }
+        block.style.setProperty('border-radius', radius + 'px', 'important');
 
         const isUniform = document.getElementById('textStyleMode').value === 'same';
         const titleEl = document.getElementById('miTitle');
@@ -269,17 +301,72 @@ function applyLiveStyleDirect(tab) {
             }
         }
     }
+    else if (tab === 'legend') {
+        const legendBlock = document.getElementById('miLegendContainer');
+        if (!legendBlock) return;
+
+        const bgVal = document.getElementById('expLegendBg').value;
+        const opacity = parseInt(document.getElementById('expLegendOpacity').value);
+        const radius = document.getElementById('expLegendRadius').value;
+        const textColor = document.getElementById('expLegendText').value;
+        const size = document.getElementById('expLegendSize').value + 'px';
+        const isBold = document.getElementById('btnLegendBold').classList.contains('active');
+        const isItalic = document.getElementById('btnLegendItalic').classList.contains('active');
+
+        if (bgVal.startsWith('linear-gradient')) {
+            legendBlock.style.background = applyOpacityToGradient(bgVal, opacity);
+        } else {
+            const rgb = hexToRgb(bgVal);
+            legendBlock.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity/100})`;
+        }
+
+        legendBlock.style.setProperty('border-radius', radius + 'px', 'important');
+        legendBlock.style.setProperty('color', textColor, 'important');
+        legendBlock.style.setProperty('font-size', size, 'important');
+        legendBlock.style.setProperty('font-weight', isBold ? 'bold' : 'normal', 'important');
+        legendBlock.style.setProperty('font-style', isItalic ? 'italic' : 'normal', 'important');
+
+        legendBlock.querySelectorAll('.leg-text').forEach(t => {
+            t.style.setProperty('color', textColor, 'important');
+            t.style.setProperty('font-size', size, 'important');
+        });
+    }
+    else if (tab === 'stats') {
+        const statsBlock = document.getElementById('miStats');
+        if (!statsBlock) return;
+
+        const bgVal = document.getElementById('expStatsBg').value;
+        const opacity = parseInt(document.getElementById('expStatsOpacity').value);
+        const radius = document.getElementById('expStatsRadius').value;
+        const textColor = document.getElementById('expStatsText').value;
+        const size = document.getElementById('expStatsSize').value + 'px';
+        const isBold = document.getElementById('btnStatsBold').classList.contains('active');
+        const isItalic = document.getElementById('btnStatsItalic').classList.contains('active');
+
+        statsBlock.querySelectorAll('.mi-stat-item').forEach(item => {
+            if (bgVal.startsWith('linear-gradient')) {
+                item.style.background = applyOpacityToGradient(bgVal, opacity);
+            } else {
+                const rgb = hexToRgb(bgVal);
+                item.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity/100})`;
+            }
+            item.style.setProperty('border-radius', radius + 'px', 'important');
+            item.style.setProperty('color', textColor, 'important');
+            item.style.setProperty('font-size', size, 'important');
+            item.style.setProperty('font-weight', isBold ? 'bold' : 'normal', 'important');
+            item.style.setProperty('font-style', isItalic ? 'italic' : 'normal', 'important');
+        });
+    }
 }
 window.applyLiveStyleDirect = applyLiveStyleDirect;
 
-// Eleganckie pytanie o nadpisanie styli lokalnych
+// Eleganckie zapytanie o nadpisanie styli lokalnych przy zmianie globalnej
 document.getElementById('expPanelText').addEventListener('change', () => {
     if (localTextStylesModified) {
         showCustomConfirm("Uwaga: Edytowałeś już osobne kolory dla tytułu lub opisu. Czy chcesz zresetować je i nadpisać globalnym kolorem?", () => {
             localTextStylesModified = false;
             applyLiveStyleDirect('panel');
         }, () => {
-            // Revert changes from history if "No"
             if (styleHistory.length > 1) restoreStateFromHistory(styleHistory[styleHistory.length - 2]);
         });
     }
@@ -297,7 +384,12 @@ function toggleTextStyleModeUI() {
 }
 window.toggleTextStyleModeUI = toggleTextStyleModeUI;
 
+// Wczytywanie bieżących stylów do edytora wyglądu przy otwarciu
 function loadExportStyleToUI() {
+    const mainPanel = document.getElementById('mapInfoPanel');
+    if (mainPanel) {
+        document.getElementById('expPanelFontFamily').value = mainPanel.style.fontFamily || 'inherit';
+    }
     updateColorPreviews();
     toggleTextStyleModeUI();
 }
