@@ -27,7 +27,6 @@ function updatePanelVisibility() {
     
     const hasText = hasTitle || hasDate || hasDesc;
 
-    // Sterowanie widocznością złączonego Bloku Tekstowego
     if (miMetaBlock) {
         miMetaBlock.style.display = hasText ? 'block' : 'none';
     }
@@ -46,17 +45,18 @@ function updatePanelVisibility() {
         panel.style.display = 'none';
     }
 
+    // Jeśli panele zostały pocięte, dodaj klasę wyłączającą tło kontenera nadrzędnego
+    if (detachedCount > 0) {
+        panel.classList.add('split-active');
+    } else {
+        panel.classList.remove('split-active');
+    }
+
     const btnDrag = document.getElementById('btnDragPanel');
     const btnResize = document.getElementById('btnResizePanel');
     const btnScale = document.getElementById('btnScalePanel');
     const btnScissors = document.getElementById('btnScissors');
     const btnMerge = document.getElementById('btnMerge');
-
-    if (hasAnyPanel) {
-        if (btnDrag) btnDrag.style.display = 'inline-block';
-        if (btnResize) btnResize.style.display = 'inline-block';
-        if (btnScale) btnScale.style.display = 'inline-block';
-    }
 
     let activeChildrenCount = 0;
     if (hasText) activeChildrenCount++;
@@ -319,18 +319,16 @@ function detachPanel(targetId, dividerEl) {
     
     el.classList.add('detached-panel');
     
-    el.style.top = (rect.top - wrapperRect.top + 25) + 'px'; 
-    el.style.left = (rect.left - wrapperRect.left + 15) + 'px';
+    // Kluczowe wymuszenie pozycjonowania absolutnego inline
+    el.style.setProperty('position', 'absolute', 'important');
+    el.style.top = (rect.top - wrapperRect.top) + 'px'; 
+    el.style.left = (rect.left - wrapperRect.left) + 'px';
     el.style.width = Math.max(rect.width, 150) + 'px';
     el.style.height = 'auto'; 
     
     forceEnableDragAndResize(el);
     setupQuadTapDelete(el);
     
-    if (isPanelResizable) {
-        isPanelResizable = false;
-        togglePanelResize();
-    }
     updatePanelVisibility();
 }
 window.detachPanel = detachPanel;
@@ -424,6 +422,8 @@ function resetSplitPanels() {
             parentPanel.appendChild(el); 
         }
     });
+    
+    parentPanel.classList.remove('split-active');
     
     const mergeBtn = document.getElementById('btnMerge');
     if(mergeBtn) mergeBtn.style.display = 'none';
