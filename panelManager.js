@@ -5,6 +5,9 @@
 let isPanelDraggable = false;
 let isTransformMode = false;
 let transformTargetEl = null;
+let panelLayoutHistory = [];
+const PANEL_IDS = ['miMetaBlock', 'miStats', 'miLegendContainer'];
+
 // NOWA FUNKCJA: Twarde zabezpieczenie przed wyjściem poza dół ekranu (Gwarancja 15mm marginesu)
 function enforceStrictBottomBound(el) {
     if (!el) return;
@@ -80,20 +83,21 @@ function togglePanelDrag() {
     const btn = document.getElementById('btnDragPanel');
     if (btn) btn.style.boxShadow = isPanelDraggable ? "0 0 10px white" : "none";
     
-    const parentPanel = document.getElementById('mapInfoPanel');
-    const detachedPanels = document.querySelectorAll('.detached-panel');
-    
     if (isPanelDraggable) {
+        const parentPanel = document.getElementById('mapInfoPanel');
         const activeChildren = Array.from(parentPanel.children).filter(el => el.style.display !== 'none' && el.innerHTML.trim() !== '');
+        const hasGroups = Array.from(document.querySelectorAll('.detached-panel')).some(el => el.dataset.group);
         
-        if (detachedPanels.length === 0 && activeChildren.length > 1) {
+        // Zawsze pyta, jeśli są połączone panele (w kontenerze głównym lub przez magnes)
+        if (activeChildren.length > 1 || hasGroups) {
             openDragChoiceModal();
-            return;
         } else {
             enableDraggingForAll();
         }
     } else {
         disableDraggingForAll();
+        const existingBtn = document.getElementById('tempDetachBtn');
+        if (existingBtn) existingBtn.remove();
     }
 }
 window.togglePanelDrag = togglePanelDrag;
@@ -112,7 +116,7 @@ function openDragChoiceModal() {
                 <button class="danger icon-only" style="padding: 2px 8px;" onclick="closeModal('dragChoiceModal'); togglePanelDrag();">X</button>
             </div>
             <div class="modal-body" style="text-align:center; padding: 20px;">
-                <p style="margin-top:0; font-size:0.95rem;">Wykryto kilka paneli. Jak chcesz je przesuwać?</p>
+                <p style="margin-top:0; font-size:0.95rem;">Wykryto połączone panele. Jak chcesz je przesuwać?</p>
                 <div style="display:flex; flex-direction:column; gap:10px; margin-top:15px;">
                     <button onclick="executeDragChoice('together')" style="background:#22c55e; padding:10px;">📦 Przesuwaj razem (Scalone)</button>
                     <button onclick="executeDragChoice('separate')" style="background:#a855f7; padding:10px;">🧩 Przesuwaj osobno (Rozłącz)</button>
@@ -124,43 +128,65 @@ function openDragChoiceModal() {
     openCenteredModal('dragChoiceModal');
 }
 window.openDragChoiceModal = openDragChoiceModal;
-
 function executeDragChoice(choice) {
     closeModal('dragChoiceModal');
+    savePanelLayoutState(); // Zapisujemy stan przed rozbiciem/grupowaniem
+
+    const parentPanel = document.getElementById('mapInfoPanel');
+    const activeChildren = Array.from(parentPanel.children).filter(el => el.style.display !== 'none' && el.innerHTML.trim() !== '');
+
     if (choice === 'separate') {
-        const childrenToDetach = ['miMetaBlock', 'miStats', 'miLegendContainer'];
+        // Rozbija wszystkie grupy i wyciąga z głównego panelu
         let currentTop = 20;
-        childrenToDetach.forEach(id => {
+        PANEL_IDS.forEach(id => {
             const el = document.getElementById(id);
-            if (el && el.style.display !== 'none' && el.innerHTML.trim() !== '') {
-                detachPanel(id, currentTop);
-                currentTop += el.offsetHeight + 15; // Układanie jeden pod drugim, żeby się nie nakładały
+            if (el && el.style.display !== 'none') {
+                delete el.dataset.group;
+                if (el.parentNode.id === 'mapInfoPanel') {
+                    detachPanel(id, currentTop);
+                    currentTop += el.offsetHeight + 15;
+                }
             }
         });
+    } else if (choice === 'together') {
+        // Wyciąga z głównego panelu, ale łączy je w jedną magnetyczną grupę
+        if (activeChildren.length > 1) {
+            const groupId = 'group_' + Date.now();
+            let currentTop = 20;
+            const baseWidth = activeChildren[0].offsetWidth;
+            
+            activeChildren.forEach(el => {
+                el.dataset.group = groupId;
+                detachPanel(el.id, currentTop);
+                el.style.width = baseWidth + 'px'; // Wyrównanie szerokości
+                currentTop += el.offsetHeight; // Układanie idealnie jeden pod drugim
+            });
+        }
     }
     enableDraggingForAll();
 }
 window.executeDragChoice = executeDragChoice;
 
 function enableDraggingForAll() {
-    const targets = [document.getElementById('mapInfoPanel'), ...document.querySelectorAll('.detached-panel')];
-    targets.forEach(el => {
-        if (el && el.style.display !== 'none') {
+    PANEL_IDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.style.display !== 'none' && el.classList.contains('detached-panel')) {
             el.classList.add('draggable');
             makePanelDraggable(el);
         }
     });
 }
 
+
 function disableDraggingForAll() {
-    const targets = [document.getElementById('mapInfoPanel'), ...document.querySelectorAll('.detached-panel')];
-    targets.forEach(el => {
+    PANEL_IDS.forEach(id => {
+        const el = document.getElementById(id);
         if (el) {
             el.classList.remove('draggable');
             el.onmousedown = null;
         }
     });
-}
+}}
 
 function detachPanel(targetId, forceTop = null) {
     const el = document.getElementById(targetId);
@@ -193,73 +219,165 @@ function makePanelDraggable(el) {
     el.onmousedown = dragMouseDown;
 
     function dragMouseDown(e) {
-        if(!isPanelDraggable || e.target.closest('.transform-handle')) return;
+        if(!isPanelDraggable || e.target.closest('.transform-handle') || e.target.closest('button')) return;
         e.preventDefault();
+        
+        // Zapis historii przed rozpoczęciem ruchu
+        savePanelLayoutState();
+
+        // Mini przycisk "Rozłącz" jeśli element jest w grupie
+        if (el.dataset.group) {
+            const existingBtn = document.getElementById('tempDetachBtn');
+            if (existingBtn) existingBtn.remove();
+
+            const btn = document.createElement('button');
+            btn.id = 'tempDetachBtn';
+            btn.innerHTML = '✂️ Rozłącz?';
+            btn.className = 'danger';
+            btn.style.cssText = `position:absolute; top:-25px; right:0; z-index:99999; padding:4px 8px; font-size:11px; border-radius:4px; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.5); border: 1px solid white;`;
+            
+            btn.onmousedown = (ev) => {
+                ev.stopPropagation();
+                savePanelLayoutState();
+                delete el.dataset.group;
+                btn.remove();
+                showCustomAlert("Panel odłączony! Możesz go przesuwać niezależnie.");
+            };
+            el.appendChild(btn);
+            
+            // Znika po 3 sekundach
+            setTimeout(() => { if(document.getElementById('tempDetachBtn')) document.getElementById('tempDetachBtn').remove(); }, 3000);
+        }
+
         pos3 = e.clientX;
         pos4 = e.clientY;
         document.onmouseup = closeDragElement;
         document.onmousemove = elementDrag;
-        el.style.zIndex = 3000; 
+        
+        // Przeniesienie całej grupy na wierzch
+        const elementsToMove = el.dataset.group ? document.querySelectorAll(`[data-group="${el.dataset.group}"]`) : [el];
+        elementsToMove.forEach(targetEl => targetEl.style.zIndex = 3000);
     }
 
-     function elementDrag(e) {
+    function elementDrag(e) {
         e.preventDefault();
         pos1 = pos3 - e.clientX;
         pos2 = pos4 - e.clientY;
         pos3 = e.clientX;
         pos4 = e.clientY;
         
-        const wrapper = document.getElementById('exportWrapper');
-        const wrapperH = wrapper.clientHeight;
-        const wrapperW = wrapper.clientWidth;
+        const elementsToMove = el.dataset.group ? document.querySelectorAll(`[data-group="${el.dataset.group}"]`) : [el];
 
-        let newTop = el.offsetTop - pos2;
-        let newLeft = el.offsetLeft - pos1;
-
-        // Blokada przed wyciągnięciem panelu poza ekran (góra/lewo i dół/prawo)
-        newTop = Math.max(20, Math.min(newTop, wrapperH - 100));
-        newLeft = Math.max(20, Math.min(newLeft, wrapperW - 100));
-
-        el.style.top = newTop + "px";
-        el.style.left = newLeft + "px";
-        
-        // Aktualizacja limitu wysokości w czasie rzeczywistym podczas przesuwania w dół
-        enforceStrictBottomBound(el);
+        elementsToMove.forEach(targetEl => {
+            let newTop = targetEl.offsetTop - pos2;
+            let newLeft = targetEl.offsetLeft - pos1;
+            targetEl.style.top = newTop + "px";
+            targetEl.style.left = newLeft + "px";
+            enforceStrictBottomBound(targetEl);
+        });
     }
 
     function closeDragElement() {
         document.onmouseup = null;
         document.onmousemove = null;
-        el.style.zIndex = '';
-        if (el.classList.contains('detached-panel')) {
-            checkMagneticSnap(el);
-        }
+        
+        const elementsToMove = el.dataset.group ? document.querySelectorAll(`[data-group="${el.dataset.group}"]`) : [el];
+        elementsToMove.forEach(targetEl => targetEl.style.zIndex = 2600);
+
+        checkMagneticSnap(el);
     }
 }
-
 function checkMagneticSnap(draggedEl) {
     const snapThreshold = 30; 
-    const parentPanel = document.getElementById('mapInfoPanel');
-    const allPanels = [parentPanel, ...document.querySelectorAll('.detached-panel')].filter(p => p && p !== draggedEl && p.style.display !== 'none');
+    const allPanels = PANEL_IDS
+        .map(id => document.getElementById(id))
+        .filter(p => p && p !== draggedEl && p.style.display !== 'none' && p.classList.contains('detached-panel'));
     
-    const rect1 = draggedEl.getBoundingClientRect();
+    const r1 = draggedEl.getBoundingClientRect();
 
     for (let target of allPanels) {
-        const rect2 = target.getBoundingClientRect();
-        const overlapX = !(rect1.right < rect2.left || rect1.left > rect2.right);
-        
-        if (overlapX) {
-            const distBottomToTop = Math.abs(rect1.bottom - rect2.top);
-            const distTopToBottom = Math.abs(rect1.top - rect2.bottom);
+        // Ignoruj panele z tej samej grupy
+        if (draggedEl.dataset.group && draggedEl.dataset.group === target.dataset.group) continue;
 
-            if (distBottomToTop < snapThreshold || distTopToBottom < snapThreshold) {
-                mergePanels(draggedEl, target);
-                return; 
+        const r2 = target.getBoundingClientRect();
+        
+        // 1. Sprawdzenie przyciągania w PIONIE (Góra / Dół)
+        const overlapX = !(r1.right < r2.left + 15 || r1.left > r2.right - 15);
+        if (overlapX) {
+            if (Math.abs(r1.bottom - r2.top) < snapThreshold) {
+                performSnap(draggedEl, target, 'bottom-top'); return;
+            }
+            if (Math.abs(r1.top - r2.bottom) < snapThreshold) {
+                performSnap(draggedEl, target, 'top-bottom'); return;
+            }
+        }
+
+        // 2. Sprawdzenie przyciągania w POZIOMIE (Lewo / Prawo)
+        const overlapY = !(r1.bottom < r2.top + 15 || r1.top > r2.bottom - 15);
+        if (overlapY) {
+            if (Math.abs(r1.right - r2.left) < snapThreshold) {
+                performSnap(draggedEl, target, 'right-left'); return;
+            }
+            if (Math.abs(r1.left - r2.right) < snapThreshold) {
+                performSnap(draggedEl, target, 'left-right'); return;
             }
         }
     }
 }
+function performSnap(draggedEl, target, type) {
+    savePanelLayoutState(); // Zapis historii przed sklejeniem
+    
+    const groupId = target.dataset.group || 'group_' + Date.now();
+    target.dataset.group = groupId;
 
+    // Pobranie wszystkich elementów z grupy przeciąganego panelu
+    const draggedGroup = draggedEl.dataset.group;
+    const elementsToMove = draggedGroup ? Array.from(document.querySelectorAll(`[data-group="${draggedGroup}"]`)) : [draggedEl];
+    
+    // Przypisanie nowej grupy
+    elementsToMove.forEach(el => el.dataset.group = groupId);
+
+    const tTop = parseFloat(target.style.top) || target.offsetTop;
+    const tLeft = parseFloat(target.style.left) || target.offsetLeft;
+    const tWidth = target.offsetWidth;
+    const tHeight = target.offsetHeight;
+
+    let dx = 0, dy = 0;
+
+    // Logika dopasowania wymiarów i pozycji
+    if (type === 'bottom-top') { 
+        // Przeciągany jest NAD celem (Wyrównanie szerokości)
+        draggedEl.style.width = tWidth + 'px';
+        const newTop = tTop - draggedEl.offsetHeight;
+        dx = tLeft - (parseFloat(draggedEl.style.left) || draggedEl.offsetLeft);
+        dy = newTop - (parseFloat(draggedEl.style.top) || draggedEl.offsetTop);
+    } else if (type === 'top-bottom') { 
+        // Przeciągany jest POD celem (Wyrównanie szerokości)
+        draggedEl.style.width = tWidth + 'px';
+        const newTop = tTop + tHeight;
+        dx = tLeft - (parseFloat(draggedEl.style.left) || draggedEl.offsetLeft);
+        dy = newTop - (parseFloat(draggedEl.style.top) || draggedEl.offsetTop);
+    } else if (type === 'right-left') { 
+        // Przeciągany jest PO LEWEJ stronie celu (Wyrównanie wysokości)
+        draggedEl.style.height = tHeight + 'px';
+        const newLeft = tLeft - draggedEl.offsetWidth;
+        dx = newLeft - (parseFloat(draggedEl.style.left) || draggedEl.offsetLeft);
+        dy = tTop - (parseFloat(draggedEl.style.top) || draggedEl.offsetTop);
+    } else if (type === 'left-right') { 
+        // Przeciągany jest PO PRAWEJ stronie celu (Wyrównanie wysokości)
+        draggedEl.style.height = tHeight + 'px';
+        const newLeft = tLeft + tWidth;
+        dx = newLeft - (parseFloat(draggedEl.style.left) || draggedEl.offsetLeft);
+        dy = tTop - (parseFloat(draggedEl.style.top) || draggedEl.offsetTop);
+    }
+
+    // Aplikacja przesunięcia (dx, dy) do całej grupy przeciąganego elementu
+    elementsToMove.forEach(el => {
+        el.style.top = ((parseFloat(el.style.top) || el.offsetTop) + dy) + 'px';
+        el.style.left = ((parseFloat(el.style.left) || el.offsetLeft) + dx) + 'px';
+        enforceStrictBottomBound(el);
+    });
+}
 function mergePanels(panelA, panelB) {
     const parentPanel = document.getElementById('mapInfoPanel');
     
@@ -473,3 +591,47 @@ function setupQuadTapDelete(panel) {
     });
 }
 window.setupQuadTapDelete = setupQuadTapDelete;
+function savePanelLayoutState() {
+    const state = PANEL_IDS.map(id => {
+        const el = document.getElementById(id);
+        return el ? {
+            id: id,
+            top: el.style.top, left: el.style.left,
+            width: el.style.width, height: el.style.height,
+            group: el.dataset.group || '',
+            parent: el.parentNode.id,
+            display: el.style.display
+        } : null;
+    }).filter(s => s !== null);
+    
+    panelLayoutHistory.push(state);
+    if (panelLayoutHistory.length > 5) panelLayoutHistory.shift(); // Pamięta 5 ostatnich kroków
+}
+function undoPanelLayout() {
+    if (panelLayoutHistory.length === 0) {
+        showCustomAlert("Brak wcześniejszych kroków do cofnięcia.");
+        return;
+    }
+    const state = panelLayoutHistory.pop();
+    state.forEach(s => {
+        const el = document.getElementById(s.id);
+        if (el) {
+            el.style.top = s.top; el.style.left = s.left;
+            el.style.width = s.width; el.style.height = s.height;
+            if (s.group) el.dataset.group = s.group; else delete el.dataset.group;
+            if (el.parentNode.id !== s.parent) document.getElementById(s.parent).appendChild(el);
+            el.style.display = s.display;
+        }
+    });
+    updatePanelVisibility();
+}
+
+// Nasłuchiwacz Ctrl+Z dedykowany dla trybu przesuwania
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (isPanelDraggable && panelLayoutHistory.length > 0) {
+            e.preventDefault();
+            undoPanelLayout();
+        }
+    }
+});
