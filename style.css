@@ -575,11 +575,10 @@
     pointer-events: auto; 
     font-family: 'Segoe UI', sans-serif;
     max-width: 85%;
-    max-height: 70vh;
-    overflow-y: auto;
+    /* USUNIĘTO: max-height: 70vh; - to była fizyczna blokada rozciągania w dół! */
+    /* USUNIĘTO: overflow-y: auto; - to tworzyło paski przewijania zamiast pozwalać na kadrowanie */
     display: none; 
     box-sizing: border-box;
-    /* Usunięcie sztywnych ram i tła na rzecz dziedziczenia z globalnego panelu */
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
@@ -591,7 +590,8 @@
     padding: 12px 18px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
     box-sizing: border-box;
-    transition: all 0.2s ease-in-out;
+    /* NAPRAWA: Zmiana 'all' na konkretne właściwości. 'all' animowało zmianę rozmiaru, co walczyło z myszką! */
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s, color 0.2s;
 }
 /* Klasa aktywowana przy rozłączeniu paneli, wyłączająca tło i obramowanie kontenera nadrzędnego */
 .map-info-panel.split-active {
@@ -776,6 +776,8 @@ canvas#elevation {
     background: rgba(255, 255, 255, 0.92);
     z-index: 2600 !important;
     box-sizing: border-box;
+    /* Gwarancja braku blokady przy kadrowaniu rozłączonych paneli */
+    max-height: none !important; 
 }
 .dark-theme .detached-panel {
     border-color: rgba(255, 255, 255, 0.1) !important;
