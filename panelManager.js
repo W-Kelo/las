@@ -123,6 +123,17 @@ function updatePanelVisibility() {
         panel.classList.remove('split-active');
     }
 
+    // NAPRAWA: Jeśli tryb przesuwania jest aktywny, automatycznie odłączamy nowo pojawiające się panele
+    if (isPanelDraggable) {
+        PANEL_IDS.forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.style.display !== 'none' && el.parentNode.id === 'mapInfoPanel') {
+                detachPanel(id, 20);
+            }
+        });
+        enableDraggingForAll();
+    }
+
     const targets = [panel, ...document.querySelectorAll('.detached-panel')];
     targets.forEach(el => {
         if (el && el.style.display !== 'none') {
@@ -158,7 +169,16 @@ function togglePanelDrag() {
         const activeChildren = Array.from(parentPanel.children).filter(el => el.style.display !== 'none' && el.innerHTML.trim() !== '');
         const hasGroups = Array.from(document.querySelectorAll('.detached-panel')).some(el => el.dataset.group);
         
-        if (activeChildren.length > 1 || hasGroups) {
+        // NAPRAWA: Jeśli jest tylko jeden aktywny panel, przesuń go bezpośrednio bez pytania
+        if (activeChildren.length === 1 && !hasGroups) {
+            const single = activeChildren[0];
+            if (single.parentNode.id === 'mapInfoPanel') {
+                detachPanel(single.id, 20);
+            }
+            enableDraggingForAll();
+        } 
+        // Jeśli jest więcej paneli lub istnieją już grupy, zawsze pytaj przy uruchomieniu
+        else if (activeChildren.length > 1 || hasGroups) {
             openDragChoiceModal();
         } else {
             enableDraggingForAll();
@@ -223,8 +243,8 @@ function executeDragChoice(choice) {
             const baseWidth = activeChildren[0].offsetWidth;
             
             activeChildren.forEach(el => {
-                el.dataset.group = groupId;
                 detachPanel(el.id, currentTop);
+                el.dataset.group = groupId;
                 el.style.width = baseWidth + 'px'; 
                 currentTop += el.offsetHeight; 
             });
@@ -303,24 +323,46 @@ function makePanelDraggable(el) {
         savePanelLayoutState();
         isDragging = true;
 
-        // Przycisk "Rozłącz" pojawiający się podczas chwytania grupy
+        // NAPRAWA: Przycisk "Rozłącz" generowany w kontenerze głównym, by uniknąć ucinania go przez overflow
         if (el.dataset.group) {
             removeTempDetachBtn();
+            const wrapper = document.getElementById('exportWrapper');
             const btn = document.createElement('button');
             btn.id = 'tempDetachBtn';
             btn.innerHTML = '✂️ Rozłącz?';
             btn.className = 'danger';
-            btn.style.cssText = `position:absolute; top:-35px; left:50%; transform:translateX(-50%); z-index:99999; padding:6px 12px; font-size:12px; border-radius:20px; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); border: 2px solid white; font-weight:bold;`;
+            
+            // Pozycjonowanie przycisku idealnie nad przesuwanym panelem
+            const rect = el.getBoundingClientRect();
+            const wrapperRect = wrapper.getBoundingClientRect();
+            const btnTop = (rect.top - wrapperRect.top) - 35;
+            const btnLeft = (rect.left - wrapperRect.left) + (rect.width / 2) - 45;
+            
+            btn.style.cssText = `position:absolute; top:${btnTop}px; left:${btnLeft}px; z-index:99999; padding:6px 12px; font-size:12px; border-radius:20px; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); border: 2px solid white; font-weight:bold;`;
             
             btn.onmousedown = (ev) => {
                 ev.stopPropagation();
                 ev.preventDefault();
                 savePanelLayoutState();
+                
+                const oldGroup = el.dataset.group;
                 delete el.dataset.group;
                 btn.remove();
-                showCustomAlert("Panel odłączony! Przesuwasz go teraz niezależnie.");
+                
+                // Jeśli w starej grupie został tylko 1 panel, rozwiązujemy też jego grupę
+                if (oldGroup) {
+                    const remaining = document.querySelectorAll(`[data-group="${oldGroup}"]`);
+                    if (remaining.length === 1) {
+                        delete remaining[0].dataset.group;
+                    }
+                }
+                
+                // Wizualne delikatne odepchnięcie panelu, aby było widać odczepienie
+                el.style.top = (el.offsetTop - 25) + "px";
+                el.style.left = (el.offsetLeft - 25) + "px";
+                enforceStrictBottomBound(el);
             };
-            el.appendChild(btn);
+            wrapper.appendChild(btn);
         }
 
         pos3 = e.clientX;
@@ -349,6 +391,16 @@ function makePanelDraggable(el) {
             targetEl.style.left = newLeft + "px";
             enforceStrictBottomBound(targetEl);
         });
+
+        // Płynne podążanie przycisku "Rozłącz" nad panelem podczas ciągnięcia
+        const btn = document.getElementById('tempDetachBtn');
+        if (btn) {
+            const wrapper = document.getElementById('exportWrapper');
+            const rect = el.getBoundingClientRect();
+            const wrapperRect = wrapper.getBoundingClientRect();
+            btn.style.top = (rect.top - wrapperRect.top - 35) + "px";
+            btn.style.left = (rect.left - wrapperRect.left + (rect.width / 2) - 45) + "px";
+        }
     }
 
     function closeDragElement() {
