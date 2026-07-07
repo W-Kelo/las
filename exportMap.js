@@ -948,11 +948,17 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
     else if(conf.pos === 'left') { flexDir = 'row'; txtMargin = `margin-right: ${conf.dist}px;`; }
     else if(conf.pos === 'right') { flexDir = 'row-reverse'; txtMargin = `margin-left: ${conf.dist}px;`; }
 
+    // Naprawa błędu 11: Poprawne parsowanie stylów czcionki
+    const isBold = conf.fontStyle.includes('bold');
+    const isItalic = conf.fontStyle.includes('italic');
+    const isUnderline = conf.fontStyle.includes('underline');
+
     const numHtml = `<span style="
         font-size: ${conf.numSize}px; 
         color: ${conf.color}; 
-        font-style: ${conf.fontStyle.includes('italic') ? 'italic' : 'normal'};
-        font-weight: ${conf.fontStyle.includes('bold') ? 'bold' : 'normal'};
+        font-style: ${isItalic ? 'italic' : 'normal'};
+        font-weight: ${isBold ? 'bold' : 'normal'};
+        text-decoration: ${isUnderline ? 'underline' : 'none'};
         ${txtMargin}
         ${isOverlap ? `position: absolute; transform: translate(${conf.dist}px, ${conf.dist}px); z-index: 5;` : `z-index: 5;`}
     ">${number}</span>`;
@@ -976,6 +982,7 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
         </div>
     `;
 
+    // Naprawa błędu 12: Poprawne pozycjonowanie Flexbox
     return `
         <div style="width: 100%; flex-shrink: 0; display: flex; flex-direction: ${flexDir}; align-items: center; justify-content: center;">
             ${!isOverlap && (conf.pos === 'left' || conf.pos === 'top') ? numHtml : ''}
@@ -984,6 +991,7 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
         </div>
     `;
 }
+
 
 window.openNumberStyleModal = function() {
     const modal = document.getElementById('numberStyleModal');
