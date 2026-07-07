@@ -1,5 +1,5 @@
 /* =========================================================
-   exportStyle.js - ZSZYWANY SILNIK CANVA STUDIO (V5 - Poprawiony)
+   exportStyle.js - ZSZYWANY SILNIK CANVA STUDIO (V6 - Ostateczny)
 ========================================================= */
 
 let styleHistory = [];
@@ -57,7 +57,6 @@ function getCurrentStateObject() {
         }
     });
 
-    // Zapis stanu przycisków formatowania
     const buttons = {};
     document.querySelectorAll('.format-btn').forEach(btn => {
         if (btn.id) buttons[btn.id] = btn.classList.contains('active');
@@ -135,7 +134,6 @@ function restoreStateFromHistory(stateStr) {
 
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        // Sprawdzamy czy modal edytora jest otwarty
         const editor = document.getElementById('exportStyleModal');
         if (editor && editor.style.display === 'flex') {
             if (styleHistory.length > 1) {
@@ -255,6 +253,29 @@ function applyOpacityToGradient(gradientStr, opacityPercent) {
     return `linear-gradient(to right, ${colorStops})`;
 }
 
+// NAPRAWA BŁĘDU 15 i 16: Gradienty na tekście i kolor podkreślenia
+function applyTextGradient(element, colorValue) {
+    if (!element) return;
+    if (colorValue.startsWith('linear-gradient')) {
+        element.style.setProperty('background', colorValue, 'important');
+        element.style.setProperty('-webkit-background-clip', 'text', 'important');
+        element.style.setProperty('-webkit-text-fill-color', 'transparent', 'important');
+        element.style.setProperty('color', 'transparent', 'important');
+        
+        // Wyciągamy pierwszy kolor z gradientu, żeby podkreślenie nie było czarne
+        const match = colorValue.match(/(#[0-9A-F]{6}|rgba?\([^)]+\))/i);
+        if (match) {
+            element.style.setProperty('text-decoration-color', match[1], 'important');
+        }
+    } else {
+        element.style.setProperty('background', 'none', 'important');
+        element.style.setProperty('-webkit-background-clip', 'initial', 'important');
+        element.style.setProperty('-webkit-text-fill-color', 'initial', 'important');
+        element.style.setProperty('color', colorValue, 'important');
+        element.style.setProperty('text-decoration-color', colorValue, 'important');
+    }
+}
+
 function toggleStatsStyleModeUI() {
     const elMode = document.getElementById('statsStyleMode');
     if (!elMode) return;
@@ -291,6 +312,7 @@ function updatePresetButtonLabel() {
     }
 }
 
+// NAPRAWA BŁĘDU 11: Ostrzeżenie o kontraście dla Skali
 function checkGlobalContrastWarnings(tab) {
     const warningDiv = document.getElementById('globalContrastWarning');
     if (!warningDiv) return;
@@ -322,6 +344,10 @@ function checkGlobalContrastWarnings(tab) {
         bgHex = document.getElementById('expLegendBg').value;
         textHex = document.getElementById('expLegendText').value;
         opacity = parseInt(document.getElementById('expLegendOpacity').value);
+    } else if (tab === 'scale') {
+        bgHex = document.getElementById('scaleBgColor').value;
+        textHex = document.getElementById('scaleTextColor').value;
+        opacity = parseInt(document.getElementById('scaleBgOpacity').value);
     } else {
         warningDiv.style.display = 'none';
         return;
@@ -360,11 +386,12 @@ function applyLiveStyleDirect(tab) {
         const textColor = document.getElementById('expPanelText').value;
         const fontFam = document.getElementById('expPanelFontFamily').value;
 
+        // NAPRAWA BŁĘDU 3: Tło globalne działa poprawnie, nie jest blokowane przez CSS
         if (bgVal.startsWith('linear-gradient')) {
-            mainPanel.style.background = applyOpacityToGradient(bgVal, opacity);
+            mainPanel.style.setProperty('background', applyOpacityToGradient(bgVal, opacity), 'important');
         } else {
             const rgb = hexToRgb(bgVal);
-            mainPanel.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity/100})`;
+            mainPanel.style.setProperty('background', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity/100})`, 'important');
         }
 
         mainPanel.style.setProperty('border-radius', radius + 'px', 'important');
@@ -374,7 +401,7 @@ function applyLiveStyleDirect(tab) {
         mainPanel.querySelectorAll('*').forEach(child => {
             child.style.fontFamily = fontFam;
             if (!localTextStylesModified && child.id && (child.id === 'miTitle' || child.id === 'miDate' || child.id === 'miDesc')) {
-                child.style.setProperty('color', textColor, 'important');
+                applyTextGradient(child, textColor);
             }
         });
         
@@ -408,23 +435,23 @@ function applyLiveStyleDirect(tab) {
             [titleEl, dateEl, descEl].forEach(el => {
                 if (!el) return;
                 el.style.setProperty('font-size', size, 'important');
-                el.style.setProperty('color', color, 'important');
+                applyTextGradient(el, color);
                 applyFormatting(el, 'btnSameBold', 'btnSameItalic', 'btnSameUnderline');
             });
         } else {
             if (titleEl) {
                 titleEl.style.setProperty('font-size', document.getElementById('expTitleSize').value + 'px', 'important');
-                titleEl.style.setProperty('color', document.getElementById('expTitleColor').value, 'important');
+                applyTextGradient(titleEl, document.getElementById('expTitleColor').value);
                 applyFormatting(titleEl, 'btnTitleBold', 'btnTitleItalic', 'btnTitleUnderline');
             }
             if (dateEl) {
                 dateEl.style.setProperty('font-size', document.getElementById('expDateSize').value + 'px', 'important');
-                dateEl.style.setProperty('color', document.getElementById('expDateColor').value, 'important');
+                applyTextGradient(dateEl, document.getElementById('expDateColor').value);
                 applyFormatting(dateEl, 'btnDateBold', 'btnDateItalic', 'btnDateUnderline');
             }
             if (descEl) {
                 descEl.style.setProperty('font-size', document.getElementById('expDescSize').value + 'px', 'important');
-                descEl.style.setProperty('color', document.getElementById('expDescColor').value, 'important');
+                applyTextGradient(descEl, document.getElementById('expDescColor').value);
                 applyFormatting(descEl, 'btnDescBold', 'btnDescItalic', 'btnDescUnderline');
             }
         }
@@ -448,13 +475,13 @@ function applyLiveStyleDirect(tab) {
         }
 
         legendBlock.style.setProperty('border-radius', radius + 'px', 'important');
-        legendBlock.style.setProperty('color', textColor, 'important');
         
-        document.documentElement.style.setProperty('--legend-gap', gap);
+        // NAPRAWA BŁĘDU 10: Interlinia legendy
+        document.getElementById('exportWrapper').style.setProperty('--legend-gap', gap);
 
         legendBlock.querySelectorAll('.leg-text').forEach(t => {
-            t.style.setProperty('color', textColor, 'important');
             t.style.setProperty('font-size', size, 'important');
+            applyTextGradient(t, textColor);
             applyFormatting(t, 'btnLegendBold', 'btnLegendItalic', 'btnLegendUnderline');
         });
     }
@@ -462,7 +489,6 @@ function applyLiveStyleDirect(tab) {
         const statsBlock = document.getElementById('miStats');
         if (!statsBlock) return;
 
-        // Tło kontenera statystyk
         const contBgVal = document.getElementById('expStatsContainerBg').value;
         const contOpacity = parseInt(document.getElementById('expStatsContainerOpacity').value);
         const contRadius = document.getElementById('expStatsContainerRadius').value;
@@ -486,11 +512,9 @@ function applyLiveStyleDirect(tab) {
             const size = document.getElementById('expStatsSize').value + 'px';
 
             items.forEach(item => {
-                if (bgVal.startsWith('linear-gradient')) item.style.background = bgVal;
-                else item.style.background = bgVal;
-                
-                item.style.setProperty('color', textColor, 'important');
+                item.style.background = bgVal;
                 item.style.setProperty('font-size', size, 'important');
+                applyTextGradient(item, textColor);
                 applyFormatting(item, 'btnStatsBold', 'btnStatsItalic', 'btnStatsUnderline');
             });
         } else {
@@ -499,8 +523,8 @@ function applyLiveStyleDirect(tab) {
                 const distText = document.getElementById('expDistText').value;
                 const distSize = document.getElementById('expDistSize').value + 'px';
                 items[0].style.background = distBg;
-                items[0].style.setProperty('color', distText, 'important');
                 items[0].style.setProperty('font-size', distSize, 'important');
+                applyTextGradient(items[0], distText);
                 applyFormatting(items[0], 'btnDistBold', 'btnDistItalic', 'btnDistUnderline');
             }
             if (items.length > 1) {
@@ -508,8 +532,8 @@ function applyLiveStyleDirect(tab) {
                 const timeText = document.getElementById('expTimeText').value;
                 const timeSize = document.getElementById('expTimeSize').value + 'px';
                 items[1].style.background = timeBg;
-                items[1].style.setProperty('color', timeText, 'important');
                 items[1].style.setProperty('font-size', timeSize, 'important');
+                applyTextGradient(items[1], timeText);
                 applyFormatting(items[1], 'btnTimeBold', 'btnTimeItalic', 'btnTimeUnderline');
             }
         }
@@ -527,18 +551,6 @@ document.getElementById('expPanelText').addEventListener('change', () => {
         });
     }
 });
-
-function toggleTextStyleModeUI() {
-    const elMode = document.getElementById('textStyleMode');
-    if (!elMode) return;
-    const isUniform = elMode.value === 'same';
-    
-    document.getElementById('text-style-same-wrap').style.display = isUniform ? 'block' : 'none';
-    document.getElementById('text-style-diff-wrap').style.display = isUniform ? 'none' : 'flex';
-    
-    applyLiveStyleDirect('texts');
-}
-window.toggleTextStyleModeUI = toggleTextStyleModeUI;
 
 function loadExportStyleToUI() {
     const mainPanel = document.getElementById('mapInfoPanel');
@@ -577,8 +589,34 @@ function applyLineStyle() {
 }
 window.applyLineStyle = applyLineStyle;
 
+// NAPRAWA BŁĘDU 7: Synchronizacja przycisków formatowania (Globalne -> Lokalne)
 function toggleFormatBtn(btn, action) {
     btn.classList.toggle('active');
+    const isActive = btn.classList.contains('active');
+
+    // Jeśli kliknięto przycisk w panelu głównym (Globalny), synchronizuj resztę
+    if (action.startsWith('panel-')) {
+        const type = action.split('-')[1]; // bold, italic, underline
+        const targets = [
+            `btnSame${type.charAt(0).toUpperCase() + type.slice(1)}`,
+            `btnTitle${type.charAt(0).toUpperCase() + type.slice(1)}`,
+            `btnDate${type.charAt(0).toUpperCase() + type.slice(1)}`,
+            `btnDesc${type.charAt(0).toUpperCase() + type.slice(1)}`,
+            `btnStats${type.charAt(0).toUpperCase() + type.slice(1)}`,
+            `btnDist${type.charAt(0).toUpperCase() + type.slice(1)}`,
+            `btnTime${type.charAt(0).toUpperCase() + type.slice(1)}`,
+            `btnLegend${type.charAt(0).toUpperCase() + type.slice(1)}`
+        ];
+
+        targets.forEach(id => {
+            const targetBtn = document.getElementById(id);
+            if (targetBtn) {
+                if (isActive) targetBtn.classList.add('active');
+                else targetBtn.classList.remove('active');
+            }
+        });
+    }
+
     saveStateToHistory();
     applyLiveStyleDirect(getCurrentActiveTab());
 }
