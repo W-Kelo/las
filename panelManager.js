@@ -287,41 +287,42 @@ function selectTransformTarget(e) {
     overlay.id = 'activeTransformOverlay';
     overlay.className = 'transform-overlay';
     
-    // SCENARIUSZE 1, 2, 9, 11: Blokada kadrowania w pionie, jeśli nie ma legendy
-    // SCENARIUSZE 4, 6, 7, 8, 10, 12: Zezwolenie na kadrowanie w pionie, jeśli jest legenda
+    // SCENARIUSZE: Wykrywanie, czy panel zawiera legendę (tylko wtedy pozwalamy na zmianę wysokości)
     let allowHeightCrop = false;
-    
+    let legendEl = null;
+
     if (transformTargetEl.id === 'miLegendContainer') {
-        // Zawsze pozwalamy na wysokość, jeśli to odłączona legenda
+        // Scenariusz 4, 10, 12: Sama legenda (odłączona)
+        legendEl = transformTargetEl;
         allowHeightCrop = true;
     } else if (transformTargetEl.id === 'mapInfoPanel') {
-        // Jeśli to scalony panel, sprawdzamy czy legenda jest w nim widoczna
-        const legend = document.getElementById('miLegendContainer');
-        if (legend && legend.style.display !== 'none' && legend.parentNode === transformTargetEl) {
+        // Scenariusz 6, 7, 8: Panel połączony - szukamy w nim legendy
+        const tempLegend = document.getElementById('miLegendContainer');
+        if (tempLegend && tempLegend.style.display !== 'none' && tempLegend.parentNode === transformTargetEl) {
+            legendEl = tempLegend;
             allowHeightCrop = true;
         }
     }
+    // Scenariusze 1, 2, 9, 11: Brak legendy -> allowHeightCrop pozostaje false (brak dolnego uchwytu)
 
-    // Dynamiczne generowanie uchwytów
     overlay.innerHTML = `
         <div class="transform-handle th-e" data-action="crop-e" title="Zmień szerokość"></div>
-        ${allowHeightCrop ? `<div class="transform-handle th-s" data-action="crop-s" title="Zmień wysokość"></div>` : ''}
+        ${allowHeightCrop ? `<div class="transform-handle th-s" data-action="crop-s" title="Zmień wysokość legendy"></div>` : ''}
         <div class="transform-handle th-se-scale" data-action="scale" title="Skaluj proporcjonalnie">⤡</div>
     `;
     
     transformTargetEl.appendChild(overlay);
-    
-    // Zabezpieczenie zawartości przed wylaniem się podczas kadrowania
     transformTargetEl.style.overflow = 'hidden';
     
-    setupTransformHandles(overlay);
+    setupTransformHandles(overlay, allowHeightCrop, legendEl);
 }
 
-function setupTransformHandles(overlay) {
+function setupTransformHandles(overlay, allowHeightCrop, legendEl) {
     const handles = overlay.querySelectorAll('.transform-handle');
     
     handles.forEach(handle => {
         let startX, startY, startW, startH, startScale;
+        let startLegendH = 0;
         let maxVisualHeight;
 
         handle.onmousedown = (e) => {
@@ -333,9 +334,13 @@ function setupTransformHandles(overlay) {
             startH = transformTargetEl.offsetHeight;
             startScale = parseFloat(transformTargetEl.dataset.scale || "1");
             
-            // Obliczamy ile fizycznie miejsca na ekranie zostało do dolnej krawędzi (z marginesem 20px)
+            if (allowHeightCrop && legendEl) {
+                startLegendH = legendEl.offsetHeight;
+            }
+            
+            // Obliczamy dostępną przestrzeń od góry panelu do dołu ekranu (z bezpiecznym marginesem 40px)
             const rect = transformTargetEl.getBoundingClientRect();
-            maxVisualHeight = window.innerHeight - rect.top - 20;
+            maxVisualHeight = window.innerHeight - rect.top - 40;
             
             document.onmousemove = (ev) => doTransform(ev, handle.dataset.action);
             document.onmouseup = stopTransform;
@@ -345,39 +350,49 @@ function setupTransformHandles(overlay) {
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
             
-            // Korekta ruchu myszy o aktualną skalę (żeby kursor nie "uciekał" od ramki)
+            // Korekta ruchu myszy o aktualną skalę
             const realDx = dx / startScale;
             const realDy = dy / startScale;
             
             if (action === 'crop-e') {
-                // Kadrowanie w poziomie (Szerokość)
-                transformTargetEl.style.width = Math.max(100, startW + realDx) + 'px';
+                // Kadrowanie w poziomie (Szerokość) - działa dla każdego panelu
+                transformTargetEl.style.width = Math.max(150, startW + realDx) + 'px';
             } 
             else if (action === 'crop-s') {
-                // Kadrowanie w pionie (Wysokość)
-                let newH = Math.max(50, startH + realDy);
+                // Kadrowanie w pionie (Wysokość) - działa TYLKO na legendę
+                if (!allowHeightCrop || !legendEl) return;
+
+                let newLegendH = Math.max(50, startLegendH + realDy);
                 
-                // SCENARIUSZ 4, 6, 7, 8: Zwiększanie limitu przy pomniejszonej skali
-                // Jeśli skala to np. 0.5, to maxCssHeight będzie 2x większe niż fizyczne miejsce na ekranie
-                const maxCssHeight = maxVisualHeight / startScale;
+                // Zabezpieczenie przed wyjściem poza ekran
+                const otherBlocksHeight = startH - startLegendH; // Wysokość tytułu i statystyk
+                const maxAllowedLegendH = (maxVisualHeight / startScale) - otherBlocksHeight;
                 
-                if (newH > maxCssHeight) {
-                    newH = maxCssHeight;
+                if (newLegendH > maxAllowedLegendH) {
+                    newLegendH = maxAllowedLegendH;
                 }
                 
-                transformTargetEl.style.height = newH + 'px';
+                legendEl.style.height = newLegendH + 'px';
+                legendEl.style.overflowY = 'auto'; // Wymuszenie scrollbara wewnątrz legendy
             } 
             else if (action === 'scale') {
                 // Skalowanie proporcjonalne
                 const scaleFactor = 1 + (dx / 200); 
                 const newScale = Math.max(0.4, Math.min(startScale * scaleFactor, 3.0));
                 
-                // SCENARIUSZ 5: Automatyczne kadrowanie zmniejszające przy powiększaniu
-                // Jeśli po powiększeniu panel wyszedłby poza ekran, ucinamy jego wysokość w CSS
-                const currentCssHeight = transformTargetEl.offsetHeight;
-                if (currentCssHeight * newScale > maxVisualHeight) {
-                    const adjustedCssHeight = maxVisualHeight / newScale;
-                    transformTargetEl.style.height = adjustedCssHeight + 'px';
+                // SCENARIUSZ 5: Automatyczne skracanie legendy przy powiększaniu
+                if (allowHeightCrop && legendEl) {
+                    const requiredTotalH = maxVisualHeight / newScale;
+                    const otherBlocksHeight = startH - startLegendH;
+                    let adjustedLegendH = startLegendH; // Domyślnie wracamy do wysokości z początku kliknięcia
+
+                    // Jeśli po przeskalowaniu panel wychodzi poza ekran, ucinamy legendę
+                    if (startH * newScale > maxVisualHeight) {
+                        adjustedLegendH = Math.max(50, requiredTotalH - otherBlocksHeight);
+                    }
+                    
+                    legendEl.style.height = adjustedLegendH + 'px';
+                    legendEl.style.overflowY = 'auto';
                 }
                 
                 transformTargetEl.style.transformOrigin = "top left";
