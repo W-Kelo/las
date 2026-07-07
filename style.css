@@ -590,8 +590,9 @@
     pointer-events: auto; 
     font-family: 'Segoe UI', sans-serif;
     max-width: 85%;
-    max-height: 95vh; /* Zabezpieczenie przed wyjściem poza ekran */
-    overflow-y: auto; /* Przywrócenie przewijania dla długich treści */
+    /* NAPRAWA: 100% wysokości kontenera mapy minus 20px z góry i 40px (ok. 1cm) bezpiecznego marginesu na dole */
+    max-height: calc(100% - 60px); 
+    overflow-y: auto;
     display: none; 
     box-sizing: border-box;
     background: transparent !important;
@@ -791,8 +792,9 @@ canvas#elevation {
     background: rgba(255, 255, 255, 0.92);
     z-index: 2600 !important;
     box-sizing: border-box;
-    max-height: 95vh; /* Zabezpieczenie przed wyjściem poza ekran dla rozłączonych paneli */
-    overflow-y: auto; /* Przywrócenie przewijania */
+    /* NAPRAWA: Zabezpieczenie przed wyjściem rozłączonych paneli poza dolną krawędź modalu */
+    max-height: calc(100% - 60px); 
+    overflow-y: auto; 
 }
 .dark-theme .detached-panel {
     border-color: rgba(255, 255, 255, 0.1) !important;
