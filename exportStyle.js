@@ -295,7 +295,7 @@ function loadGlobalPresetFromLocalStorage() {
         restoreStateFromHistory(JSON.parse(saved));
         updatePresetButtonLabel();
     }
-
+}
 function updatePresetButtonLabel() {
     const btn = document.getElementById('btnSavePresetLocal');
     if (btn && localStorage.getItem('gpx_global_map_preset')) {
