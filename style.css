@@ -10,7 +10,22 @@
             --modal-bg-color: 30, 41, 59; /* RGB dla panelu dark */
         }
         .light {
-            --bg: #f8fafc;
+            --bg: #f8fafc;.map-info-panel {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 2500 !important;
+    pointer-events: auto; 
+    font-family: 'Segoe UI', sans-serif;
+    max-width: 85%;
+    max-height: 95vh; /* Zabezpieczenie przed wyjściem poza ekran */
+    overflow-y: auto; /* Przywrócenie przewijania dla długich treści */
+    display: none; 
+    box-sizing: border-box;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
             --panel: #ffffff;
             --text: #0f172a;
             --accent: #16a34a;
@@ -575,8 +590,8 @@
     pointer-events: auto; 
     font-family: 'Segoe UI', sans-serif;
     max-width: 85%;
-    /* USUNIĘTO: max-height: 70vh; - to była fizyczna blokada rozciągania w dół! */
-    /* USUNIĘTO: overflow-y: auto; - to tworzyło paski przewijania zamiast pozwalać na kadrowanie */
+    max-height: 95vh; /* Zabezpieczenie przed wyjściem poza ekran */
+    overflow-y: auto; /* Przywrócenie przewijania dla długich treści */
     display: none; 
     box-sizing: border-box;
     background: transparent !important;
@@ -776,8 +791,8 @@ canvas#elevation {
     background: rgba(255, 255, 255, 0.92);
     z-index: 2600 !important;
     box-sizing: border-box;
-    /* Gwarancja braku blokady przy kadrowaniu rozłączonych paneli */
-    max-height: none !important; 
+    max-height: 95vh; /* Zabezpieczenie przed wyjściem poza ekran dla rozłączonych paneli */
+    overflow-y: auto; /* Przywrócenie przewijania */
 }
 .dark-theme .detached-panel {
     border-color: rgba(255, 255, 255, 0.1) !important;
