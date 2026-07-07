@@ -1,5 +1,5 @@
 /* =========================================================
-   scale.js - MODUŁ SKALOWANIA (WERSJA OCZYSZCZONA)
+   scale.js - MODUŁ SKALOWANIA (V2 - Poprawiony)
 ========================================================= */
 
 let isCustomScaleVisible = false;
@@ -7,7 +7,6 @@ let scaleFrameId = null;
 let customScaleEl = null;
 let scaleUpdateTimeout = null;
 let scaleUpdateFrameId = null;
-
 
 window.toggleScale = function() {
     if (!exportMap) return;
@@ -97,12 +96,8 @@ function updateScaleValues() {
             const pxPerCm = 37.8;
             const metersPerCm = (1 / pxPerMeter) * pxPerCm;
 
-            let finalValue = metersPerCm;
-            const isRoundingEnabled = document.getElementById('scaleRoundingToggle') ? document.getElementById('scaleRoundingToggle').checked : false;
-
-            if (isRoundingEnabled) {
-                finalValue = getHumanFriendlyRounding(metersPerCm);
-            }
+            // Zawsze zaokrąglamy (Błąd 18)
+            let finalValue = getHumanFriendlyRounding(metersPerCm);
 
             let displayStr = finalValue >= 1000 ? `${(finalValue/1000).toFixed(1)} km` : `${Math.round(finalValue)} m`;
             textEl.innerText = `1 cm ≈ ${displayStr}`;
@@ -131,7 +126,6 @@ function updateScaleValues() {
     }
 }
 
-
 window.updateCustomScaleAppearance = function() {
     if (!customScaleEl) return;
 
@@ -145,18 +139,7 @@ window.updateCustomScaleAppearance = function() {
         const fontStyle = document.getElementById('scaleFontStyle').value;
 
         const opacityVal = parseInt(opacity);
-        let ratio = 21; 
         
-        if (opacityVal > 0) {
-            ratio = checkContrastRatio(hexBg, textColor, opacityVal);
-        }
-
-        // Aktualizacja komunikatów w obu modalach (Błąd 1)
-        const warningDivs = document.querySelectorAll('#scaleContrastWarning');
-        warningDivs.forEach(div => {
-            div.style.display = (opacityVal > 0 && ratio < 3.0) ? 'block' : 'none';
-        });
-
         // Zastosowanie tła
         if (hexBg.startsWith('linear-gradient')) {
             customScaleEl.style.background = hexBg;
@@ -167,15 +150,34 @@ window.updateCustomScaleAppearance = function() {
             customScaleEl.style.background = `rgba(${r}, ${g}, ${b}, ${opacityVal/100})`;
         }
 
-        customScaleEl.style.color = textColor;
+        // NAPRAWA BŁĘDU 12: Obsługa gradientu dla tekstu i paska skali
+        const textEl = document.getElementById('scaleText');
+        const barEl = document.getElementById('scaleBar');
+
+        if (textColor.startsWith('linear-gradient')) {
+            if (textEl) {
+                textEl.style.background = textColor;
+                textEl.style.webkitBackgroundClip = 'text';
+                textEl.style.webkitTextFillColor = 'transparent';
+            }
+            if (barEl) {
+                barEl.style.background = textColor;
+            }
+        } else {
+            if (textEl) {
+                textEl.style.background = 'none';
+                textEl.style.webkitBackgroundClip = 'initial';
+                textEl.style.webkitTextFillColor = 'initial';
+                textEl.style.color = textColor;
+            }
+            if (barEl) {
+                barEl.style.background = textColor;
+            }
+        }
+
         customScaleEl.style.fontSize = fontSize + 'px';
         customScaleEl.style.fontStyle = fontStyle.includes('italic') ? 'italic' : 'normal';
         customScaleEl.style.fontWeight = fontStyle.includes('bold') ? 'bold' : 'normal';
-        
-        const barEl = document.getElementById('scaleBar');
-        if (barEl) {
-            barEl.style.backgroundColor = textColor;
-        }
         
         if (!hexBg.startsWith('linear-gradient')) {
             const r = parseInt(hexBg.slice(1, 3), 16) || 255;
@@ -189,7 +191,7 @@ window.updateCustomScaleAppearance = function() {
         updateScaleValues();
     });
 };
-// Automatyczna synchronizacja zmian w tle
+
 document.addEventListener('DOMContentLoaded', () => {
     const bgInput = document.getElementById('scaleBgColor');
     if (bgInput) {
