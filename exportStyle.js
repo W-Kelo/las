@@ -1,15 +1,12 @@
 /* =========================================================
-   exportStyle.js - ZSZYWANY SILNIK CANVA STUDIO (V4 - Ctrl+Z & Global Hierarchy)
+   exportStyle.js - ZSZYWANY SILNIK CANVA STUDIO (V5 - Poprawiony)
 ========================================================= */
 
-// Historia stanów dla Undo (Ctrl+Z)
 let styleHistory = [];
 let isUndoAction = false;
-let localTextStylesModified = false; // Flaga chroniąca lokalne ustawienia tekstu
-let initialEditorStateBackup = null; // Kopia zapasowa do funkcji Anuluj
+let localTextStylesModified = false; 
+let initialEditorStateBackup = null; 
 
-
-// Synchronizacja wartości pomiędzy zduplikowanymi ID w oknach
 document.addEventListener('input', (e) => {
     if (e.target && e.target.id) {
         const id = e.target.id;
@@ -19,16 +16,12 @@ document.addEventListener('input', (e) => {
         if (syncTargets.length > 1) {
             syncTargets.forEach(target => {
                 if (target !== e.target) {
-                    if (target.type === 'checkbox') {
-                        target.checked = value;
-                    } else {
-                        target.value = value;
-                    }
+                    if (target.type === 'checkbox') target.checked = value;
+                    else target.value = value;
                 }
             });
         }
         
-        // Dynamiczne odświeżanie kafelków podglądu i HEX
         if (e.target.type === 'hidden' || e.target.type === 'color' || id.includes('Color') || id.includes('Text') || id.includes('Bg')) {
             const previews = document.querySelectorAll(`[id="${id}Preview"]`);
             previews.forEach(p => p.style.background = e.target.value);
@@ -40,7 +33,7 @@ document.addEventListener('input', (e) => {
         }
     }
 });
-// Pobiera kompletny obiekt stanu wyglądu i pozycji paneli
+
 function getCurrentStateObject() {
     const panelsData = {};
     ['mapInfoPanel', 'miMetaBlock', 'miStats', 'miLegendContainer'].forEach(id => {
@@ -64,43 +57,18 @@ function getCurrentStateObject() {
         }
     });
 
-    return { panels: panelsData, inputs: inputs };
+    // Zapis stanu przycisków formatowania
+    const buttons = {};
+    document.querySelectorAll('.format-btn').forEach(btn => {
+        if (btn.id) buttons[btn.id] = btn.classList.contains('active');
+    });
+
+    return { panels: panelsData, inputs: inputs, buttons: buttons };
 }
 
 function saveStateToHistory() {
     if (isUndoAction) return;
-    const state = {
-        panelBg: document.getElementById('expPanelBg').value,
-        panelOpacity: document.getElementById('expPanelOpacity').value,
-        panelRadius: document.getElementById('expPanelRadius').value,
-        panelShadow: document.getElementById('chkExpPanelShadow').checked,
-        panelText: document.getElementById('expPanelText').value,
-        panelFont: document.getElementById('expPanelFontFamily').value,
-        
-        textBg: document.getElementById('expTextBg').value,
-        textOpacity: document.getElementById('expTextOpacity').value,
-        textRadius: document.getElementById('expTextRadius').value,
-        textMode: document.getElementById('textStyleMode').value,
-        
-        sameColor: document.getElementById('expSameTextColor').value,
-        sameSize: document.getElementById('expSameSize').value,
-        
-        titleColor: document.getElementById('expTitleColor').value,
-        titleSize: document.getElementById('expTitleSize').value,
-        dateColor: document.getElementById('expDateColor').value,
-        dateSize: document.getElementById('expDateSize').value,
-        descColor: document.getElementById('expDescColor').value,
-        descSize: document.getElementById('expDescSize').value,
-
-        lineColor: document.getElementById('expStyleColor').value,
-        lineWeight: document.getElementById('expStyleWeight').value,
-
-        scaleBg: document.getElementById('scaleBgColor').value,
-        scaleText: document.getElementById('scaleTextColor').value,
-        
-        copyBg: document.getElementById('copyBgColor').value,
-        copyText: document.getElementById('copyTextColor').value
-    };
+    const state = getCurrentStateObject();
     styleHistory.push(JSON.stringify(state));
     if(styleHistory.length > 30) styleHistory.shift(); 
 }
@@ -111,53 +79,70 @@ function restoreStateFromHistory(stateStr) {
     
     const state = typeof stateStr === 'string' ? JSON.parse(stateStr) : stateStr;
     
-    // 1. Odtworzenie stanu fizycznych paneli na mapie
     const parentPanel = document.getElementById('mapInfoPanel');
-    if (parentPanel) {
+    if (parentPanel && state.panels && state.panels['mapInfoPanel']) {
         parentPanel.className = 'map-info-panel';
         if (state.panels['mapInfoPanel'].isDetached) parentPanel.classList.add('split-active');
     }
 
-    Object.entries(state.panels).forEach(([id, data]) => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.style.top = data.top;
-            el.style.left = data.left;
-            el.style.width = data.width;
-            el.style.height = data.height;
-            el.style.scale = data.scale;
-            el.dataset.scale = data.scale;
-            
-            if (data.isDetached && id !== 'mapInfoPanel') {
-                el.classList.add('detached-panel');
-                document.getElementById('exportWrapper').appendChild(el);
-            } else if (id !== 'mapInfoPanel') {
-                el.classList.remove('detached-panel');
-                parentPanel.appendChild(el);
+    if (state.panels) {
+        Object.entries(state.panels).forEach(([id, data]) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.style.top = data.top;
+                el.style.left = data.left;
+                el.style.width = data.width;
+                el.style.height = data.height;
+                el.style.scale = data.scale;
+                el.dataset.scale = data.scale;
+                
+                if (data.isDetached && id !== 'mapInfoPanel') {
+                    el.classList.add('detached-panel');
+                    document.getElementById('exportWrapper').appendChild(el);
+                } else if (id !== 'mapInfoPanel') {
+                    el.classList.remove('detached-panel');
+                    if (parentPanel) parentPanel.appendChild(el);
+                }
             }
-        }
-    });
+        });
+    }
 
-    // 2. Przywrócenie wartości kontrolek w edytorze
-    Object.entries(state.inputs).forEach(([id, val]) => {
-        const input = document.getElementById(id);
-        if (input) {
-            if (input.type === 'checkbox') input.checked = val;
-            else input.value = val;
-            
-            const event = new Event('input', { bubbles: true });
-            input.dispatchEvent(event);
-        }
-    });
+    if (state.inputs) {
+        Object.entries(state.inputs).forEach(([id, val]) => {
+            const input = document.getElementById(id);
+            if (input) {
+                if (input.type === 'checkbox') input.checked = val;
+                else input.value = val;
+                const event = new Event('input', { bubbles: true });
+                input.dispatchEvent(event);
+            }
+        });
+    }
 
+    if (state.buttons) {
+        Object.entries(state.buttons).forEach(([id, isActive]) => {
+            const btn = document.getElementById(id);
+            if (btn) {
+                if (isActive) btn.classList.add('active');
+                else btn.classList.remove('active');
+            }
+        });
+    }
+
+    applyLiveStyleDirect(getCurrentActiveTab());
     isUndoAction = false;
 }
+
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        if (styleHistory.length > 1) {
-            e.preventDefault();
-            styleHistory.pop(); 
-            restoreStateFromHistory(styleHistory[styleHistory.length - 1]);
+        // Sprawdzamy czy modal edytora jest otwarty
+        const editor = document.getElementById('exportStyleModal');
+        if (editor && editor.style.display === 'flex') {
+            if (styleHistory.length > 1) {
+                e.preventDefault();
+                styleHistory.pop(); 
+                restoreStateFromHistory(styleHistory[styleHistory.length - 1]);
+            }
         }
     }
 });
@@ -167,6 +152,9 @@ function updateColorPreviews() {
         ['expPanelBg', 'panelBg'], ['expPanelText', 'panelText'], 
         ['expTextBg', 'blockBg'], ['expSameTextColor', 'sameText'],
         ['expTitleColor', 'titleText'], ['expDateColor', 'dateText'], ['expDescColor', 'descText'],
+        ['expStatsContainerBg', 'statsContainerBg'], ['expStatsBg', 'statsBg'], ['expStatsText', 'statsText'],
+        ['expDistBg', 'distBg'], ['expDistText', 'distText'], ['expTimeBg', 'timeBg'], ['expTimeText', 'timeText'],
+        ['expLegendBg', 'legendBg'], ['expLegendText', 'legendText'],
         ['expStyleColor', 'exportLine'], ['scaleBgColor', 'scaleBg'], ['scaleTextColor', 'scaleText'],
         ['copyBgColor', 'copyBg'], ['copyTextColor', 'copyText']
     ];
@@ -193,14 +181,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const activePane = document.getElementById(`tab-content-${tabId}`);
             if (activePane) activePane.style.display = 'flex';
+            
+            checkGlobalContrastWarnings(tabId);
         });
     });
-   // Podpięcie w locie wczytywania presetu przy starcie
-document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-        loadGlobalPresetFromLocalStorage();
-    }, 500);
-});
+
+    setTimeout(() => { loadGlobalPresetFromLocalStorage(); }, 500);
 
     const inputsToTrack = document.querySelectorAll('.advanced-editor-modal input, .advanced-editor-modal select');
     inputsToTrack.forEach(el => {
@@ -232,9 +218,7 @@ function getCurrentActiveTab() {
 }
 
 function openExportStyleModal() {
-    // 1. Zbudowanie kopii zapasowej przed wejściem (umożliwia bezpieczne Anuluj)
     initialEditorStateBackup = getCurrentStateObject();
-    
     loadExportStyleToUI();
     const modal = document.getElementById('exportStyleModal');
     modal.style.display = 'flex';
@@ -242,23 +226,23 @@ function openExportStyleModal() {
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
 
-    // Pokazywanie lub ukrywanie zintegrowanego stylu numerków legendy (Błąd 5)
     const numberingSection = document.getElementById('legendNumberingSection');
     if (numberingSection) {
         const hasNumberedItems = Object.keys(exportLegendItems).length > 0;
         numberingSection.style.display = hasNumberedItems ? 'flex' : 'none';
     }
+    checkGlobalContrastWarnings(getCurrentActiveTab());
 }
 window.openExportStyleModal = openExportStyleModal;
+
 function closeCustomExportStyleModal() {
-    // Przywrócenie stanu sprzed wejścia do edytora (Błąd 11)
     if (initialEditorStateBackup) {
         restoreStateFromHistory(initialEditorStateBackup);
     }
     closeModal('exportStyleModal');
 }
 window.closeCustomExportStyleModal = closeCustomExportStyleModal;
-// Sprytny generator przezroczystości
+
 function applyOpacityToGradient(gradientStr, opacityPercent) {
     const opacity = opacityPercent / 100;
     if (typeof parseCssGradient !== 'function') return gradientStr;
@@ -270,7 +254,7 @@ function applyOpacityToGradient(gradientStr, opacityPercent) {
     }).join(', ');
     return `linear-gradient(to right, ${colorStops})`;
 }
-// Przełącznik stylów jednakowych i różnych dla statystyk
+
 function toggleStatsStyleModeUI() {
     const elMode = document.getElementById('statsStyleMode');
     if (!elMode) return;
@@ -282,13 +266,15 @@ function toggleStatsStyleModeUI() {
     applyLiveStyleDirect('stats');
 }
 window.toggleStatsStyleModeUI = toggleStatsStyleModeUI;
+
 function saveGlobalPresetToLocalStorage() {
     const stateObj = getCurrentStateObject();
     localStorage.setItem('gpx_global_map_preset', JSON.stringify(stateObj));
-    showCustomAlert("Styl i układ paneli zostały pomyślnie zapisane jako domyślne. Będą wczytywane automatycznie.");
+    showCustomAlert("Styl i układ paneli zostały pomyślnie zapisane jako domyślne.");
     updatePresetButtonLabel();
 }
 window.saveGlobalPresetToLocalStorage = saveGlobalPresetToLocalStorage;
+
 function loadGlobalPresetFromLocalStorage() {
     const saved = localStorage.getItem('gpx_global_map_preset');
     if (saved) {
@@ -296,6 +282,8 @@ function loadGlobalPresetFromLocalStorage() {
         updatePresetButtonLabel();
     }
 }
+window.loadGlobalPresetFromLocalStorage = loadGlobalPresetFromLocalStorage;
+
 function updatePresetButtonLabel() {
     const btn = document.getElementById('btnSavePresetLocal');
     if (btn && localStorage.getItem('gpx_global_map_preset')) {
@@ -303,13 +291,64 @@ function updatePresetButtonLabel() {
     }
 }
 
-window.loadGlobalPresetFromLocalStorage = loadGlobalPresetFromLocalStorage;
-// Globalny analizator kontrastu
-function checkGlobalContrastWarnings() {
-    // ... analogicznie do poprzedniej funkcji ostrzegającej ...
+function checkGlobalContrastWarnings(tab) {
+    const warningDiv = document.getElementById('globalContrastWarning');
+    if (!warningDiv) return;
+    
+    let bgHex = '#ffffff', textHex = '#000000', opacity = 100;
+    
+    if (tab === 'panel') {
+        bgHex = document.getElementById('expPanelBg').value;
+        textHex = document.getElementById('expPanelText').value;
+        opacity = parseInt(document.getElementById('expPanelOpacity').value);
+    } else if (tab === 'texts') {
+        bgHex = document.getElementById('expTextBg').value;
+        opacity = parseInt(document.getElementById('expTextOpacity').value);
+        if (document.getElementById('textStyleMode').value === 'same') {
+            textHex = document.getElementById('expSameTextColor').value;
+        } else {
+            textHex = document.getElementById('expDescColor').value; 
+        }
+    } else if (tab === 'stats') {
+        opacity = parseInt(document.getElementById('expStatsContainerOpacity').value);
+        if (document.getElementById('statsStyleMode').value === 'same') {
+            bgHex = document.getElementById('expStatsBg').value;
+            textHex = document.getElementById('expStatsText').value;
+        } else {
+            bgHex = document.getElementById('expDistBg').value;
+            textHex = document.getElementById('expDistText').value;
+        }
+    } else if (tab === 'legend') {
+        bgHex = document.getElementById('expLegendBg').value;
+        textHex = document.getElementById('expLegendText').value;
+        opacity = parseInt(document.getElementById('expLegendOpacity').value);
+    } else {
+        warningDiv.style.display = 'none';
+        return;
+    }
+
+    if (opacity > 0 && typeof checkContrastRatio === 'function') {
+        const ratio = checkContrastRatio(bgHex, textHex, opacity);
+        warningDiv.style.display = ratio < 3.0 ? 'block' : 'none';
+    } else {
+        warningDiv.style.display = 'none';
+    }
+}
+
+function applyFormatting(element, boldBtnId, italicBtnId, underlineBtnId) {
+    if (!element) return;
+    const isBold = document.getElementById(boldBtnId) && document.getElementById(boldBtnId).classList.contains('active');
+    const isItalic = document.getElementById(italicBtnId) && document.getElementById(italicBtnId).classList.contains('active');
+    const isUnderline = document.getElementById(underlineBtnId) && document.getElementById(underlineBtnId).classList.contains('active');
+    
+    element.style.setProperty('font-weight', isBold ? 'bold' : 'normal', 'important');
+    element.style.setProperty('font-style', isItalic ? 'italic' : 'normal', 'important');
+    element.style.setProperty('text-decoration', isUnderline ? 'underline' : 'none', 'important');
 }
 
 function applyLiveStyleDirect(tab) {
+    checkGlobalContrastWarnings(tab);
+
     if (tab === 'panel') {
         const mainPanel = document.getElementById('mapInfoPanel');
         if (!mainPanel) return;
@@ -330,12 +369,7 @@ function applyLiveStyleDirect(tab) {
 
         mainPanel.style.setProperty('border-radius', radius + 'px', 'important');
         mainPanel.style.setProperty('font-family', fontFam, 'important');
-        
-        if (shadow) {
-            mainPanel.style.setProperty('box-shadow', '0 4px 15px rgba(0,0,0,0.3)', 'important');
-        } else {
-            mainPanel.style.setProperty('box-shadow', 'none', 'important');
-        }
+        mainPanel.style.setProperty('box-shadow', shadow ? '0 4px 15px rgba(0,0,0,0.3)' : 'none', 'important');
 
         mainPanel.querySelectorAll('*').forEach(child => {
             child.style.fontFamily = fontFam;
@@ -343,6 +377,8 @@ function applyLiveStyleDirect(tab) {
                 child.style.setProperty('color', textColor, 'important');
             }
         });
+        
+        applyFormatting(mainPanel, 'btnExpPanelBold', 'btnExpPanelItalic', 'btnExpPanelUnderline');
     } 
     else if (tab === 'texts') {
         localTextStylesModified = true; 
@@ -373,19 +409,23 @@ function applyLiveStyleDirect(tab) {
                 if (!el) return;
                 el.style.setProperty('font-size', size, 'important');
                 el.style.setProperty('color', color, 'important');
+                applyFormatting(el, 'btnSameBold', 'btnSameItalic', 'btnSameUnderline');
             });
         } else {
             if (titleEl) {
                 titleEl.style.setProperty('font-size', document.getElementById('expTitleSize').value + 'px', 'important');
                 titleEl.style.setProperty('color', document.getElementById('expTitleColor').value, 'important');
+                applyFormatting(titleEl, 'btnTitleBold', 'btnTitleItalic', 'btnTitleUnderline');
             }
             if (dateEl) {
                 dateEl.style.setProperty('font-size', document.getElementById('expDateSize').value + 'px', 'important');
                 dateEl.style.setProperty('color', document.getElementById('expDateColor').value, 'important');
+                applyFormatting(dateEl, 'btnDateBold', 'btnDateItalic', 'btnDateUnderline');
             }
             if (descEl) {
                 descEl.style.setProperty('font-size', document.getElementById('expDescSize').value + 'px', 'important');
                 descEl.style.setProperty('color', document.getElementById('expDescColor').value, 'important');
+                applyFormatting(descEl, 'btnDescBold', 'btnDescItalic', 'btnDescUnderline');
             }
         }
     }
@@ -398,8 +438,7 @@ function applyLiveStyleDirect(tab) {
         const radius = document.getElementById('expLegendRadius').value;
         const textColor = document.getElementById('expLegendText').value;
         const size = document.getElementById('expLegendSize').value + 'px';
-        const isBold = document.getElementById('btnLegendBold').classList.contains('active');
-        const isItalic = document.getElementById('btnLegendItalic').classList.contains('active');
+        const gap = document.getElementById('expLegendGap').value + 'px';
 
         if (bgVal.startsWith('linear-gradient')) {
             legendBlock.style.background = applyOpacityToGradient(bgVal, opacity);
@@ -410,45 +449,74 @@ function applyLiveStyleDirect(tab) {
 
         legendBlock.style.setProperty('border-radius', radius + 'px', 'important');
         legendBlock.style.setProperty('color', textColor, 'important');
-        legendBlock.style.setProperty('font-size', size, 'important');
-        legendBlock.style.setProperty('font-weight', isBold ? 'bold' : 'normal', 'important');
-        legendBlock.style.setProperty('font-style', isItalic ? 'italic' : 'normal', 'important');
+        
+        document.documentElement.style.setProperty('--legend-gap', gap);
 
         legendBlock.querySelectorAll('.leg-text').forEach(t => {
             t.style.setProperty('color', textColor, 'important');
             t.style.setProperty('font-size', size, 'important');
+            applyFormatting(t, 'btnLegendBold', 'btnLegendItalic', 'btnLegendUnderline');
         });
     }
     else if (tab === 'stats') {
         const statsBlock = document.getElementById('miStats');
         if (!statsBlock) return;
 
-        const bgVal = document.getElementById('expStatsBg').value;
-        const opacity = parseInt(document.getElementById('expStatsOpacity').value);
-        const radius = document.getElementById('expStatsRadius').value;
-        const textColor = document.getElementById('expStatsText').value;
-        const size = document.getElementById('expStatsSize').value + 'px';
-        const isBold = document.getElementById('btnStatsBold').classList.contains('active');
-        const isItalic = document.getElementById('btnStatsItalic').classList.contains('active');
+        // Tło kontenera statystyk
+        const contBgVal = document.getElementById('expStatsContainerBg').value;
+        const contOpacity = parseInt(document.getElementById('expStatsContainerOpacity').value);
+        const contRadius = document.getElementById('expStatsContainerRadius').value;
+        const contPad = document.getElementById('expStatsContainerPadding').value;
 
-        statsBlock.querySelectorAll('.mi-stat-item').forEach(item => {
-            if (bgVal.startsWith('linear-gradient')) {
-                item.style.background = applyOpacityToGradient(bgVal, opacity);
-            } else {
-                const rgb = hexToRgb(bgVal);
-                item.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity/100})`;
+        if (contBgVal.startsWith('linear-gradient')) {
+            statsBlock.style.background = applyOpacityToGradient(contBgVal, contOpacity);
+        } else {
+            const rgb = hexToRgb(contBgVal);
+            statsBlock.style.background = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${contOpacity/100})`;
+        }
+        statsBlock.style.setProperty('border-radius', contRadius + 'px', 'important');
+        statsBlock.style.setProperty('padding', contPad + 'px', 'important');
+
+        const isUniform = document.getElementById('statsStyleMode').value === 'same';
+        const items = statsBlock.querySelectorAll('.mi-stat-item');
+
+        if (isUniform) {
+            const bgVal = document.getElementById('expStatsBg').value;
+            const textColor = document.getElementById('expStatsText').value;
+            const size = document.getElementById('expStatsSize').value + 'px';
+
+            items.forEach(item => {
+                if (bgVal.startsWith('linear-gradient')) item.style.background = bgVal;
+                else item.style.background = bgVal;
+                
+                item.style.setProperty('color', textColor, 'important');
+                item.style.setProperty('font-size', size, 'important');
+                applyFormatting(item, 'btnStatsBold', 'btnStatsItalic', 'btnStatsUnderline');
+            });
+        } else {
+            if (items.length > 0) {
+                const distBg = document.getElementById('expDistBg').value;
+                const distText = document.getElementById('expDistText').value;
+                const distSize = document.getElementById('expDistSize').value + 'px';
+                items[0].style.background = distBg;
+                items[0].style.setProperty('color', distText, 'important');
+                items[0].style.setProperty('font-size', distSize, 'important');
+                applyFormatting(items[0], 'btnDistBold', 'btnDistItalic', 'btnDistUnderline');
             }
-            item.style.setProperty('border-radius', radius + 'px', 'important');
-            item.style.setProperty('color', textColor, 'important');
-            item.style.setProperty('font-size', size, 'important');
-            item.style.setProperty('font-weight', isBold ? 'bold' : 'normal', 'important');
-            item.style.setProperty('font-style', isItalic ? 'italic' : 'normal', 'important');
-        });
+            if (items.length > 1) {
+                const timeBg = document.getElementById('expTimeBg').value;
+                const timeText = document.getElementById('expTimeText').value;
+                const timeSize = document.getElementById('expTimeSize').value + 'px';
+                items[1].style.background = timeBg;
+                items[1].style.setProperty('color', timeText, 'important');
+                items[1].style.setProperty('font-size', timeSize, 'important');
+                applyFormatting(items[1], 'btnTimeBold', 'btnTimeItalic', 'btnTimeUnderline');
+            }
+        }
     }
 }
 window.applyLiveStyleDirect = applyLiveStyleDirect;
 
-// Eleganckie zapytanie o nadpisanie styli lokalnych przy zmianie globalnej
 document.getElementById('expPanelText').addEventListener('change', () => {
     if (localTextStylesModified) {
         showCustomConfirm("Uwaga: Edytowałeś już osobne kolory dla tytułu lub opisu. Czy chcesz zresetować je i nadpisać globalnym kolorem?", () => {
@@ -472,7 +540,6 @@ function toggleTextStyleModeUI() {
 }
 window.toggleTextStyleModeUI = toggleTextStyleModeUI;
 
-// Wczytywanie bieżących stylów do edytora wyglądu przy otwarciu
 function loadExportStyleToUI() {
     const mainPanel = document.getElementById('mapInfoPanel');
     if (mainPanel) {
@@ -480,12 +547,15 @@ function loadExportStyleToUI() {
     }
     updateColorPreviews();
     toggleTextStyleModeUI();
+    toggleStatsStyleModeUI();
 }
 
 function applyExportStyle() {
     applyLineStyle();
     applyLiveStyleDirect('panel');
     applyLiveStyleDirect('texts');
+    applyLiveStyleDirect('stats');
+    applyLiveStyleDirect('legend');
     if (typeof updateCustomScaleAppearance === 'function') updateCustomScaleAppearance();
     if (typeof updateCustomCopyrightAppearance === 'function') updateCustomCopyrightAppearance();
     if (typeof applyNumberStylePreview === 'function') applyNumberStylePreview();
@@ -510,7 +580,6 @@ window.applyLineStyle = applyLineStyle;
 function toggleFormatBtn(btn, action) {
     btn.classList.toggle('active');
     saveStateToHistory();
-    // Tutaj aplikujemy logikę formatowania tekstu w locie (bold, italic) 
     applyLiveStyleDirect(getCurrentActiveTab());
 }
 window.toggleFormatBtn = toggleFormatBtn;
