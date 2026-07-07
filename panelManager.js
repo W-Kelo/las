@@ -1,5 +1,5 @@
 /* =========================================================
-   panelManager.js - MODUŁ TRANSFORMCJI I GEOMETRII PANELÓW (V2)
+   panelManager.js - MODUŁ TRANSFORMCJI I GEOMETRII PANELÓW
 ========================================================= */
 
 let isPanelDraggable = false;
@@ -49,7 +49,6 @@ function updatePanelVisibility() {
 }
 window.updatePanelVisibility = updatePanelVisibility;
 
-// --- NAPRAWA BŁĘDÓW 14 i 15: INTELIGENTNE PRZESUWANIE I MAGNETYCZNE PUZZLE ---
 function togglePanelDrag() {
     isPanelDraggable = !isPanelDraggable;
     const btn = document.getElementById('btnDragPanel');
@@ -59,11 +58,9 @@ function togglePanelDrag() {
     const detachedPanels = document.querySelectorAll('.detached-panel');
     
     if (isPanelDraggable) {
-        // Sprawdzamy ile jest aktywnych bloków wewnątrz głównego panelu
         const activeChildren = Array.from(parentPanel.children).filter(el => el.style.display !== 'none' && el.innerHTML.trim() !== '');
         
         if (detachedPanels.length === 0 && activeChildren.length > 1) {
-            // Własny modal wyboru zamiast Yes/No
             openDragChoiceModal();
             return;
         } else {
@@ -106,10 +103,12 @@ function executeDragChoice(choice) {
     closeModal('dragChoiceModal');
     if (choice === 'separate') {
         const childrenToDetach = ['miMetaBlock', 'miStats', 'miLegendContainer'];
+        let currentTop = 20;
         childrenToDetach.forEach(id => {
             const el = document.getElementById(id);
             if (el && el.style.display !== 'none' && el.innerHTML.trim() !== '') {
-                detachPanel(id);
+                detachPanel(id, currentTop);
+                currentTop += el.offsetHeight + 15; // Układanie jeden pod drugim, żeby się nie nakładały
             }
         });
     }
@@ -137,7 +136,7 @@ function disableDraggingForAll() {
     });
 }
 
-function detachPanel(targetId) {
+function detachPanel(targetId, forceTop = null) {
     const el = document.getElementById(targetId);
     const wrapper = document.getElementById('exportWrapper');
     if (!el || !wrapper) return;
@@ -148,10 +147,16 @@ function detachPanel(targetId) {
     wrapper.appendChild(el);
     el.classList.add('detached-panel');
     el.style.setProperty('position', 'absolute', 'important');
-    el.style.top = (rect.top - wrapperRect.top) + 'px'; 
-    el.style.left = (rect.left - wrapperRect.left) + 'px';
-    el.style.width = Math.max(rect.width, 150) + 'px';
     
+    if (forceTop !== null) {
+        el.style.top = forceTop + 'px';
+        el.style.left = '20px';
+    } else {
+        el.style.top = (rect.top - wrapperRect.top) + 'px'; 
+        el.style.left = (rect.left - wrapperRect.left) + 'px';
+    }
+    
+    el.style.width = Math.max(rect.width, 150) + 'px';
     updatePanelVisibility();
 }
 
@@ -166,7 +171,7 @@ function makePanelDraggable(el) {
         pos4 = e.clientY;
         document.onmouseup = closeDragElement;
         document.onmousemove = elementDrag;
-        el.style.zIndex = 3000; // Przeniesienie na wierzch podczas przeciągania
+        el.style.zIndex = 3000; 
     }
 
     function elementDrag(e) {
@@ -183,17 +188,14 @@ function makePanelDraggable(el) {
         document.onmouseup = null;
         document.onmousemove = null;
         el.style.zIndex = '';
-        
-        // Sprawdzenie magnetycznego przyciągania po upuszczeniu
         if (el.classList.contains('detached-panel')) {
             checkMagneticSnap(el);
         }
     }
 }
 
-// System magnetycznego przyciągania (Puzzle)
 function checkMagneticSnap(draggedEl) {
-    const snapThreshold = 30; // Piksele
+    const snapThreshold = 30; 
     const parentPanel = document.getElementById('mapInfoPanel');
     const allPanels = [parentPanel, ...document.querySelectorAll('.detached-panel')].filter(p => p && p !== draggedEl && p.style.display !== 'none');
     
@@ -201,18 +203,15 @@ function checkMagneticSnap(draggedEl) {
 
     for (let target of allPanels) {
         const rect2 = target.getBoundingClientRect();
-        
-        // Sprawdzenie czy nakładają się w osi X (czy są w tej samej kolumnie)
         const overlapX = !(rect1.right < rect2.left || rect1.left > rect2.right);
         
         if (overlapX) {
-            // Sprawdzenie odległości w osi Y (Góra/Dół)
             const distBottomToTop = Math.abs(rect1.bottom - rect2.top);
             const distTopToBottom = Math.abs(rect1.top - rect2.bottom);
 
             if (distBottomToTop < snapThreshold || distTopToBottom < snapThreshold) {
                 mergePanels(draggedEl, target);
-                return; // Zakończ po pierwszym udanym połączeniu
+                return; 
             }
         }
     }
@@ -221,7 +220,6 @@ function checkMagneticSnap(draggedEl) {
 function mergePanels(panelA, panelB) {
     const parentPanel = document.getElementById('mapInfoPanel');
     
-    // Jeśli jeden z nich to już parentPanel, dodajemy do niego. W przeciwnym razie przenosimy oba do parentPanel.
     if (panelA !== parentPanel) {
         panelA.classList.remove('detached-panel', 'draggable');
         panelA.style.position = '';
@@ -240,16 +238,11 @@ function mergePanels(panelA, panelB) {
         panelB.onmousedown = null;
         parentPanel.appendChild(panelB);
     }
-
-    // Sortowanie dzieci w parentPanel na podstawie ich naturalnej kolejności (lub Y jeśli chcemy być precyzyjni)
-    // Dla uproszczenia, zostawiamy w kolejności dodania, ale można zaimplementować sortowanie po Y.
     
     updatePanelVisibility();
-    if (isPanelDraggable) enableDraggingForAll(); // Odświeżenie eventów
+    if (isPanelDraggable) enableDraggingForAll(); 
 }
 
-
-// --- NAPRAWA BŁĘDU 16: PROFESJONALNE KADROWANIE I SKALOWANIE (CANVA STYLE) ---
 function openTransformModal() {
     isTransformMode = !isTransformMode;
     const btn = document.getElementById('btnTransformPanel');
@@ -290,12 +283,10 @@ function selectTransformTarget(e) {
     
     transformTargetEl = e.currentTarget;
     
-    // Tworzenie profesjonalnego overlay'a
     const overlay = document.createElement('div');
     overlay.id = 'activeTransformOverlay';
     overlay.className = 'transform-overlay';
     
-    // Uchwyty kadrowania (Crop)
     overlay.innerHTML = `
         <div class="transform-handle th-e" data-action="crop-e"></div>
         <div class="transform-handle th-s" data-action="crop-s"></div>
@@ -303,8 +294,6 @@ function selectTransformTarget(e) {
     `;
     
     transformTargetEl.appendChild(overlay);
-    
-    // Zabezpieczenie zawartości przed wylaniem się podczas kadrowania
     transformTargetEl.style.overflow = 'hidden';
     
     setupTransformHandles(overlay);
@@ -313,7 +302,7 @@ function selectTransformTarget(e) {
 function removeTransformOverlay() {
     const existing = document.getElementById('activeTransformOverlay');
     if (existing) {
-        existing.parentNode.style.overflow = ''; // Przywrócenie
+        existing.parentNode.style.overflow = ''; 
         existing.remove();
     }
     transformTargetEl = null;
@@ -345,10 +334,10 @@ function setupTransformHandles(overlay) {
             if (action === 'crop-e') {
                 transformTargetEl.style.width = Math.max(100, startW + dx) + 'px';
             } else if (action === 'crop-s') {
+                // NAPRAWA BŁĘDU 2: Brak sztucznej blokady wysokości, panel może rosnąć w dół w nieskończoność
                 transformTargetEl.style.height = Math.max(50, startH + dy) + 'px';
             } else if (action === 'scale') {
-                // Skalowanie proporcjonalne na podstawie ruchu myszy (jak w Photoshopie)
-                const scaleFactor = 1 + (dx / 200); // Czułość
+                const scaleFactor = 1 + (dx / 200); 
                 const newScale = Math.max(0.4, Math.min(startScale * scaleFactor, 3.0));
                 
                 transformTargetEl.style.transformOrigin = "top left";
@@ -364,7 +353,6 @@ function setupTransformHandles(overlay) {
     });
 }
 
-// Czyszczenie starych funkcji (QuadTapDelete zostaje)
 function setupQuadTapDelete(panel) {
     let tapCount = 0;
     let tapTimer = null;
