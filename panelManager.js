@@ -287,25 +287,34 @@ function selectTransformTarget(e) {
     overlay.id = 'activeTransformOverlay';
     overlay.className = 'transform-overlay';
     
+    // SCENARIUSZE 1, 2, 9, 11: Blokada kadrowania w pionie, jeśli nie ma legendy
+    // SCENARIUSZE 4, 6, 7, 8, 10, 12: Zezwolenie na kadrowanie w pionie, jeśli jest legenda
+    let allowHeightCrop = false;
+    
+    if (transformTargetEl.id === 'miLegendContainer') {
+        // Zawsze pozwalamy na wysokość, jeśli to odłączona legenda
+        allowHeightCrop = true;
+    } else if (transformTargetEl.id === 'mapInfoPanel') {
+        // Jeśli to scalony panel, sprawdzamy czy legenda jest w nim widoczna
+        const legend = document.getElementById('miLegendContainer');
+        if (legend && legend.style.display !== 'none' && legend.parentNode === transformTargetEl) {
+            allowHeightCrop = true;
+        }
+    }
+
+    // Dynamiczne generowanie uchwytów
     overlay.innerHTML = `
-        <div class="transform-handle th-e" data-action="crop-e"></div>
-        <div class="transform-handle th-s" data-action="crop-s"></div>
+        <div class="transform-handle th-e" data-action="crop-e" title="Zmień szerokość"></div>
+        ${allowHeightCrop ? `<div class="transform-handle th-s" data-action="crop-s" title="Zmień wysokość"></div>` : ''}
         <div class="transform-handle th-se-scale" data-action="scale" title="Skaluj proporcjonalnie">⤡</div>
     `;
     
     transformTargetEl.appendChild(overlay);
+    
+    // Zabezpieczenie zawartości przed wylaniem się podczas kadrowania
     transformTargetEl.style.overflow = 'hidden';
     
     setupTransformHandles(overlay);
-}
-
-function removeTransformOverlay() {
-    const existing = document.getElementById('activeTransformOverlay');
-    if (existing) {
-        existing.parentNode.style.overflow = ''; 
-        existing.remove();
-    }
-    transformTargetEl = null;
 }
 
 function setupTransformHandles(overlay) {
@@ -313,6 +322,7 @@ function setupTransformHandles(overlay) {
     
     handles.forEach(handle => {
         let startX, startY, startW, startH, startScale;
+        let maxVisualHeight;
 
         handle.onmousedown = (e) => {
             e.preventDefault();
@@ -323,6 +333,10 @@ function setupTransformHandles(overlay) {
             startH = transformTargetEl.offsetHeight;
             startScale = parseFloat(transformTargetEl.dataset.scale || "1");
             
+            // Obliczamy ile fizycznie miejsca na ekranie zostało do dolnej krawędzi (z marginesem 20px)
+            const rect = transformTargetEl.getBoundingClientRect();
+            maxVisualHeight = window.innerHeight - rect.top - 20;
+            
             document.onmousemove = (ev) => doTransform(ev, handle.dataset.action);
             document.onmouseup = stopTransform;
         };
@@ -331,14 +345,40 @@ function setupTransformHandles(overlay) {
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
             
+            // Korekta ruchu myszy o aktualną skalę (żeby kursor nie "uciekał" od ramki)
+            const realDx = dx / startScale;
+            const realDy = dy / startScale;
+            
             if (action === 'crop-e') {
-                transformTargetEl.style.width = Math.max(100, startW + dx) + 'px';
-            } else if (action === 'crop-s') {
-                // NAPRAWA BŁĘDU 2: Brak sztucznej blokady wysokości, panel może rosnąć w dół w nieskończoność
-                transformTargetEl.style.height = Math.max(50, startH + dy) + 'px';
-            } else if (action === 'scale') {
+                // Kadrowanie w poziomie (Szerokość)
+                transformTargetEl.style.width = Math.max(100, startW + realDx) + 'px';
+            } 
+            else if (action === 'crop-s') {
+                // Kadrowanie w pionie (Wysokość)
+                let newH = Math.max(50, startH + realDy);
+                
+                // SCENARIUSZ 4, 6, 7, 8: Zwiększanie limitu przy pomniejszonej skali
+                // Jeśli skala to np. 0.5, to maxCssHeight będzie 2x większe niż fizyczne miejsce na ekranie
+                const maxCssHeight = maxVisualHeight / startScale;
+                
+                if (newH > maxCssHeight) {
+                    newH = maxCssHeight;
+                }
+                
+                transformTargetEl.style.height = newH + 'px';
+            } 
+            else if (action === 'scale') {
+                // Skalowanie proporcjonalne
                 const scaleFactor = 1 + (dx / 200); 
                 const newScale = Math.max(0.4, Math.min(startScale * scaleFactor, 3.0));
+                
+                // SCENARIUSZ 5: Automatyczne kadrowanie zmniejszające przy powiększaniu
+                // Jeśli po powiększeniu panel wyszedłby poza ekran, ucinamy jego wysokość w CSS
+                const currentCssHeight = transformTargetEl.offsetHeight;
+                if (currentCssHeight * newScale > maxVisualHeight) {
+                    const adjustedCssHeight = maxVisualHeight / newScale;
+                    transformTargetEl.style.height = adjustedCssHeight + 'px';
+                }
                 
                 transformTargetEl.style.transformOrigin = "top left";
                 transformTargetEl.style.scale = newScale;
@@ -352,6 +392,17 @@ function setupTransformHandles(overlay) {
         }
     });
 }
+
+function removeTransformOverlay() {
+    const existing = document.getElementById('activeTransformOverlay');
+    if (existing) {
+        existing.parentNode.style.overflow = ''; 
+        existing.remove();
+    }
+    transformTargetEl = null;
+}
+
+
 
 function setupQuadTapDelete(panel) {
     let tapCount = 0;
