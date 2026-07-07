@@ -186,7 +186,7 @@ function disableDraggingForAll() {
             el.onmousedown = null;
         }
     });
-}}
+}
 
 function detachPanel(targetId, forceTop = null) {
     const el = document.getElementById(targetId);
