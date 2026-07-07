@@ -1,8 +1,7 @@
 /* =========================================================
-   exportMap.js - MODUŁ OBSŁUGI EKSPORTU MAPY I LEGENDY (V1)
+   exportMap.js - MODUŁ OBSŁUGI EKSPORTU MAPY I LEGENDY (V3 - Ostateczny)
 ========================================================= */
 
-// Globalne zmienne modułu eksportu
 let exportMap = null;
 let exportPolyline = null;
 let scaleControl = null;
@@ -29,13 +28,12 @@ let exportPointSettings = {
 };
 
 let legendNumberStyles = {
-    global: { color: '#0f172a', bg: 'rgba(241, 245, 249, 0.95)', dotSize: 24, numSize: 12, dist: 4, pos: 'right', fontStyle: 'bold' },
+    global: { color: '#ffffff', bg: '#3b82f6', dotSize: 35, numSize: 12, dist: 2, pos: 'right', fontStyle: 'bold' },
     perEmoji: {}
 };
 let currentEditEmoji = 'global';
 let userReorderedLegend = false;
 
-/* --- POZYCJONOWANIE I INICJALIZACJA OKNA --- */
 function centerExportModal() {
     const modal = document.getElementById('mapExportModal');
     if (!modal || modal.style.display !== 'flex') return;
@@ -108,7 +106,6 @@ function initExportMap() {
 
     setTimeout(() => exportMap.invalidateSize(true), 400);
 
-    // Dynamiczne stawianie punktów legendy po kliknięciu na mapę eksportu
     exportMap.on('click', function(e) {
         if(!exportLegendMode) return;
         editingLegendId = null; 
@@ -163,7 +160,6 @@ window.exportZoomIn = exportZoomIn;
 function exportZoomOut() { if (exportMap) exportMap.zoomOut(); }
 window.exportZoomOut = exportZoomOut;
 
-/* --- MOJE ATRAKCJE I FILTROWANIE PICKERA --- */
 function openExportDataModal() {
     const modal = document.getElementById('exportDataModal');
     if (modal) {
@@ -204,7 +200,6 @@ function openExportPicker(type) {
 }
 window.openExportPicker = openExportPicker;
 
-/* --- BEZBŁĘDNE FILTROWANIE PUNKTÓW DLA KAŻDEGO Z MODALI OSOBNO (POPRZEDNIE NAPRAWIONE) --- */
 function filterPickerList() {
     const queryEl = document.getElementById('pickerSearch');
     const query = queryEl ? queryEl.value.toLowerCase() : '';
@@ -216,7 +211,6 @@ function filterPickerList() {
     let filteredPois = [];
 
     if (tempPickerType === 'gas') {
-        // WIDOK BAZY GS: Filtrujemy i wyświetlamy WYŁĄCZNIE punkty z bazy zewnętrznej GS (bez etykiet [Baza GS])
         const gsPois = typeof globalCustomPois !== 'undefined' ? globalCustomPois.filter(p => p.isGas) : [];
         filteredPois = gsPois.filter(p => p.name.toLowerCase().includes(query));
         
@@ -236,7 +230,6 @@ function filterPickerList() {
             container.appendChild(div);
         });
     } else {
-        // WIDOK MOICH PUNKTÓW: Filtrujemy i wyświetlamy WYŁĄCZNIE postoje oraz własne zapisane punkty (całkowity brak punktów GS)
         const formattedStops = (typeof routeStops !== 'undefined' ? routeStops : []).map(s => ({
             id: s.id, latlng: s.latlng, name: s.name, 
             icon: s.icon, isUserSaved: true, isStop: true
@@ -252,7 +245,6 @@ function filterPickerList() {
 
         filteredPois.forEach(poi => {
             const isChecked = exportPointSettings.user.ids.has(poi.id);
-            // Tworzenie estetycznego opisu pochodzenia punktu dla Moich Punktów
             const badgeText = poi.isStop ? '[Postój trasy]' : (poi.storage === 'local' ? '[Mój Punkt - Na stałe]' : '[Mój Punkt - Sesja]');
             
             const div = document.createElement('div');
@@ -312,7 +304,6 @@ function savePickerSelection() {
 }
 window.savePickerSelection = savePickerSelection;
 
-/* --- STATYSTYKI --- */
 function openStatsModal() {
     const modal = document.getElementById('statsSelectionModal');
     if (modal) {
@@ -374,7 +365,6 @@ function saveExportMeta() {
 }
 window.saveExportMeta = saveExportMeta;
 
-/* --- LEGENDA I REDEEM --- */
 function toggleLegendMode() {
     exportLegendMode = !exportLegendMode;
     const btn = document.getElementById('btnLegend');
@@ -771,7 +761,6 @@ function executeRefreshRoute() {
 }
 window.executeRefreshRoute = executeRefreshRoute;
 
-/* --- SYSTEM NUMERACJI I SAKNOWANIA LEGENDY --- */
 function f5_scanLegend() {
     try {
         const list = document.getElementById('exportLegendList');
@@ -926,36 +915,51 @@ function executeNumberingAndSorting(shouldSort) {
         }
 
         const conf = legendNumberStyles.perEmoji[item.baseEmoji] || legendNumberStyles.global;
-        const htmlNode = generateStyledNumberHtml(item.baseEmoji, myNum, conf);
         
-        item.emoji = htmlNode;
+        // NAPRAWA BŁĘDU 14: W legendzie numerki zawsze są po lewej lub prawej
+        const htmlNodeMap = generateStyledNumberHtml(item.baseEmoji, myNum, conf, false);
+        const htmlNodeLegend = generateStyledNumberHtml(item.baseEmoji, myNum, conf, true);
+        
+        item.emoji = htmlNodeMap;
         item.isNumbered = isDup; 
-        item.marker.setIcon(L.divIcon({ html: htmlNode, className: 'poi-icon' }));
+        item.marker.setIcon(L.divIcon({ html: htmlNodeMap, className: 'poi-icon' }));
 
         const iconSpan = li.querySelector('.leg-icon');
-        if (iconSpan) iconSpan.innerHTML = htmlNode;
+        if (iconSpan) iconSpan.innerHTML = htmlNodeLegend;
     });
 }
 
-function generateStyledNumberHtml(baseEmoji, number, conf) {
+// NAPRAWA BŁĘDÓW 8, 9, 13, 14: Poprawione generowanie HTML dla numerków
+function generateStyledNumberHtml(baseEmoji, number, conf, isForLegendList = false) {
     let flexDir = 'row';
     let txtMargin = '';
     let isOverlap = false;
 
-    if(conf.pos === 'overlap') { isOverlap = true; }
-    else if(conf.pos === 'top') { flexDir = 'column'; txtMargin = `margin-bottom: ${conf.dist}px;`; }
-    else if(conf.pos === 'bottom') { flexDir = 'column-reverse'; txtMargin = `margin-top: ${conf.dist}px;`; }
-    else if(conf.pos === 'left') { flexDir = 'row'; txtMargin = `margin-right: ${conf.dist}px;`; }
-    else if(conf.pos === 'right') { flexDir = 'row-reverse'; txtMargin = `margin-left: ${conf.dist}px;`; }
+    // Wymuszenie lewo/prawo dla listy w legendzie
+    let position = conf.pos;
+    if (isForLegendList && (position === 'top' || position === 'bottom' || position === 'overlap')) {
+        position = 'right';
+    }
 
-    // Naprawa błędu 11: Poprawne parsowanie stylów czcionki
+    if(position === 'overlap') { isOverlap = true; }
+    else if(position === 'top') { flexDir = 'column'; txtMargin = `margin-bottom: ${conf.dist}px;`; }
+    else if(position === 'bottom') { flexDir = 'column-reverse'; txtMargin = `margin-top: ${conf.dist}px;`; }
+    else if(position === 'left') { flexDir = 'row'; txtMargin = `margin-right: ${conf.dist}px;`; }
+    else if(position === 'right') { flexDir = 'row-reverse'; txtMargin = `margin-left: ${conf.dist}px;`; }
+
     const isBold = conf.fontStyle.includes('bold');
     const isItalic = conf.fontStyle.includes('italic');
     const isUnderline = conf.fontStyle.includes('underline');
 
+    // Obsługa gradientu dla tekstu
+    let textStyle = `color: ${conf.color};`;
+    if (conf.color.startsWith('linear-gradient')) {
+        textStyle = `background: ${conf.color}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; color: transparent;`;
+    }
+
     const numHtml = `<span style="
         font-size: ${conf.numSize}px; 
-        color: ${conf.color}; 
+        ${textStyle}
         font-style: ${isItalic ? 'italic' : 'normal'};
         font-weight: ${isBold ? 'bold' : 'normal'};
         text-decoration: ${isUnderline ? 'underline' : 'none'};
@@ -976,22 +980,21 @@ function generateStyledNumberHtml(baseEmoji, number, conf) {
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
             border: 1px solid rgba(0,0,0,0.1);
             z-index: 1;
+            flex-shrink: 0;
         ">
             <span style="font-size: ${conf.dotSize * 0.6}px; z-index: 2;">${baseEmoji}</span>
             ${isOverlap ? numHtml : ''}
         </div>
     `;
 
-    // Naprawa błędu 12: Poprawne pozycjonowanie Flexbox
     return `
-        <div style="width: 100%; flex-shrink: 0; display: flex; flex-direction: ${flexDir}; align-items: center; justify-content: center;">
-            ${!isOverlap && (conf.pos === 'left' || conf.pos === 'top') ? numHtml : ''}
+        <div style="width: 100%; display: flex; flex-direction: ${flexDir}; align-items: center; justify-content: center;">
+            ${!isOverlap && (position === 'left' || position === 'top') ? numHtml : ''}
             ${dotHtml}
-            ${!isOverlap && (conf.pos === 'right' || conf.pos === 'bottom') ? numHtml : ''}
+            ${!isOverlap && (position === 'right' || position === 'bottom') ? numHtml : ''}
         </div>
     `;
 }
-
 
 window.openNumberStyleModal = function() {
     const modal = document.getElementById('numberStyleModal');
@@ -1019,7 +1022,7 @@ window.openNumberStyleModal = function() {
         loadNumberStyleToUI();
     } catch (e) {
         console.error("Błąd ładowania danych do modalu:", e);
-        legendNumberStyles = { global: { color: '#0f172a', bg: 'rgba(241, 245, 249, 0.95)', dotSize: 24, numSize: 12, dist: 4, pos: 'right', fontStyle: 'bold' }, perEmoji: {} };
+        legendNumberStyles = { global: { color: '#ffffff', bg: '#3b82f6', dotSize: 35, numSize: 12, dist: 2, pos: 'right', fontStyle: 'bold' }, perEmoji: {} };
         loadNumberStyleToUI();
     }
 };
@@ -1033,6 +1036,9 @@ function loadNumberStyleToUI() {
     if(rgbaMatch) {
         hexBg = "#" + ((1 << 24) + (parseInt(rgbaMatch[1]) << 16) + (parseInt(rgbaMatch[2]) << 8) + parseInt(rgbaMatch[3])).toString(16).slice(1);
         if(rgbaMatch[4]) opacity = Math.round(parseFloat(rgbaMatch[4]) * 100);
+    } else if (conf.bg.startsWith('#')) {
+        hexBg = conf.bg;
+        opacity = 100;
     }
 
     document.getElementById('numBgColor').value = hexBg;
@@ -1043,17 +1049,24 @@ function loadNumberStyleToUI() {
     document.getElementById('numFontSize').value = conf.numSize;
     document.getElementById('numDist').value = conf.dist;
     document.getElementById('numPosition').value = conf.pos;
+    
+    updateColorPreviews();
 }
 window.loadNumberStyleToUI = loadNumberStyleToUI;
 
 function applyNumberStylePreview() {
     const hexBg = document.getElementById('numBgColor').value;
     const opacity = document.getElementById('numBgOpacity').value / 100;
-    const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
     
+    let finalBg = hexBg;
+    if (!hexBg.startsWith('linear-gradient')) {
+        const r = parseInt(hexBg.slice(1, 3), 16), g = parseInt(hexBg.slice(3, 5), 16), b = parseInt(hexBg.slice(5, 7), 16);
+        finalBg = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    }
+
     const newConf = {
         color: document.getElementById('numTextColor').value,
-        bg: `rgba(${r}, ${g}, ${b}, ${opacity})`,
+        bg: finalBg,
         dotSize: parseInt(document.getElementById('numDotSize').value),
         numSize: parseInt(document.getElementById('numFontSize').value),
         fontStyle: document.getElementById('numFontStyle').value,
@@ -1170,7 +1183,6 @@ function toggleExportSatellite() {
 }
 window.toggleExportSatellite = toggleExportSatellite;
 
-// Inicjalizacja nasłuchu na emotki z palety na starcie
 document.addEventListener('DOMContentLoaded', () => {
     const emojiList = document.getElementById('emojiGridList');
     if (emojiList) {
@@ -1179,30 +1191,25 @@ document.addEventListener('DOMContentLoaded', () => {
         ).join('');
     }
     
-    // Wczytanie zapisanych stylów numerków przy starcie
     const savedStyles = localStorage.getItem('gpx_number_styles');
     if (savedStyles) {
         legendNumberStyles = JSON.parse(savedStyles);
     }
 });
-// Nasłuchiwanie zmian rozmiaru (i obrotu ekranu)
+
 window.addEventListener('resize', centerExportModal);
 if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', centerExportModal);
 }
-document.getElementById('emojiGridList').innerHTML = EMOJIS.map(e => 
-    `<div class="emoji-btn ${e==='📍'?'selected':''}" onclick="selectEmoji('${e}', this)">${e}</div>`
-).join('');
 
 function selectEmoji(e, btn) {
     selectedEmoji = e;
     document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
-    // Zabezpieczenie! Dodaje klasę TYLKO jeśli element 'btn' istnieje.
     if (btn) {
         btn.classList.add('selected');
     }
 }
-// Dynamiczne rysowanie trasy na mapie eksportowej na żywo
+
 function renderExportRouteLineWithStyle() {
     if (!exportMap) return;
     
