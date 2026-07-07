@@ -1,31 +1,87 @@
 /* =========================================================
-   panelManager.js - MODUŁ TRANSFORMCJI I GEOMETRII PANELÓW
+   panelManager.js - MODUŁ TRANSFORMCJI, GEOMETRII I MAGNESÓW (V7 - Ostateczny)
 ========================================================= */
 
 let isPanelDraggable = false;
 let isTransformMode = false;
 let transformTargetEl = null;
+
+// --- 1. SYSTEM HISTORII (CTRL+Z) DLA WSZYSTKICH PRZEKSZTAŁCEŃ ---
 let panelLayoutHistory = [];
 const PANEL_IDS = ['miMetaBlock', 'miStats', 'miLegendContainer'];
 
-// NOWA FUNKCJA: Twarde zabezpieczenie przed wyjściem poza dół ekranu (Gwarancja 15mm marginesu)
-function enforceStrictBottomBound(el) {
-    if (!el) return;
-    const wrapper = document.getElementById('exportWrapper');
-    if (!wrapper) return;
+function savePanelLayoutState() {
+    const state = PANEL_IDS.map(id => {
+        const el = document.getElementById(id);
+        return el ? {
+            id: id,
+            top: el.style.top, 
+            left: el.style.left,
+            width: el.style.width, 
+            height: el.style.height,
+            scale: el.dataset.scale || "1",
+            group: el.dataset.group || '',
+            parent: el.parentNode ? el.parentNode.id : '',
+            display: el.style.display,
+            position: el.style.position,
+            maxHeight: el.style.maxHeight
+        } : null;
+    }).filter(s => s !== null);
     
-    const wrapperH = wrapper.clientHeight;
-    const topPos = el.offsetTop;
-    const scale = parseFloat(el.dataset.scale || "1");
-    
-    // 60px = ~15mm bezpiecznego marginesu od dołu modalu
-    const maxVisualHeight = wrapperH - topPos - 60; 
-    
-    // Konwersja fizycznego miejsca na ekranie na wysokość CSS (uwzględniając aktualną skalę)
-    const maxCssHeight = maxVisualHeight / scale;
-    
-    el.style.setProperty('max-height', Math.max(100, maxCssHeight) + 'px', 'important');
+    panelLayoutHistory.push(state);
+    if (panelLayoutHistory.length > 10) panelLayoutHistory.shift(); // Pamięta 10 ostatnich kroków
 }
+
+function undoPanelLayout() {
+    if (panelLayoutHistory.length === 0) {
+        showCustomAlert("Brak wcześniejszych kroków do cofnięcia.");
+        return;
+    }
+    const state = panelLayoutHistory.pop();
+    state.forEach(s => {
+        const el = document.getElementById(s.id);
+        if (el) {
+            el.style.top = s.top; 
+            el.style.left = s.left;
+            el.style.width = s.width; 
+            el.style.height = s.height;
+            el.style.position = s.position;
+            el.style.maxHeight = s.maxHeight;
+            el.dataset.scale = s.scale;
+            el.style.transformOrigin = "top left";
+            el.style.scale = s.scale;
+            
+            if (s.group) el.dataset.group = s.group; 
+            else delete el.dataset.group;
+            
+            if (el.parentNode.id !== s.parent) {
+                const parentEl = document.getElementById(s.parent);
+                if (parentEl) parentEl.appendChild(el);
+            }
+            
+            el.style.display = s.display;
+            
+            if (s.parent === 'exportWrapper') {
+                el.classList.add('detached-panel');
+                if (isPanelDraggable) el.classList.add('draggable');
+            } else {
+                el.classList.remove('detached-panel', 'draggable');
+            }
+        }
+    });
+    updatePanelVisibility();
+}
+
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (isPanelDraggable || isTransformMode) {
+            e.preventDefault();
+            undoPanelLayout();
+        }
+    }
+});
+
+// --- 2. WIDOCZNOŚĆ I ZARZĄDZANIE PANELAMI ---
 function updatePanelVisibility() {
     const panel = document.getElementById('mapInfoPanel');
     if (!panel) return;
@@ -67,7 +123,6 @@ function updatePanelVisibility() {
         panel.classList.remove('split-active');
     }
 
-    // Zastosowanie twardego limitu dla wszystkich widocznych paneli
     const targets = [panel, ...document.querySelectorAll('.detached-panel')];
     targets.forEach(el => {
         if (el && el.style.display !== 'none') {
@@ -77,7 +132,22 @@ function updatePanelVisibility() {
 }
 window.updatePanelVisibility = updatePanelVisibility;
 
+function enforceStrictBottomBound(el) {
+    if (!el) return;
+    const wrapper = document.getElementById('exportWrapper');
+    if (!wrapper) return;
+    
+    const wrapperH = wrapper.clientHeight;
+    const topPos = el.offsetTop;
+    const scale = parseFloat(el.dataset.scale || "1");
+    
+    const maxVisualHeight = wrapperH - topPos - 60; 
+    const maxCssHeight = maxVisualHeight / scale;
+    
+    el.style.setProperty('max-height', Math.max(100, maxCssHeight) + 'px', 'important');
+}
 
+// --- 3. PRZESUWANIE, ROZŁĄCZANIE I MAGNESY ---
 function togglePanelDrag() {
     isPanelDraggable = !isPanelDraggable;
     const btn = document.getElementById('btnDragPanel');
@@ -88,7 +158,6 @@ function togglePanelDrag() {
         const activeChildren = Array.from(parentPanel.children).filter(el => el.style.display !== 'none' && el.innerHTML.trim() !== '');
         const hasGroups = Array.from(document.querySelectorAll('.detached-panel')).some(el => el.dataset.group);
         
-        // Zawsze pyta, jeśli są połączone panele (w kontenerze głównym lub przez magnes)
         if (activeChildren.length > 1 || hasGroups) {
             openDragChoiceModal();
         } else {
@@ -96,8 +165,7 @@ function togglePanelDrag() {
         }
     } else {
         disableDraggingForAll();
-        const existingBtn = document.getElementById('tempDetachBtn');
-        if (existingBtn) existingBtn.remove();
+        removeTempDetachBtn();
     }
 }
 window.togglePanelDrag = togglePanelDrag;
@@ -128,15 +196,15 @@ function openDragChoiceModal() {
     openCenteredModal('dragChoiceModal');
 }
 window.openDragChoiceModal = openDragChoiceModal;
+
 function executeDragChoice(choice) {
     closeModal('dragChoiceModal');
-    savePanelLayoutState(); // Zapisujemy stan przed rozbiciem/grupowaniem
+    savePanelLayoutState(); 
 
     const parentPanel = document.getElementById('mapInfoPanel');
     const activeChildren = Array.from(parentPanel.children).filter(el => el.style.display !== 'none' && el.innerHTML.trim() !== '');
 
     if (choice === 'separate') {
-        // Rozbija wszystkie grupy i wyciąga z głównego panelu
         let currentTop = 20;
         PANEL_IDS.forEach(id => {
             const el = document.getElementById(id);
@@ -149,7 +217,6 @@ function executeDragChoice(choice) {
             }
         });
     } else if (choice === 'together') {
-        // Wyciąga z głównego panelu, ale łączy je w jedną magnetyczną grupę
         if (activeChildren.length > 1) {
             const groupId = 'group_' + Date.now();
             let currentTop = 20;
@@ -158,8 +225,8 @@ function executeDragChoice(choice) {
             activeChildren.forEach(el => {
                 el.dataset.group = groupId;
                 detachPanel(el.id, currentTop);
-                el.style.width = baseWidth + 'px'; // Wyrównanie szerokości
-                currentTop += el.offsetHeight; // Układanie idealnie jeden pod drugim
+                el.style.width = baseWidth + 'px'; 
+                currentTop += el.offsetHeight; 
             });
         }
     }
@@ -177,7 +244,6 @@ function enableDraggingForAll() {
     });
 }
 
-
 function disableDraggingForAll() {
     PANEL_IDS.forEach(id => {
         const el = document.getElementById(id);
@@ -193,7 +259,11 @@ function detachPanel(targetId, forceTop = null) {
     const wrapper = document.getElementById('exportWrapper');
     if (!el || !wrapper) return;
     
+    // Zamrożenie kształtu przed odłączeniem
     const rect = el.getBoundingClientRect();
+    const currentW = el.offsetWidth;
+    const currentH = el.offsetHeight;
+    
     const wrapperRect = wrapper.getBoundingClientRect();
     
     wrapper.appendChild(el);
@@ -208,45 +278,49 @@ function detachPanel(targetId, forceTop = null) {
         el.style.left = (rect.left - wrapperRect.left) + 'px';
     }
     
-    el.style.width = Math.max(rect.width, 150) + 'px';
+    // Utrzymanie dokładnych wymiarów
+    el.style.width = currentW + 'px';
+    el.style.height = currentH + 'px';
     
-    enforceStrictBottomBound(el); // Zabezpieczenie od razu po odłączeniu
+    enforceStrictBottomBound(el); 
     updatePanelVisibility();
+}
+
+function removeTempDetachBtn() {
+    const btn = document.getElementById('tempDetachBtn');
+    if (btn) btn.remove();
 }
 
 function makePanelDraggable(el) {
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    let isDragging = false;
     el.onmousedown = dragMouseDown;
 
     function dragMouseDown(e) {
         if(!isPanelDraggable || e.target.closest('.transform-handle') || e.target.closest('button')) return;
         e.preventDefault();
         
-        // Zapis historii przed rozpoczęciem ruchu
         savePanelLayoutState();
+        isDragging = true;
 
-        // Mini przycisk "Rozłącz" jeśli element jest w grupie
+        // Przycisk "Rozłącz" pojawiający się podczas chwytania grupy
         if (el.dataset.group) {
-            const existingBtn = document.getElementById('tempDetachBtn');
-            if (existingBtn) existingBtn.remove();
-
+            removeTempDetachBtn();
             const btn = document.createElement('button');
             btn.id = 'tempDetachBtn';
             btn.innerHTML = '✂️ Rozłącz?';
             btn.className = 'danger';
-            btn.style.cssText = `position:absolute; top:-25px; right:0; z-index:99999; padding:4px 8px; font-size:11px; border-radius:4px; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.5); border: 1px solid white;`;
+            btn.style.cssText = `position:absolute; top:-35px; left:50%; transform:translateX(-50%); z-index:99999; padding:6px 12px; font-size:12px; border-radius:20px; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); border: 2px solid white; font-weight:bold;`;
             
             btn.onmousedown = (ev) => {
                 ev.stopPropagation();
+                ev.preventDefault();
                 savePanelLayoutState();
                 delete el.dataset.group;
                 btn.remove();
-                showCustomAlert("Panel odłączony! Możesz go przesuwać niezależnie.");
+                showCustomAlert("Panel odłączony! Przesuwasz go teraz niezależnie.");
             };
             el.appendChild(btn);
-            
-            // Znika po 3 sekundach
-            setTimeout(() => { if(document.getElementById('tempDetachBtn')) document.getElementById('tempDetachBtn').remove(); }, 3000);
         }
 
         pos3 = e.clientX;
@@ -254,12 +328,12 @@ function makePanelDraggable(el) {
         document.onmouseup = closeDragElement;
         document.onmousemove = elementDrag;
         
-        // Przeniesienie całej grupy na wierzch
         const elementsToMove = el.dataset.group ? document.querySelectorAll(`[data-group="${el.dataset.group}"]`) : [el];
         elementsToMove.forEach(targetEl => targetEl.style.zIndex = 3000);
     }
 
     function elementDrag(e) {
+        if (!isDragging) return;
         e.preventDefault();
         pos1 = pos3 - e.clientX;
         pos2 = pos4 - e.clientY;
@@ -278,15 +352,20 @@ function makePanelDraggable(el) {
     }
 
     function closeDragElement() {
+        isDragging = false;
         document.onmouseup = null;
         document.onmousemove = null;
         
+        removeTempDetachBtn();
+
         const elementsToMove = el.dataset.group ? document.querySelectorAll(`[data-group="${el.dataset.group}"]`) : [el];
         elementsToMove.forEach(targetEl => targetEl.style.zIndex = 2600);
 
         checkMagneticSnap(el);
     }
 }
+
+// --- 4. INTELIGENTNE MAGNESY (ZABEZPIECZENIA I REGUŁY) ---
 function checkMagneticSnap(draggedEl) {
     const snapThreshold = 30; 
     const allPanels = PANEL_IDS
@@ -296,45 +375,48 @@ function checkMagneticSnap(draggedEl) {
     const r1 = draggedEl.getBoundingClientRect();
 
     for (let target of allPanels) {
-        // Ignoruj panele z tej samej grupy
         if (draggedEl.dataset.group && draggedEl.dataset.group === target.dataset.group) continue;
 
         const r2 = target.getBoundingClientRect();
         
-        // 1. Sprawdzenie przyciągania w PIONIE (Góra / Dół)
+        // Zabezpieczenie: Legenda może być klejona TYLKO od góry i od dołu
+        const isLegendInvolved = (draggedEl.id === 'miLegendContainer' || target.id === 'miLegendContainer');
+        
+        // Sprawdzenie w PIONIE (Góra / Dół) - Dozwolone dla wszystkich
         const overlapX = !(r1.right < r2.left + 15 || r1.left > r2.right - 15);
         if (overlapX) {
             if (Math.abs(r1.bottom - r2.top) < snapThreshold) {
-                performSnap(draggedEl, target, 'bottom-top'); return;
+                if(performSnap(draggedEl, target, 'bottom-top')) return;
             }
             if (Math.abs(r1.top - r2.bottom) < snapThreshold) {
-                performSnap(draggedEl, target, 'top-bottom'); return;
+                if(performSnap(draggedEl, target, 'top-bottom')) return;
             }
         }
 
-        // 2. Sprawdzenie przyciągania w POZIOMIE (Lewo / Prawo)
-        const overlapY = !(r1.bottom < r2.top + 15 || r1.top > r2.bottom - 15);
-        if (overlapY) {
-            if (Math.abs(r1.right - r2.left) < snapThreshold) {
-                performSnap(draggedEl, target, 'right-left'); return;
-            }
-            if (Math.abs(r1.left - r2.right) < snapThreshold) {
-                performSnap(draggedEl, target, 'left-right'); return;
+        // Sprawdzenie w POZIOMIE (Lewo / Prawo) - ZABLOKOWANE DLA LEGENDY
+        if (!isLegendInvolved) {
+            const overlapY = !(r1.bottom < r2.top + 15 || r1.top > r2.bottom - 15);
+            if (overlapY) {
+                if (Math.abs(r1.right - r2.left) < snapThreshold) {
+                    if(performSnap(draggedEl, target, 'right-left')) return;
+                }
+                if (Math.abs(r1.left - r2.right) < snapThreshold) {
+                    if(performSnap(draggedEl, target, 'left-right')) return;
+                }
             }
         }
     }
 }
+
 function performSnap(draggedEl, target, type) {
-    savePanelLayoutState(); // Zapis historii przed sklejeniem
+    savePanelLayoutState(); 
     
     const groupId = target.dataset.group || 'group_' + Date.now();
     target.dataset.group = groupId;
 
-    // Pobranie wszystkich elementów z grupy przeciąganego panelu
     const draggedGroup = draggedEl.dataset.group;
     const elementsToMove = draggedGroup ? Array.from(document.querySelectorAll(`[data-group="${draggedGroup}"]`)) : [draggedEl];
     
-    // Przypisanie nowej grupy
     elementsToMove.forEach(el => el.dataset.group = groupId);
 
     const tTop = parseFloat(target.style.top) || target.offsetTop;
@@ -344,66 +426,59 @@ function performSnap(draggedEl, target, type) {
 
     let dx = 0, dy = 0;
 
-    // Logika dopasowania wymiarów i pozycji
     if (type === 'bottom-top') { 
-        // Przeciągany jest NAD celem (Wyrównanie szerokości)
-        draggedEl.style.width = tWidth + 'px';
+        draggedEl.style.width = tWidth + 'px'; // Wyrównanie szerokości
         const newTop = tTop - draggedEl.offsetHeight;
         dx = tLeft - (parseFloat(draggedEl.style.left) || draggedEl.offsetLeft);
         dy = newTop - (parseFloat(draggedEl.style.top) || draggedEl.offsetTop);
     } else if (type === 'top-bottom') { 
-        // Przeciągany jest POD celem (Wyrównanie szerokości)
-        draggedEl.style.width = tWidth + 'px';
+        draggedEl.style.width = tWidth + 'px'; // Wyrównanie szerokości
         const newTop = tTop + tHeight;
         dx = tLeft - (parseFloat(draggedEl.style.left) || draggedEl.offsetLeft);
         dy = newTop - (parseFloat(draggedEl.style.top) || draggedEl.offsetTop);
     } else if (type === 'right-left') { 
-        // Przeciągany jest PO LEWEJ stronie celu (Wyrównanie wysokości)
-        draggedEl.style.height = tHeight + 'px';
+        draggedEl.style.height = tHeight + 'px'; // Wyrównanie wysokości
         const newLeft = tLeft - draggedEl.offsetWidth;
         dx = newLeft - (parseFloat(draggedEl.style.left) || draggedEl.offsetLeft);
         dy = tTop - (parseFloat(draggedEl.style.top) || draggedEl.offsetTop);
     } else if (type === 'left-right') { 
-        // Przeciągany jest PO PRAWEJ stronie celu (Wyrównanie wysokości)
-        draggedEl.style.height = tHeight + 'px';
+        draggedEl.style.height = tHeight + 'px'; // Wyrównanie wysokości
         const newLeft = tLeft + tWidth;
         dx = newLeft - (parseFloat(draggedEl.style.left) || draggedEl.offsetLeft);
         dy = tTop - (parseFloat(draggedEl.style.top) || draggedEl.offsetTop);
     }
 
-    // Aplikacja przesunięcia (dx, dy) do całej grupy przeciąganego elementu
+    // Aplikacja przesunięcia
     elementsToMove.forEach(el => {
         el.style.top = ((parseFloat(el.style.top) || el.offsetTop) + dy) + 'px';
         el.style.left = ((parseFloat(el.style.left) || el.offsetLeft) + dx) + 'px';
-        enforceStrictBottomBound(el);
     });
-}
-function mergePanels(panelA, panelB) {
-    const parentPanel = document.getElementById('mapInfoPanel');
-    
-    if (panelA !== parentPanel) {
-        panelA.classList.remove('detached-panel', 'draggable');
-        panelA.style.position = '';
-        panelA.style.top = '';
-        panelA.style.left = '';
-        panelA.style.width = '';
-        panelA.onmousedown = null;
-        parentPanel.appendChild(panelA);
+
+    // Weryfikacja czy po sklejeniu grupa nie wypadła poza ekran
+    const wrapper = document.getElementById('exportWrapper');
+    const wrapperRect = wrapper.getBoundingClientRect();
+    let isOutOfBounds = false;
+
+    const allGroupElements = document.querySelectorAll(`[data-group="${groupId}"]`);
+    allGroupElements.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        // Sprawdzamy czy dół nie przebija bezpiecznej granicy (60px od dołu) lub czy nie wychodzi za prawą krawędź
+        if (rect.bottom > wrapperRect.bottom - 50 || rect.right > wrapperRect.right - 20 || rect.left < wrapperRect.left + 10 || rect.top < wrapperRect.top + 10) {
+            isOutOfBounds = true;
+        }
+    });
+
+    if (isOutOfBounds) {
+        undoPanelLayout(); // Cofamy sklejenie
+        showCustomAlert("Nie można połączyć paneli w tym miejscu, ponieważ połączona grupa wyszłaby poza obszar roboczy mapy.");
+        return false; // Snap odrzucony
     }
-    if (panelB !== parentPanel) {
-        panelB.classList.remove('detached-panel', 'draggable');
-        panelB.style.position = '';
-        panelB.style.top = '';
-        panelB.style.left = '';
-        panelB.style.width = '';
-        panelB.onmousedown = null;
-        parentPanel.appendChild(panelB);
-    }
-    
-    updatePanelVisibility();
-    if (isPanelDraggable) enableDraggingForAll(); 
+
+    allGroupElements.forEach(el => enforceStrictBottomBound(el));
+    return true; // Snap udany
 }
 
+// --- 5. KADROWANIE I SKALOWANIE (CANVA STYLE) ---
 function openTransformModal() {
     isTransformMode = !isTransformMode;
     const btn = document.getElementById('btnTransformPanel');
@@ -448,23 +523,19 @@ function selectTransformTarget(e) {
     overlay.id = 'activeTransformOverlay';
     overlay.className = 'transform-overlay';
     
-    // SCENARIUSZE: Wykrywanie, czy panel zawiera legendę (tylko wtedy pozwalamy na zmianę wysokości)
     let allowHeightCrop = false;
     let legendEl = null;
 
     if (transformTargetEl.id === 'miLegendContainer') {
-        // Scenariusz 4, 10, 12: Sama legenda (odłączona)
         legendEl = transformTargetEl;
         allowHeightCrop = true;
     } else if (transformTargetEl.id === 'mapInfoPanel') {
-        // Scenariusz 6, 7, 8: Panel połączony - szukamy w nim legendy
         const tempLegend = document.getElementById('miLegendContainer');
         if (tempLegend && tempLegend.style.display !== 'none' && tempLegend.parentNode === transformTargetEl) {
             legendEl = tempLegend;
             allowHeightCrop = true;
         }
     }
-    // Scenariusze 1, 2, 9, 11: Brak legendy -> allowHeightCrop pozostaje false (brak dolnego uchwytu)
 
     overlay.innerHTML = `
         <div class="transform-handle th-e" data-action="crop-e" title="Zmień szerokość"></div>
@@ -478,6 +549,15 @@ function selectTransformTarget(e) {
     setupTransformHandles(overlay, allowHeightCrop, legendEl);
 }
 
+function removeTransformOverlay() {
+    const existing = document.getElementById('activeTransformOverlay');
+    if (existing) {
+        existing.parentNode.style.overflow = ''; 
+        existing.remove();
+    }
+    transformTargetEl = null;
+}
+
 function setupTransformHandles(overlay, allowHeightCrop, legendEl) {
     const handles = overlay.querySelectorAll('.transform-handle');
     
@@ -489,6 +569,9 @@ function setupTransformHandles(overlay, allowHeightCrop, legendEl) {
         handle.onmousedown = (e) => {
             e.preventDefault();
             e.stopPropagation();
+            
+            savePanelLayoutState(); // Zapis historii przed transformacją
+
             startX = e.clientX;
             startY = e.clientY;
             startW = transformTargetEl.offsetWidth;
@@ -534,11 +617,23 @@ function setupTransformHandles(overlay, allowHeightCrop, legendEl) {
                 const scaleFactor = 1 + (dx / 200); 
                 const newScale = Math.max(0.4, Math.min(startScale * scaleFactor, 3.0));
                 
+                if (allowHeightCrop && legendEl) {
+                    const requiredTotalH = maxVisualHeight / newScale;
+                    const otherBlocksHeight = startH - startLegendH;
+                    let adjustedLegendH = startLegendH; 
+
+                    if (startH * newScale > maxVisualHeight) {
+                        adjustedLegendH = Math.max(50, requiredTotalH - otherBlocksHeight);
+                    }
+                    
+                    legendEl.style.height = adjustedLegendH + 'px';
+                    legendEl.style.overflowY = 'auto';
+                }
+                
                 transformTargetEl.style.transformOrigin = "top left";
                 transformTargetEl.style.scale = newScale;
                 transformTargetEl.dataset.scale = newScale;
                 
-                // Zabezpieczenie przed przebiciem dołu przy powiększaniu
                 enforceStrictBottomBound(transformTargetEl);
             }
         }
@@ -549,18 +644,6 @@ function setupTransformHandles(overlay, allowHeightCrop, legendEl) {
         }
     });
 }
-
-
-function removeTransformOverlay() {
-    const existing = document.getElementById('activeTransformOverlay');
-    if (existing) {
-        existing.parentNode.style.overflow = ''; 
-        existing.remove();
-    }
-    transformTargetEl = null;
-}
-
-
 
 function setupQuadTapDelete(panel) {
     let tapCount = 0;
@@ -578,6 +661,7 @@ function setupQuadTapDelete(panel) {
             tapCount = 0; clearTimeout(tapTimer);
 
             showCustomConfirm("Czy chcesz trwale usunąć ten panel z mapy?", () => {
+                savePanelLayoutState(); // Zapis historii przed usunięciem
                 panel.innerHTML = '';
                 panel.style.display = 'none';
                 if(panel.classList.contains('detached-panel')) {
@@ -591,47 +675,3 @@ function setupQuadTapDelete(panel) {
     });
 }
 window.setupQuadTapDelete = setupQuadTapDelete;
-function savePanelLayoutState() {
-    const state = PANEL_IDS.map(id => {
-        const el = document.getElementById(id);
-        return el ? {
-            id: id,
-            top: el.style.top, left: el.style.left,
-            width: el.style.width, height: el.style.height,
-            group: el.dataset.group || '',
-            parent: el.parentNode.id,
-            display: el.style.display
-        } : null;
-    }).filter(s => s !== null);
-    
-    panelLayoutHistory.push(state);
-    if (panelLayoutHistory.length > 5) panelLayoutHistory.shift(); // Pamięta 5 ostatnich kroków
-}
-function undoPanelLayout() {
-    if (panelLayoutHistory.length === 0) {
-        showCustomAlert("Brak wcześniejszych kroków do cofnięcia.");
-        return;
-    }
-    const state = panelLayoutHistory.pop();
-    state.forEach(s => {
-        const el = document.getElementById(s.id);
-        if (el) {
-            el.style.top = s.top; el.style.left = s.left;
-            el.style.width = s.width; el.style.height = s.height;
-            if (s.group) el.dataset.group = s.group; else delete el.dataset.group;
-            if (el.parentNode.id !== s.parent) document.getElementById(s.parent).appendChild(el);
-            el.style.display = s.display;
-        }
-    });
-    updatePanelVisibility();
-}
-
-// Nasłuchiwacz Ctrl+Z dedykowany dla trybu przesuwania
-document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        if (isPanelDraggable && panelLayoutHistory.length > 0) {
-            e.preventDefault();
-            undoPanelLayout();
-        }
-    }
-});
