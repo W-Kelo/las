@@ -880,9 +880,10 @@
                             <input type="hidden" id="expTitleColor" value="#0f172a">
                             <input type="range" id="expTitleSize" class="thick-slider" min="12" max="36" value="18" style="flex:1;" oninput="applyLiveStyleDirect('texts')">
                             <div class="format-btn-group" style="margin:0;">
-                                <button id="btnTitleBold" class="format-btn" onclick="toggleFormatBtn(this, 'title-bold')"><b>B</b></button>
-                                <button id="btnTitleItalic" class="format-btn" onclick="toggleFormatBtn(this, 'title-italic')"><i>I</i></button>
-                            </div>
+    <button id="btnTitleBold" class="format-btn" onclick="toggleFormatBtn(this, 'title-bold')"><b>B</b></button>
+    <button id="btnTitleItalic" class="format-btn" onclick="toggleFormatBtn(this, 'title-italic')"><i>I</i></button>
+    <button id="btnTitleUnderline" class="format-btn" onclick="toggleFormatBtn(this, 'title-underline')"><u>U</u></button>
+</div>
                         </div>
                     </div>
                     <!-- Data -->
@@ -893,10 +894,11 @@
                             <div id="expDateColorPreview" class="color-preview-rect" style="width:25px; height:20px; background-color:#475569;"></div>
                             <input type="hidden" id="expDateColor" value="#475569">
                             <input type="range" id="expDateSize" class="thick-slider" min="10" max="24" value="12" style="flex:1;" oninput="applyLiveStyleDirect('texts')">
-                            <div class="format-btn-group" style="margin:0;">
-                                <button id="btnDateBold" class="format-btn" onclick="toggleFormatBtn(this, 'date-bold')"><b>B</b></button>
-                                <button id="btnDateItalic" class="format-btn" onclick="toggleFormatBtn(this, 'date-italic')"><i>I</i></button>
-                            </div>
+<div class="format-btn-group" style="margin:0;">
+    <button id="btnDateBold" class="format-btn" onclick="toggleFormatBtn(this, 'date-bold')"><b>B</b></button>
+    <button id="btnDateItalic" class="format-btn" onclick="toggleFormatBtn(this, 'date-italic')"><i>I</i></button>
+    <button id="btnDateUnderline" class="format-btn" onclick="toggleFormatBtn(this, 'date-underline')"><u>U</u></button>
+</div>
                         </div>
                     </div>
                     <!-- Opis -->
@@ -907,10 +909,11 @@
                             <div id="expDescColorPreview" class="color-preview-rect" style="width:25px; height:20px; background-color:#334155;"></div>
                             <input type="hidden" id="expDescColor" value="#334155">
                             <input type="range" id="expDescSize" class="thick-slider" min="10" max="24" value="13" style="flex:1;" oninput="applyLiveStyleDirect('texts')">
-                            <div class="format-btn-group" style="margin:0;">
-                                <button id="btnDescBold" class="format-btn" onclick="toggleFormatBtn(this, 'desc-bold')"><b>B</b></button>
-                                <button id="btnDescItalic" class="format-btn" onclick="toggleFormatBtn(this, 'desc-italic')"><i>I</i></button>
-                            </div>
+<div class="format-btn-group" style="margin:0;">
+    <button id="btnDescBold" class="format-btn" onclick="toggleFormatBtn(this, 'desc-bold')"><b>B</b></button>
+    <button id="btnDescItalic" class="format-btn" onclick="toggleFormatBtn(this, 'desc-italic')"><i>I</i></button>
+    <button id="btnDescUnderline" class="format-btn" onclick="toggleFormatBtn(this, 'desc-underline')"><u>U</u></button>
+</div>
                         </div>
                     </div>
                 </div>
@@ -982,10 +985,11 @@
                             <label style="font-size:0.75rem; margin:0;">Rozmiar czcionki: <span id="lblExpStatsSize">12</span>px</label>
                             <input type="range" id="expStatsSize" class="thick-slider" min="10" max="24" value="12" oninput="document.getElementById('lblExpStatsSize').innerText=this.value; applyLiveStyleDirect('stats');">
                         </div>
-                        <div class="format-btn-group" style="margin:0; flex-shrink:0;">
-                            <button id="btnStatsBold" class="format-btn" onclick="toggleFormatBtn(this, 'stats-bold')"><b>B</b></button>
-                            <button id="btnStatsItalic" class="format-btn" onclick="toggleFormatBtn(this, 'stats-italic')"><i>I</i></button>
-                        </div>
+<div class="format-btn-group" style="margin:0;">
+    <button id="btnDistBold" class="format-btn" onclick="toggleFormatBtn(this, 'dist-bold')"><b>B</b></button>
+    <button id="btnDistItalic" class="format-btn" onclick="toggleFormatBtn(this, 'dist-italic')"><i>I</i></button>
+    <button id="btnDistUnderline" class="format-btn" onclick="toggleFormatBtn(this, 'dist-underline')"><u>U</u></button>
+</div>
                     </div>
                 </div>
 
@@ -1005,6 +1009,11 @@
                             
                             <input type="range" id="expDistSize" class="thick-slider" min="10" max="24" value="12" style="flex:1;" oninput="applyLiveStyleDirect('stats')">
                         </div>
+                        <div class="format-btn-group" style="margin:0;">
+    <button id="btnDistBold" class="format-btn" onclick="toggleFormatBtn(this, 'dist-bold')"><b>B</b></button>
+    <button id="btnDistItalic" class="format-btn" onclick="toggleFormatBtn(this, 'dist-italic')"><i>I</i></button>
+    <button id="btnDistUnderline" class="format-btn" onclick="toggleFormatBtn(this, 'dist-underline')"><u>U</u></button>
+</div>
                     </div>
                     <!-- Kafelek Czasu i Podejść -->
                     <div class="editor-group-box">
@@ -1021,6 +1030,11 @@
                             <input type="range" id="expTimeSize" class="thick-slider" min="10" max="24" value="12" style="flex:1;" oninput="applyLiveStyleDirect('stats')">
                         </div>
                     </div>
+                    <div class="format-btn-group" style="margin:0;">
+    <button id="btnDistBold" class="format-btn" onclick="toggleFormatBtn(this, 'dist-bold')"><b>B</b></button>
+    <button id="btnDistItalic" class="format-btn" onclick="toggleFormatBtn(this, 'dist-italic')"><i>I</i></button>
+    <button id="btnDistUnderline" class="format-btn" onclick="toggleFormatBtn(this, 'dist-underline')"><u>U</u></button>
+</div>
                 </div>
             </div>
 
